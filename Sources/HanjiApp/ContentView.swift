@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import AppCore
 import EditorEngine
+import ExtensionSDK
 import VaultKit
 
 struct ContentView: View {
@@ -33,7 +34,7 @@ struct ContentView: View {
             }
         } content: {
             if appState.selectedFile != nil {
-                MarkdownEditorView(text: $appState.activeText)
+                MarkdownEditorView(text: $appState.activeText, renderers: appState.rendererRegistry)
                     .toolbar {
                         ToolbarItem { Button("Save", action: appState.save) }
                     }

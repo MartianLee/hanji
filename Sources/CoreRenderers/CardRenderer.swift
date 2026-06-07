@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import ExtensionSDK
 
 /// A simple built-in renderer: shows a fenced ```card block as a bordered card.
@@ -13,8 +14,9 @@ public struct CardRenderer: CodeBlockRenderer {
                 .font(.body)
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.accentColor.opacity(0.12)))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.accentColor.opacity(0.4)))
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.accentColor.opacity(0.15)))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.accentColor.opacity(0.45)))
+                .background(Color(nsColor: .textBackgroundColor))   // opaque base hides the raw source behind the overlay
         )
     }
 }
