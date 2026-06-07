@@ -24,6 +24,7 @@ struct HanjiApp: App {
                     activated = true
                     let host = Host(appState: appState, pluginManager: pluginManager)
                     host.renderers.register(CardRenderer())
+                    host.renderers.register(MermaidRenderer())
                     let plugins: [Plugin] = [WordCountPlugin()]   // compile-time loading (D5)
                     pluginManager.activate(plugins, host: host)
 
