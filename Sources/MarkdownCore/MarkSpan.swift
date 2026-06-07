@@ -6,6 +6,8 @@ public enum SpanStyle: Equatable {
     case italic
     case inlineCode
     case link
+    case blockquote
+    case frontmatter
 }
 
 /// A recognized markdown construct, in UTF-16 code-unit offsets (NSRange-compatible).

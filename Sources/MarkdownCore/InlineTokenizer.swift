@@ -10,14 +10,27 @@ public enum InlineTokenizer {
         let newline = UInt16(UnicodeScalar("\n").value)
 
         var lineStart = 0
+        var lineIndex = 0
+        var inFrontmatter = false
         while lineStart <= length {
             var lineEnd = lineStart
             while lineEnd < length && ns.character(at: lineEnd) != newline { lineEnd += 1 }
             let lineRange = lineStart..<lineEnd
             let lineText = ns.substring(with: NSRange(location: lineStart, length: lineEnd - lineStart))
-            parseLine(lineText as NSString, lineStart: lineStart, lineRange: lineRange, into: &result)
+
+            if lineIndex == 0 && lineText == "---" {
+                inFrontmatter = true
+                result.append(MarkSpan(style: .frontmatter, content: lineRange, markers: [], line: lineRange))
+            } else if inFrontmatter {
+                result.append(MarkSpan(style: .frontmatter, content: lineRange, markers: [], line: lineRange))
+                if lineText == "---" { inFrontmatter = false }
+            } else {
+                parseLine(lineText as NSString, lineStart: lineStart, lineRange: lineRange, into: &result)
+            }
+
             if lineEnd == length { break }
             lineStart = lineEnd + 1
+            lineIndex += 1
         }
         return result
     }
@@ -31,11 +44,16 @@ public enum InlineTokenizer {
     private static let openParen = UInt16(UnicodeScalar("(").value)
     private static let closeParen = UInt16(UnicodeScalar(")").value)
     private static let pipeChar = UInt16(UnicodeScalar("|").value)
+    private static let gt = UInt16(UnicodeScalar(">").value)
 
     private static func parseLine(_ ns: NSString, lineStart: Int, lineRange: Range<Int>,
                                   into result: inout [MarkSpan]) {
         if let heading = headingSpan(ns, lineStart: lineStart, lineRange: lineRange) {
             result.append(heading)
+            return
+        }
+        if let quote = blockquoteSpan(ns, lineStart: lineStart, lineRange: lineRange) {
+            result.append(quote)
             return
         }
         let n = ns.length
@@ -70,6 +88,14 @@ public enum InlineTokenizer {
         let markers = [(lineStart)..<(lineStart + markerEnd)]
         let content = (lineStart + markerEnd)..<(lineStart + n)
         return MarkSpan(style: .heading(hashes), content: content, markers: markers, line: lineRange)
+    }
+
+    private static func blockquoteSpan(_ ns: NSString, lineStart: Int, lineRange: Range<Int>) -> MarkSpan? {
+        let n = ns.length
+        guard n >= 2, ns.character(at: 0) == gt, ns.character(at: 1) == space else { return nil }
+        let markers = [(lineStart)..<(lineStart + 2)]   // "> "
+        let content = (lineStart + 2)..<(lineStart + n)
+        return MarkSpan(style: .blockquote, content: content, markers: markers, line: lineRange)
     }
 
     private static func codeSpan(_ ns: NSString, from start: Int, lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {

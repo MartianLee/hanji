@@ -10,4 +10,6 @@ runChecks([
     ("Styler", stylerChecks),
     ("LinkTokenizer", linkTokenizerChecks),
     ("LinkStyler", linkStylerChecks),
+    ("BlockTokenizer", blockTokenizerChecks),
+    ("BlockStyler", blockStylerChecks),
 ])

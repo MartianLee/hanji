@@ -39,6 +39,14 @@ public enum LivePreviewStyler {
         case .link:
             return [.foregroundColor: NSColor.linkColor,
                     .underlineStyle: NSUnderlineStyle.single.rawValue]
+        case .blockquote:
+            let p = NSMutableParagraphStyle()
+            p.firstLineHeadIndent = 16
+            p.headIndent = 16
+            return [.foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: p]
+        case .frontmatter:
+            return [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+                    .foregroundColor: NSColor.tertiaryLabelColor]
         }
     }
 
