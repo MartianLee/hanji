@@ -45,6 +45,10 @@ public enum InlineTokenizer {
     private static let closeParen = UInt16(UnicodeScalar(")").value)
     private static let pipeChar = UInt16(UnicodeScalar("|").value)
     private static let gt = UInt16(UnicodeScalar(">").value)
+    private static let dash = UInt16(UnicodeScalar("-").value)
+    private static let plus = UInt16(UnicodeScalar("+").value)
+    private static let xLower = UInt16(UnicodeScalar("x").value)
+    private static let xUpper = UInt16(UnicodeScalar("X").value)
 
     private static func parseLine(_ ns: NSString, lineStart: Int, lineRange: Range<Int>,
                                   into result: inout [MarkSpan]) {
@@ -54,6 +58,14 @@ public enum InlineTokenizer {
         }
         if let quote = blockquoteSpan(ns, lineStart: lineStart, lineRange: lineRange) {
             result.append(quote)
+            return
+        }
+        if let task = taskSpan(ns, lineStart: lineStart, lineRange: lineRange) {
+            result.append(task)
+            return
+        }
+        if let list = listSpan(ns, lineStart: lineStart, lineRange: lineRange) {
+            result.append(list)
             return
         }
         let n = ns.length
@@ -96,6 +108,30 @@ public enum InlineTokenizer {
         let markers = [(lineStart)..<(lineStart + 2)]   // "> "
         let content = (lineStart + 2)..<(lineStart + n)
         return MarkSpan(style: .blockquote, content: content, markers: markers, line: lineRange)
+    }
+
+    private static func taskSpan(_ ns: NSString, lineStart: Int, lineRange: Range<Int>) -> MarkSpan? {
+        let n = ns.length
+        guard n >= 6,
+              ns.character(at: 0) == dash, ns.character(at: 1) == space,
+              ns.character(at: 2) == openBracket, ns.character(at: 4) == closeBracket,
+              ns.character(at: 5) == space else { return nil }
+        let mark = ns.character(at: 3)
+        let done: Bool
+        if mark == space { done = false }
+        else if mark == xLower || mark == xUpper { done = true }
+        else { return nil }
+        let content = (lineStart + 6)..<(lineStart + n)
+        return MarkSpan(style: .task(done), content: content, markers: [], line: lineRange)
+    }
+
+    private static func listSpan(_ ns: NSString, lineStart: Int, lineRange: Range<Int>) -> MarkSpan? {
+        let n = ns.length
+        guard n >= 2, ns.character(at: 1) == space else { return nil }
+        let c0 = ns.character(at: 0)
+        guard c0 == dash || c0 == star || c0 == plus else { return nil }
+        let content = (lineStart + 2)..<(lineStart + n)
+        return MarkSpan(style: .listItem, content: content, markers: [], line: lineRange)
     }
 
     private static func codeSpan(_ ns: NSString, from start: Int, lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {

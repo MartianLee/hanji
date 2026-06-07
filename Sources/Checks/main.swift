@@ -12,4 +12,6 @@ runChecks([
     ("LinkStyler", linkStylerChecks),
     ("BlockTokenizer", blockTokenizerChecks),
     ("BlockStyler", blockStylerChecks),
+    ("ListTaskTokenizer", listTaskTokenizerChecks),
+    ("ListTaskStyler", listTaskStylerChecks),
 ])

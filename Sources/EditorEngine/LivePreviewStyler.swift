@@ -12,7 +12,17 @@ public enum LivePreviewStyler {
         storage.setAttributes([.font: baseFont, .foregroundColor: NSColor.textColor], range: full)
         for run in deco.styles {
             let r = clamp(run.range, length: storage.length)
-            if r.length > 0 { storage.addAttributes(attributes(for: run.style), range: r) }
+            guard r.length > 0 else { continue }
+            var attrs = attributes(for: run.style)
+            // Paragraph styles must cover whole paragraphs to survive attribute
+            // fixing, so expand them to the run's paragraph range; other attributes
+            // stay on the text range.
+            if let pstyle = attrs[.paragraphStyle] {
+                attrs[.paragraphStyle] = nil
+                let para = (storage.string as NSString).paragraphRange(for: r)
+                storage.addAttributes([.paragraphStyle: pstyle], range: para)
+            }
+            if !attrs.isEmpty { storage.addAttributes(attrs, range: r) }
         }
         for hiddenRange in deco.hidden {
             let r = clamp(hiddenRange, length: storage.length)
@@ -47,6 +57,19 @@ public enum LivePreviewStyler {
         case .frontmatter:
             return [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
                     .foregroundColor: NSColor.tertiaryLabelColor]
+        case .listItem:
+            let p = NSMutableParagraphStyle()
+            p.headIndent = 20
+            return [.paragraphStyle: p]
+        case .task(let done):
+            let p = NSMutableParagraphStyle()
+            p.headIndent = 20
+            if done {
+                return [.paragraphStyle: p,
+                        .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                        .foregroundColor: NSColor.secondaryLabelColor]
+            }
+            return [.paragraphStyle: p]
         }
     }
 
