@@ -8,6 +8,7 @@ public final class AppState: ObservableObject {
     @Published public var selectedFile: MarkdownFile?
     @Published public var activeText: String = ""
     @Published public var index: MetadataIndex = MetadataIndex()
+    public let rendererRegistry = DefaultRendererRegistry()
 
     private var vault: Vault?
 

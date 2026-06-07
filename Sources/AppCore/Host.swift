@@ -6,7 +6,6 @@ import ExtensionSDK
 public final class Host: PluginHost, UIRegistry, EditorContext {
     private let appState: AppState
     private let pluginManager: PluginManager
-    private let rendererRegistry = DefaultRendererRegistry()
 
     public init(appState: AppState, pluginManager: PluginManager) {
         self.appState = appState
@@ -16,7 +15,7 @@ public final class Host: PluginHost, UIRegistry, EditorContext {
     // PluginHost
     public var ui: UIRegistry { self }
     public var editor: EditorContext { self }
-    public var renderers: RendererRegistry { rendererRegistry }
+    public var renderers: RendererRegistry { appState.rendererRegistry }
 
     // UIRegistry
     public func addSidebarView(id: String, title: String, _ make: @escaping () -> AnyView) {

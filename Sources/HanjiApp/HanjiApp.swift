@@ -3,6 +3,7 @@ import AppKit
 import AppCore
 import ExtensionSDK
 import WordCountPlugin
+import CoreRenderers
 
 @main
 struct HanjiApp: App {
@@ -22,6 +23,7 @@ struct HanjiApp: App {
                     guard !activated else { return }
                     activated = true
                     let host = Host(appState: appState, pluginManager: pluginManager)
+                    host.renderers.register(CardRenderer())
                     let plugins: [Plugin] = [WordCountPlugin()]   // compile-time loading (D5)
                     pluginManager.activate(plugins, host: host)
 
