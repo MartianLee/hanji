@@ -14,8 +14,10 @@ with a Swift extension SDK. Design: [`docs/2026-06-06-native-markdown-editor-des
 - In-memory metadata index (titles)
 - Compile-time plugin SDK + bundled Word Count plugin (proves the host↔plugin loop)
 - **Extensible code-block renderers** (`CodeBlockRenderer` SDK surface): fenced blocks
-  render as inline widgets (raw source revealed while editing); ships a built-in `card`
-  renderer — mermaid / Dataview / images build on the same registry
+  render as inline widgets that reserve their own height (raw source revealed while
+  editing). Built-in: **mermaid** diagrams (WKWebView), **Dataview-lite** (`LIST FROM #tag`),
+  and a `card` renderer
+- **Inline images** — `![[file]]` / `![alt](path)` rendered from the vault
 
 ## Build & run
 
