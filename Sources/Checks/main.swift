@@ -8,4 +8,6 @@ runChecks([
     ("Tokenizer", tokenizerChecks),
     ("Decoration", decorationChecks),
     ("Styler", stylerChecks),
+    ("LinkTokenizer", linkTokenizerChecks),
+    ("LinkStyler", linkStylerChecks),
 ])

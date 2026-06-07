@@ -36,6 +36,9 @@ public enum LivePreviewStyler {
         case .inlineCode:
             return [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
                     .backgroundColor: NSColor.quaternaryLabelColor]
+        case .link:
+            return [.foregroundColor: NSColor.linkColor,
+                    .underlineStyle: NSUnderlineStyle.single.rawValue]
         }
     }
 

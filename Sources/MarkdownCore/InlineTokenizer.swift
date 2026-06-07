@@ -26,6 +26,11 @@ public enum InlineTokenizer {
     private static let space = UInt16(UnicodeScalar(" ").value)
     private static let star = UInt16(UnicodeScalar("*").value)
     private static let backtick = UInt16(UnicodeScalar("`").value)
+    private static let openBracket = UInt16(UnicodeScalar("[").value)
+    private static let closeBracket = UInt16(UnicodeScalar("]").value)
+    private static let openParen = UInt16(UnicodeScalar("(").value)
+    private static let closeParen = UInt16(UnicodeScalar(")").value)
+    private static let pipeChar = UInt16(UnicodeScalar("|").value)
 
     private static func parseLine(_ ns: NSString, lineStart: Int, lineRange: Range<Int>,
                                   into result: inout [MarkSpan]) {
@@ -38,6 +43,9 @@ public enum InlineTokenizer {
         while i < n {
             let c = ns.character(at: i)
             if c == backtick, let (span, next) = codeSpan(ns, from: i, lineStart: lineStart, lineRange: lineRange) {
+                result.append(span); i = next; continue
+            }
+            if c == openBracket, let (span, next) = bracketSpan(ns, from: i, lineStart: lineStart, lineRange: lineRange) {
                 result.append(span); i = next; continue
             }
             if c == star {
@@ -101,6 +109,50 @@ public enum InlineTokenizer {
             j += 1
         }
         return nil
+    }
+
+    private static func bracketSpan(_ ns: NSString, from start: Int, lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {
+        if start + 1 < ns.length && ns.character(at: start + 1) == openBracket {
+            return wikilinkSpan(ns, from: start, lineStart: lineStart, lineRange: lineRange)
+        }
+        return markdownLinkSpan(ns, from: start, lineStart: lineStart, lineRange: lineRange)
+    }
+
+    private static func wikilinkSpan(_ ns: NSString, from start: Int, lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {
+        let n = ns.length
+        let innerStart = start + 2
+        var j = innerStart
+        while j + 1 < n && !(ns.character(at: j) == closeBracket && ns.character(at: j + 1) == closeBracket) { j += 1 }
+        guard j + 1 < n, ns.character(at: j) == closeBracket, ns.character(at: j + 1) == closeBracket, j > innerStart else { return nil }
+        let closeStart = j
+        var pipe = -1
+        var k = innerStart
+        while k < closeStart { if ns.character(at: k) == pipeChar { pipe = k; break }; k += 1 }
+        let openMarker = (lineStart + start)..<(lineStart + start + 2)
+        let closeMarker = (lineStart + closeStart)..<(lineStart + closeStart + 2)
+        if pipe >= 0 {
+            guard pipe + 1 < closeStart else { return nil }
+            let targetPipeMarker = (lineStart + innerStart)..<(lineStart + pipe + 1)
+            let content = (lineStart + pipe + 1)..<(lineStart + closeStart)
+            return (MarkSpan(style: .link, content: content, markers: [openMarker, targetPipeMarker, closeMarker], line: lineRange), closeStart + 2)
+        }
+        let content = (lineStart + innerStart)..<(lineStart + closeStart)
+        return (MarkSpan(style: .link, content: content, markers: [openMarker, closeMarker], line: lineRange), closeStart + 2)
+    }
+
+    private static func markdownLinkSpan(_ ns: NSString, from start: Int, lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {
+        let n = ns.length
+        var j = start + 1
+        while j < n && ns.character(at: j) != closeBracket { j += 1 }
+        guard j < n, j > start + 1 else { return nil }
+        guard j + 1 < n, ns.character(at: j + 1) == openParen else { return nil }
+        var k = j + 2
+        while k < n && ns.character(at: k) != closeParen { k += 1 }
+        guard k < n else { return nil }
+        let openMarker = (lineStart + start)..<(lineStart + start + 1)
+        let tailMarker = (lineStart + j)..<(lineStart + k + 1)   // ](url)
+        let content = (lineStart + start + 1)..<(lineStart + j)
+        return (MarkSpan(style: .link, content: content, markers: [openMarker, tailMarker], line: lineRange), k + 1)
     }
 
     private static func matches(_ ns: NSString, at i: Int, marker: NSString) -> Bool {
