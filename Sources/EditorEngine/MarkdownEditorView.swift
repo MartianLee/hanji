@@ -14,17 +14,19 @@ final class ClickableTextView: NSTextView {
     }
 }
 
-/// Markdown editing surface (TextKit 2) with incremental Live Preview:
-/// inline styling + caret-aware marker hiding, plus inline rendering of fenced
-/// code blocks whose language has a registered renderer (the source is preserved
-/// and revealed when the caret enters the block).
+/// Markdown editing surface (TextKit 2): incremental Live Preview (inline styling
+/// + caret-aware marker hiding) + inline widget rendering for fenced code blocks
+/// (via the registered renderers) and images. Widgets reserve the height they need
+/// (measured via NSHostingView.fittingSize) and reveal raw source when edited.
 public struct MarkdownEditorView: NSViewRepresentable {
     @Binding public var text: String
     public var renderers: RendererRegistry?
+    public var vaultRoot: URL?
 
-    public init(text: Binding<String>, renderers: RendererRegistry? = nil) {
+    public init(text: Binding<String>, renderers: RendererRegistry? = nil, vaultRoot: URL? = nil) {
         self._text = text
         self.renderers = renderers
+        self.vaultRoot = vaultRoot
     }
 
     public func makeNSView(context: Context) -> NSScrollView {
@@ -50,6 +52,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
         context.coordinator.textView = textView
         context.coordinator.renderers = renderers
+        context.coordinator.vaultRoot = vaultRoot
         textView.onClick = { [weak coordinator = context.coordinator] idx in
             coordinator?.toggleCheckbox(at: idx) ?? false
         }
@@ -60,6 +63,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
     public func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = nsView.documentView as? NSTextView else { return }
         context.coordinator.renderers = renderers
+        context.coordinator.vaultRoot = vaultRoot
         if textView.string != text {
             textView.string = text
             context.coordinator.refresh()
@@ -72,23 +76,16 @@ public struct MarkdownEditorView: NSViewRepresentable {
         var parent: MarkdownEditorView
         weak var textView: NSTextView?
         var renderers: RendererRegistry?
+        var vaultRoot: URL?
         private var overlays: [String: NSHostingView<AnyView>] = [:]
 
         init(_ parent: MarkdownEditorView) { self.parent = parent }
 
+        struct WidgetSpec { let key: String; let region: Range<Int>; let view: AnyView }
+
         func refresh() {
             restyle()
-            DispatchQueue.main.async { [weak self] in self?.updateBlockViews() }
-        }
-
-        /// Toggle a task checkbox if the click landed on one. Returns true if handled.
-        func toggleCheckbox(at index: Int) -> Bool {
-            guard let textView, let storage = textView.textStorage else { return false }
-            guard let t = TaskToggle.toggle(in: storage.string, at: index) else { return false }
-            storage.replaceCharacters(in: NSRange(location: t.offset, length: 1), with: t.replacement)
-            parent.text = textView.string
-            refresh()
-            return true
+            DispatchQueue.main.async { [weak self] in self?.updateWidgets() }
         }
 
         /// Inline styling + caret-aware marker hiding (Live Preview).
@@ -101,54 +98,96 @@ public struct MarkdownEditorView: NSViewRepresentable {
             LivePreviewStyler.apply(deco, to: storage)
         }
 
-        /// Overlay rendered widgets for code blocks with a registered renderer.
-        /// Non-mutating: positions an NSHostingView over the block's laid-out
-        /// region; the raw source is revealed when the caret is inside the block.
-        func updateBlockViews() {
+        /// Toggle a task checkbox if the click landed on one. Returns true if handled.
+        func toggleCheckbox(at index: Int) -> Bool {
+            guard let textView, let storage = textView.textStorage else { return false }
+            guard let t = TaskToggle.toggle(in: storage.string, at: index) else { return false }
+            storage.replaceCharacters(in: NSRange(location: t.offset, length: 1), with: t.replacement)
+            parent.text = textView.string
+            refresh()
+            return true
+        }
+
+        /// Render block widgets (code-block renderers + images) as inline overlays,
+        /// reserving the height each needs and hiding the raw source behind them.
+        func updateWidgets() {
             guard let textView else { return }
             let tlm = textView.textLayoutManager
             let tcs = tlm?.textContentManager as? NSTextContentStorage
-            guard let tlm, let tcs, let registry = renderers else { clearOverlays(); return }
-            tlm.ensureLayout(for: tcs.documentRange)
+            guard let tlm, let tcs, let storage = textView.textStorage else { clearOverlays(); return }
 
-            let text = textView.string as NSString
             let sel = textView.selectedRange()
             let caret = sel.location..<(sel.location + sel.length)
-            let origin = textView.textContainerOrigin
-            var live: Set<String> = []
+            let nstext = textView.string as NSString
 
-            for region in CodeBlockParser.regions(in: textView.string) {
-                guard let renderer = registry.renderer(for: region.language) else { continue }
-                if intersects(region.full, caret) { continue }   // editing: show source
-                guard let textRange = textRange(region.full, in: tcs) else { continue }
-
-                var rect = CGRect.null
-                tlm.enumerateTextSegments(in: textRange, type: .standard, options: []) { _, segFrame, _, _ in
-                    rect = rect.isNull ? segFrame : rect.union(segFrame)
-                    return true
-                }
-                if rect.isNull { continue }
-                let frame = rect.offsetBy(dx: origin.x, dy: origin.y)
-
-                let bodyLen = max(0, region.body.upperBound - region.body.lowerBound)
-                let body = text.substring(with: NSRange(location: region.body.lowerBound, length: bodyLen))
-                let key = "\(region.full.lowerBound)-\(region.full.upperBound)-\(region.language)"
-                live.insert(key)
-
-                let view = renderer.makeView(source: body)
-                if let existing = overlays[key] {
-                    existing.rootView = view
-                    existing.frame = frame
-                } else {
-                    let host = NSHostingView(rootView: view)
-                    host.frame = frame
-                    textView.addSubview(host)
-                    overlays[key] = host
+            var specs: [WidgetSpec] = []
+            if let registry = renderers {
+                for region in CodeBlockParser.regions(in: textView.string) {
+                    guard let renderer = registry.renderer(for: region.language) else { continue }
+                    if intersects(region.full, caret) { continue }
+                    let bodyLen = max(0, region.body.upperBound - region.body.lowerBound)
+                    let body = nstext.substring(with: NSRange(location: region.body.lowerBound, length: bodyLen))
+                    specs.append(WidgetSpec(key: "cb-\(region.full.lowerBound)-\(region.full.upperBound)-\(region.language)",
+                                            region: region.full, view: renderer.makeView(source: body)))
                 }
             }
+            specs.append(contentsOf: imageWidgets(caret: caret, nstext: nstext))
+
+            let inset = textView.textContainerInset.width
+            let width = max(50, textView.bounds.width - inset * 2)
+            var live: Set<String> = []
+            var placements: [(region: Range<Int>, host: NSHostingView<AnyView>, h: CGFloat)] = []
+
+            // Phase 1: host + measure (fittingSize) + reserve height in the text.
+            for spec in specs {
+                live.insert(spec.key)
+                let host: NSHostingView<AnyView>
+                if let existing = overlays[spec.key] { host = existing; host.rootView = spec.view }
+                else { host = NSHostingView(rootView: spec.view); textView.addSubview(host); overlays[spec.key] = host }
+                host.frame.size.width = width
+                let h = min(max(20, host.fittingSize.height), 600)
+                reserve(region: spec.region, height: h, in: storage)
+                placements.append((spec.region, host, h))
+            }
+
+            // Phase 2: re-layout (heights changed), then position each overlay.
+            tlm.ensureLayout(for: tcs.documentRange)
+            let origin = textView.textContainerOrigin
+            for pl in placements {
+                guard let tr = textRange(pl.region, in: tcs) else { continue }
+                var rect = CGRect.null
+                tlm.enumerateTextSegments(in: tr, type: .standard, options: []) { _, f, _, _ in
+                    rect = rect.isNull ? f : rect.union(f); return true
+                }
+                if rect.isNull { continue }
+                pl.host.frame = CGRect(x: origin.x, y: rect.minY + origin.y, width: width, height: pl.h)
+            }
+
             for (key, view) in overlays where !live.contains(key) {
                 view.removeFromSuperview()
                 overlays[key] = nil
+            }
+        }
+
+        /// Image widgets (own-line `![[...]]` / `![alt](path)`). Filled in Task 2.
+        func imageWidgets(caret: Range<Int>, nstext: NSString) -> [WidgetSpec] { [] }
+
+        /// Reserve `height` for a block: force the first line to that height and
+        /// collapse the remaining lines; hide the source (the overlay covers it).
+        private func reserve(region: Range<Int>, height: CGFloat, in storage: NSTextStorage) {
+            let ns = storage.string as NSString
+            let upper = min(region.upperBound, ns.length)
+            guard region.lowerBound < upper else { return }
+            var firstEnd = region.lowerBound
+            while firstEnd < upper && ns.character(at: firstEnd) != 0x0A { firstEnd += 1 }
+            let p = NSMutableParagraphStyle()
+            p.minimumLineHeight = height
+            p.maximumLineHeight = height
+            storage.addAttributes([.paragraphStyle: p, .foregroundColor: NSColor.clear],
+                                  range: NSRange(location: region.lowerBound, length: firstEnd - region.lowerBound))
+            if firstEnd < upper {
+                storage.addAttributes([.font: NSFont.systemFont(ofSize: 0.01), .foregroundColor: NSColor.clear],
+                                      range: NSRange(location: firstEnd, length: upper - firstEnd))
             }
         }
 
