@@ -3,4 +3,5 @@ runChecks([
     ("Vault", vaultChecks),
     ("MetadataIndex", metadataIndexChecks),
     ("AppState", appStateChecks),
+    ("PluginLoop", pluginLoopChecks),
 ])
