@@ -13,6 +13,7 @@ public enum InlineTokenizer {
         var lineIndex = 0
         var inFrontmatter = false
         var inCodeBlock = false
+        var inCallout = false
         while lineStart <= length {
             var lineEnd = lineStart
             while lineEnd < length && ns.character(at: lineEnd) != newline { lineEnd += 1 }
@@ -30,8 +31,15 @@ public enum InlineTokenizer {
                 if lineText.hasPrefix("```") { inCodeBlock = false }
             } else if lineText.hasPrefix("```") {
                 inCodeBlock = true
+                inCallout = false
                 result.append(MarkSpan(style: .codeBlock, content: lineRange, markers: [], line: lineRange))
+            } else if lineText.hasPrefix("> ") && (inCallout || String(lineText.dropFirst(2)).hasPrefix("[!")) {
+                inCallout = true
+                let markers = [lineStart..<(lineStart + 2)]
+                let content = (lineStart + 2)..<(lineStart + (lineText as NSString).length)
+                result.append(MarkSpan(style: .callout, content: content, markers: markers, line: lineRange))
             } else {
+                inCallout = false
                 parseLine(lineText as NSString, lineStart: lineStart, lineRange: lineRange, into: &result)
             }
 

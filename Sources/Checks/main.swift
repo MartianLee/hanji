@@ -19,4 +19,6 @@ runChecks([
     ("CodeBlockRegion", codeBlockRegionChecks),
     ("RendererRegistry", rendererRegistryChecks),
     ("TaskToggle", taskToggleChecks),
+    ("CalloutTokenizer", calloutTokenizerChecks),
+    ("CalloutStyler", calloutStylerChecks),
 ])

@@ -73,6 +73,12 @@ public enum LivePreviewStyler {
         case .codeBlock:
             return [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
                     .backgroundColor: NSColor.quaternaryLabelColor]
+        case .callout:
+            let p = NSMutableParagraphStyle()
+            p.firstLineHeadIndent = 16
+            p.headIndent = 16
+            return [.backgroundColor: NSColor.systemBlue.withAlphaComponent(0.12),
+                    .paragraphStyle: p]
         }
     }
 
