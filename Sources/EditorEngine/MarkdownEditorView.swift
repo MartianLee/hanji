@@ -169,8 +169,27 @@ public struct MarkdownEditorView: NSViewRepresentable {
             }
         }
 
-        /// Image widgets (own-line `![[...]]` / `![alt](path)`). Filled in Task 2.
-        func imageWidgets(caret: Range<Int>, nstext: NSString) -> [WidgetSpec] { [] }
+        /// Image widgets (own-line `![[...]]` / `![alt](path)`), resolved relative
+        /// to the vault root and loaded as NSImage.
+        func imageWidgets(caret: Range<Int>, nstext: NSString) -> [WidgetSpec] {
+            guard let root = vaultRoot else { return [] }
+            var out: [WidgetSpec] = []
+            for ref in ImageParser.images(in: nstext as String) {
+                if intersects(ref.line, caret) { continue }
+                let url = root.appendingPathComponent(ref.path)
+                guard let image = NSImage(contentsOf: url) else { continue }
+                let view = AnyView(
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxHeight: 320)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                )
+                out.append(WidgetSpec(key: "img-\(ref.line.lowerBound)-\(ref.line.upperBound)",
+                                      region: ref.line, view: view))
+            }
+            return out
+        }
 
         /// Reserve `height` for a block: force the first line to that height and
         /// collapse the remaining lines; hide the source (the overlay covers it).

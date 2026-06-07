@@ -21,4 +21,5 @@ runChecks([
     ("TaskToggle", taskToggleChecks),
     ("CalloutTokenizer", calloutTokenizerChecks),
     ("CalloutStyler", calloutStylerChecks),
+    ("ImageParser", imageParserChecks),
 ])
