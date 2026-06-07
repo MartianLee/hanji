@@ -6,4 +6,5 @@ runChecks([
     ("PluginLoop", pluginLoopChecks),
     ("WordCounter", wordCounterChecks),
     ("Tokenizer", tokenizerChecks),
+    ("Decoration", decorationChecks),
 ])
