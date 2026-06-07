@@ -17,4 +17,5 @@ runChecks([
     ("CodeBlockTokenizer", codeBlockTokenizerChecks),
     ("CodeBlockStyler", codeBlockStylerChecks),
     ("CodeBlockRegion", codeBlockRegionChecks),
+    ("RendererRegistry", rendererRegistryChecks),
 ])

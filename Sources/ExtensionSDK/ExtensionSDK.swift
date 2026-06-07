@@ -28,6 +28,19 @@ public protocol EditorContext {
 public protocol PluginHost: AnyObject {
     var ui: UIRegistry { get }
     var editor: EditorContext { get }
+    var renderers: RendererRegistry { get }
+}
+
+/// Surface ①: renders a fenced code block of a given language as a view.
+public protocol CodeBlockRenderer {
+    var language: String { get }
+    func makeView(source: String) -> AnyView
+}
+
+/// Where plugins register code-block renderers (keyed by language).
+public protocol RendererRegistry: AnyObject {
+    func register(_ renderer: CodeBlockRenderer)
+    func renderer(for language: String) -> CodeBlockRenderer?
 }
 
 /// A compile-time-loaded extension.
