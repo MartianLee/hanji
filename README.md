@@ -3,7 +3,7 @@
 A native macOS (SwiftUI + TextKit 2) markdown editor that opens markdown vaults,
 with a Swift extension SDK. Design: [`docs/2026-06-06-native-markdown-editor-design.md`](docs/2026-06-06-native-markdown-editor-design.md).
 
-## Status: M1 — Live Preview basics
+## Status: Live Preview + extensible block renderers
 
 - Opens a vault folder, lists `.md` files
 - **Live Preview** for headings, bold, italic, inline code, links & wikilinks,
@@ -12,6 +12,9 @@ with a Swift extension SDK. Design: [`docs/2026-06-06-native-markdown-editor-des
 - Edit + atomic save in a TextKit 2 editor
 - In-memory metadata index (titles)
 - Compile-time plugin SDK + bundled Word Count plugin (proves the host↔plugin loop)
+- **Extensible code-block renderers** (`CodeBlockRenderer` SDK surface): fenced blocks
+  render as inline widgets (raw source revealed while editing); ships a built-in `card`
+  renderer — mermaid / Dataview / images build on the same registry
 
 ## Build & run
 
@@ -28,7 +31,7 @@ Requires the Swift toolchain. **Command Line Tools is sufficient** to build and 
 
 ```
 HanjiApp (exe) → AppCore → { VaultKit, ExtensionSDK, EditorEngine, MarkdownCore }
-VaultKit → MarkdownCore        WordCountPlugin → ExtensionSDK
+VaultKit → MarkdownCore        WordCountPlugin · CoreRenderers → ExtensionSDK
 ```
 
 Plugins depend only on `ExtensionSDK`. First-party features are built on the same SDK.
