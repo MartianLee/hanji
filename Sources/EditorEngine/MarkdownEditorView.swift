@@ -3,6 +3,17 @@ import AppKit
 import MarkdownCore
 import ExtensionSDK
 
+/// NSTextView that lets a callback handle a click (used for task checkboxes).
+final class ClickableTextView: NSTextView {
+    var onClick: ((Int) -> Bool)?
+    override func mouseDown(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        let idx = characterIndexForInsertion(at: p)
+        if onClick?(idx) == true { return }
+        super.mouseDown(with: event)
+    }
+}
+
 /// Markdown editing surface (TextKit 2) with incremental Live Preview:
 /// inline styling + caret-aware marker hiding, plus inline rendering of fenced
 /// code blocks whose language has a registered renderer (the source is preserved
@@ -17,7 +28,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
     }
 
     public func makeNSView(context: Context) -> NSScrollView {
-        let textView = NSTextView(usingTextLayoutManager: true)
+        let textView = ClickableTextView(usingTextLayoutManager: true)
         textView.delegate = context.coordinator
         textView.isRichText = false
         textView.allowsUndo = true
@@ -39,6 +50,9 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
         context.coordinator.textView = textView
         context.coordinator.renderers = renderers
+        textView.onClick = { [weak coordinator = context.coordinator] idx in
+            coordinator?.toggleCheckbox(at: idx) ?? false
+        }
         context.coordinator.refresh()
         return scroll
     }
@@ -65,6 +79,16 @@ public struct MarkdownEditorView: NSViewRepresentable {
         func refresh() {
             restyle()
             DispatchQueue.main.async { [weak self] in self?.updateBlockViews() }
+        }
+
+        /// Toggle a task checkbox if the click landed on one. Returns true if handled.
+        func toggleCheckbox(at index: Int) -> Bool {
+            guard let textView, let storage = textView.textStorage else { return false }
+            guard let t = TaskToggle.toggle(in: storage.string, at: index) else { return false }
+            storage.replaceCharacters(in: NSRange(location: t.offset, length: 1), with: t.replacement)
+            parent.text = textView.string
+            refresh()
+            return true
         }
 
         /// Inline styling + caret-aware marker hiding (Live Preview).
