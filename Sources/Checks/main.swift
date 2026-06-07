@@ -7,4 +7,5 @@ runChecks([
     ("WordCounter", wordCounterChecks),
     ("Tokenizer", tokenizerChecks),
     ("Decoration", decorationChecks),
+    ("Styler", stylerChecks),
 ])
