@@ -3,9 +3,11 @@
 A native macOS (SwiftUI + TextKit 2) markdown editor that opens markdown vaults,
 with a Swift extension SDK. Design: [`docs/2026-06-06-native-markdown-editor-design.md`](docs/2026-06-06-native-markdown-editor-design.md).
 
-## Status: M0 — walking skeleton
+## Status: M1 — Live Preview basics
 
 - Opens a vault folder, lists `.md` files
+- **Live Preview** for headings, bold, italic, inline code: inline styling with
+  caret-aware marker hiding (markers reveal on the line you're editing)
 - Edit + atomic save in a TextKit 2 editor
 - In-memory metadata index (titles)
 - Compile-time plugin SDK + bundled Word Count plugin (proves the host↔plugin loop)
