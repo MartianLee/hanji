@@ -10,6 +10,7 @@ let package = Package(
     targets: [
         .target(name: "MarkdownCore"),
         .target(name: "VaultKit", dependencies: ["MarkdownCore"]),
+        .target(name: "ExtensionSDK"),
         .executableTarget(name: "HanjiApp"),
         .executableTarget(name: "Checks", dependencies: ["MarkdownCore", "VaultKit"]),
     ]
