@@ -8,6 +8,8 @@ let package = Package(
         .executable(name: "hanji", targets: ["HanjiApp"])
     ],
     targets: [
-        .executableTarget(name: "HanjiApp")
+        .target(name: "MarkdownCore"),
+        .executableTarget(name: "HanjiApp"),
+        .executableTarget(name: "Checks", dependencies: ["MarkdownCore"]),
     ]
 )

@@ -1,0 +1,3 @@
+runChecks([
+    ("TitleExtractor", titleExtractorChecks),
+])
