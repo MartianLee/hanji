@@ -7,8 +7,8 @@ with a Swift extension SDK. Design: [`docs/2026-06-06-native-markdown-editor-des
 
 - Opens a vault folder, lists `.md` files
 - **Live Preview** for headings, bold, italic, inline code, links & wikilinks,
-  blockquotes & frontmatter: inline styling with caret-aware marker hiding
-  (markers reveal on the line you're editing)
+  blockquotes, frontmatter, lists & tasks: inline styling with caret-aware
+  marker hiding (markers reveal on the line you're editing)
 - Edit + atomic save in a TextKit 2 editor
 - In-memory metadata index (titles)
 - Compile-time plugin SDK + bundled Word Count plugin (proves the host↔plugin loop)
