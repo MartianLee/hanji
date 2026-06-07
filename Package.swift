@@ -12,7 +12,8 @@ let package = Package(
         .target(name: "VaultKit", dependencies: ["MarkdownCore"]),
         .target(name: "ExtensionSDK"),
         .target(name: "AppCore", dependencies: ["VaultKit", "ExtensionSDK"]),
+        .target(name: "WordCountPlugin", dependencies: ["ExtensionSDK"]),
         .executableTarget(name: "HanjiApp"),
-        .executableTarget(name: "Checks", dependencies: ["MarkdownCore", "VaultKit", "AppCore", "ExtensionSDK"]),
+        .executableTarget(name: "Checks", dependencies: ["MarkdownCore", "VaultKit", "AppCore", "ExtensionSDK", "WordCountPlugin"]),
     ]
 )

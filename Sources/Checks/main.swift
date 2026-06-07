@@ -4,4 +4,5 @@ runChecks([
     ("MetadataIndex", metadataIndexChecks),
     ("AppState", appStateChecks),
     ("PluginLoop", pluginLoopChecks),
+    ("WordCounter", wordCounterChecks),
 ])
