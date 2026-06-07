@@ -9,7 +9,8 @@ let package = Package(
     ],
     targets: [
         .target(name: "MarkdownCore"),
+        .target(name: "VaultKit", dependencies: ["MarkdownCore"]),
         .executableTarget(name: "HanjiApp"),
-        .executableTarget(name: "Checks", dependencies: ["MarkdownCore"]),
+        .executableTarget(name: "Checks", dependencies: ["MarkdownCore", "VaultKit"]),
     ]
 )
