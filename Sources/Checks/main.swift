@@ -22,4 +22,7 @@ runChecks([
     ("CalloutTokenizer", calloutTokenizerChecks),
     ("CalloutStyler", calloutStylerChecks),
     ("ImageParser", imageParserChecks),
+    ("Tags", tagsChecks),
+    ("DataviewQuery", dataviewQueryChecks),
+    ("IndexTags", indexTagsChecks),
 ])

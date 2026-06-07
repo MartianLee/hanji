@@ -4,6 +4,7 @@ import AppCore
 import ExtensionSDK
 import WordCountPlugin
 import CoreRenderers
+import VaultKit
 
 @main
 struct HanjiApp: App {
@@ -25,6 +26,9 @@ struct HanjiApp: App {
                     let host = Host(appState: appState, pluginManager: pluginManager)
                     host.renderers.register(CardRenderer())
                     host.renderers.register(MermaidRenderer())
+                    host.renderers.register(DataviewRenderer(indexProvider: { [weak appState] in
+                        appState?.index ?? MetadataIndex()
+                    }))
                     let plugins: [Plugin] = [WordCountPlugin()]   // compile-time loading (D5)
                     pluginManager.activate(plugins, host: host)
 

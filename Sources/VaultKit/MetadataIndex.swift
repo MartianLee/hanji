@@ -5,6 +5,7 @@ public struct NoteMeta: Equatable {
     public let path: String     // relative to vault root
     public let title: String
     public let mtime: Date
+    public let tags: [String]
 }
 
 public struct MetadataIndex {
@@ -22,13 +23,17 @@ public struct MetadataIndex {
             let attrs = try? fm.attributesOfItem(atPath: f.url.path)
             let mtime = (attrs?[.modificationDate] as? Date) ?? .distantPast
             metas.append(NoteMeta(path: relativePath(of: f.url, under: vault.root),
-                                  title: title, mtime: mtime))
+                                  title: title, mtime: mtime, tags: Tags.extract(from: text)))
         }
         return MetadataIndex(notes: metas)
     }
 
     public func note(forRelativePath path: String) -> NoteMeta? {
         notes.first { $0.path == path }
+    }
+
+    public func notes(withTag tag: String) -> [NoteMeta] {
+        notes.filter { $0.tags.contains(tag) }
     }
 
     static func relativePath(of url: URL, under root: URL) -> String {
