@@ -19,6 +19,11 @@ public struct MarkdownEditorView: NSViewRepresentable {
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.string = text
+        // E2E test hook: place the caret at a UTF-16 offset via HANJI_CARET.
+        if let caretEnv = ProcessInfo.processInfo.environment["HANJI_CARET"], let caret = Int(caretEnv) {
+            let len = (text as NSString).length
+            textView.setSelectedRange(NSRange(location: min(max(0, caret), len), length: 0))
+        }
 
         let scroll = NSScrollView()
         scroll.documentView = textView

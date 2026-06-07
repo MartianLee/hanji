@@ -24,6 +24,14 @@ struct HanjiApp: App {
                     let host = Host(appState: appState, pluginManager: pluginManager)
                     let plugins: [Plugin] = [WordCountPlugin()]   // compile-time loading (D5)
                     pluginManager.activate(plugins, host: host)
+
+                    // Test/E2E hook: auto-open a vault (and its first note) when launched
+                    // with HANJI_OPEN_VAULT set.
+                    if let vaultPath = ProcessInfo.processInfo.environment["HANJI_OPEN_VAULT"] {
+                        let url = URL(fileURLWithPath: (vaultPath as NSString).expandingTildeInPath)
+                        appState.openVault(at: url)
+                        if let first = appState.files.first { appState.open(first) }
+                    }
                 }
         }
     }
