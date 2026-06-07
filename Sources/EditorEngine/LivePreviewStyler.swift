@@ -70,6 +70,9 @@ public enum LivePreviewStyler {
                         .foregroundColor: NSColor.secondaryLabelColor]
             }
             return [.paragraphStyle: p]
+        case .codeBlock:
+            return [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
+                    .backgroundColor: NSColor.quaternaryLabelColor]
         }
     }
 

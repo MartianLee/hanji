@@ -14,4 +14,6 @@ runChecks([
     ("BlockStyler", blockStylerChecks),
     ("ListTaskTokenizer", listTaskTokenizerChecks),
     ("ListTaskStyler", listTaskStylerChecks),
+    ("CodeBlockTokenizer", codeBlockTokenizerChecks),
+    ("CodeBlockStyler", codeBlockStylerChecks),
 ])

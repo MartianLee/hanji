@@ -10,6 +10,7 @@ public enum SpanStyle: Equatable {
     case frontmatter
     case listItem
     case task(Bool)   // done?
+    case codeBlock
 }
 
 /// A recognized markdown construct, in UTF-16 code-unit offsets (NSRange-compatible).
