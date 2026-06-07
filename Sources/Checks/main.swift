@@ -5,4 +5,5 @@ runChecks([
     ("AppState", appStateChecks),
     ("PluginLoop", pluginLoopChecks),
     ("WordCounter", wordCounterChecks),
+    ("Tokenizer", tokenizerChecks),
 ])
