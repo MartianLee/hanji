@@ -15,9 +15,10 @@ let package = Package(
         .target(name: "WordCountPlugin", dependencies: ["ExtensionSDK"]),
         .target(name: "CoreRenderers", dependencies: ["ExtensionSDK", "VaultKit", "MarkdownCore"]),
         .target(name: "EditorEngine", dependencies: ["MarkdownCore", "ExtensionSDK"]),
+        .target(name: "TemplateKit"),
         .executableTarget(name: "HanjiApp", dependencies: [
             "AppCore", "EditorEngine", "ExtensionSDK", "WordCountPlugin", "CoreRenderers", "VaultKit"
         ]),
-        .executableTarget(name: "Checks", dependencies: ["MarkdownCore", "VaultKit", "AppCore", "ExtensionSDK", "WordCountPlugin", "EditorEngine"]),
+        .executableTarget(name: "Checks", dependencies: ["MarkdownCore", "VaultKit", "AppCore", "ExtensionSDK", "WordCountPlugin", "EditorEngine", "TemplateKit"]),
     ]
 )

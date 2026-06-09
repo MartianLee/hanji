@@ -25,4 +25,5 @@ runChecks([
     ("Tags", tagsChecks),
     ("DataviewQuery", dataviewQueryChecks),
     ("IndexTags", indexTagsChecks),
+    ("MomentFormat", momentFormatChecks),
 ])
