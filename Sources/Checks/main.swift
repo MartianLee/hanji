@@ -29,4 +29,5 @@ runChecks([
     ("TemplateEngine", templateEngineChecks),
     ("PeriodicConfig", periodicConfigChecks),
     ("PeriodicPlan", periodicPlanChecks),
+    ("TemplaterConfig", templaterConfigChecks),
 ])
