@@ -52,6 +52,12 @@ struct HanjiApp: App {
                 }
         }
         .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("New Note") { appState.newNote() }
+                    .keyboardShortcut("n", modifiers: .command)
+                Button("New Folder") { appState.newFolder() }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+            }
             CommandMenu("Go") {
                 Button("Command Palette") { uiState.palette = .commands }
                     .keyboardShortcut("p", modifiers: .command)

@@ -35,4 +35,10 @@ runChecks([
     ("AppCreateNote", appCreateNoteChecks),
     ("CommandRegistry2", commandRegistryChecks),
     ("PeriodicNotesPlugin", periodicNotesPluginChecks),
+    ("VaultTree", vaultTreeChecks),
+    ("VaultOps", vaultOpsChecks),
+    ("VaultMove", vaultMoveChecks),
+    ("VaultWatcher", vaultWatcherChecks),
+    ("AppStateTree", appStateTreeChecks),
+    ("E2E", e2eChecks),
 ])
