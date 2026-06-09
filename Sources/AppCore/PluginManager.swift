@@ -3,6 +3,7 @@ import ExtensionSDK
 
 public final class PluginManager: ObservableObject {
     @Published public private(set) var sidebar: [SidebarContribution] = []
+    @Published public private(set) var commands: [Command] = []
     public init() {}
 
     public func activate(_ plugins: [Plugin], host: PluginHost) {
@@ -12,4 +13,6 @@ public final class PluginManager: ObservableObject {
     func addSidebar(_ contribution: SidebarContribution) {
         sidebar.append(contribution)
     }
+
+    func addCommand(_ command: Command) { commands.append(command) }
 }

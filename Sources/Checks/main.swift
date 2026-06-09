@@ -33,4 +33,5 @@ runChecks([
     ("FuzzyFilter", fuzzyFilterChecks),
     ("AppRecents", appRecentsChecks),
     ("AppCreateNote", appCreateNoteChecks),
+    ("CommandRegistry2", commandRegistryChecks),
 ])
