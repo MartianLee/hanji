@@ -9,9 +9,20 @@ func appStateTreeChecks() {
     try? "# A".write(to: root.appendingPathComponent("a.md"), atomically: true, encoding: .utf8)
     defer { try? fm.removeItem(at: root) }
 
-    let state = AppState(defaults: UserDefaults(suiteName: "mk-ast-\(UUID().uuidString)")!)
+    let suite = "mk-ast-\(UUID().uuidString)"
+    let state = AppState(defaults: UserDefaults(suiteName: suite)!)
     state.openVault(at: root)
     expectEqual(state.tree.map(\.name), ["Sub", "a.md"], "tree built on openVault")
+
+    // Sort order applies on change and persists across instances.
+    try? "# B".write(to: root.appendingPathComponent("b.md"), atomically: true, encoding: .utf8)
+    try? fm.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_000_000)],
+                          ofItemAtPath: root.appendingPathComponent("a.md").path)
+    state.treeSort = .modifiedDesc
+    expectEqual(state.tree.filter { !$0.isDirectory }.map(\.name), ["b.md", "a.md"], "modified-desc sort applied")
+    let reloaded = AppState(defaults: UserDefaults(suiteName: suite)!)
+    expectEqual(reloaded.treeSort, .modifiedDesc, "sort persists across instances")
+    state.treeSort = .nameAsc   // back to default for the steps below
 
     // New note in a subfolder is created and opened.
     let sub = root.appendingPathComponent("Sub")

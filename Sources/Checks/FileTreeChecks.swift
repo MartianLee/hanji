@@ -61,6 +61,43 @@ func vaultOpsChecks() {
     expect(!fm.fileExists(atPath: f1!.path), "deleted folder gone from vault")
 }
 
+func vaultSortChecks() {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("mk-sort-\(UUID().uuidString)")
+    try? fm.createDirectory(at: root.appendingPathComponent("Zf"), withIntermediateDirectories: true)
+    try? fm.createDirectory(at: root.appendingPathComponent("Af"), withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root) }
+    let vault = Vault(root: root)
+
+    func make(_ name: String, modified: Date, created: Date) {
+        let url = root.appendingPathComponent(name)
+        try? "x".write(to: url, atomically: true, encoding: .utf8)
+        try? fm.setAttributes([.creationDate: created, .modificationDate: modified], ofItemAtPath: url.path)
+    }
+    // Note: APFS clamps creationDate to ≤ modificationDate, so each fixture keeps
+    // created ≤ modified while the two orderings still differ.
+    func t(_ n: Double) -> Date { Date(timeIntervalSince1970: n * 1_000_000) }
+    make("alpha.md", modified: t(5), created: t(0))   // newest modified, oldest created
+    make("beta.md",  modified: t(3), created: t(2))
+    make("gamma.md", modified: t(4), created: t(4))   // newest created
+
+    func fileNames(_ sort: TreeSort) -> [String] {
+        ((try? vault.tree(sort: sort)) ?? []).filter { !$0.isDirectory }.map(\.name)
+    }
+    expectEqual(fileNames(.nameAsc), ["alpha.md", "beta.md", "gamma.md"], "name A→Z")
+    expectEqual(fileNames(.nameDesc), ["gamma.md", "beta.md", "alpha.md"], "name Z→A")
+    expectEqual(fileNames(.modifiedDesc), ["alpha.md", "gamma.md", "beta.md"], "modified new→old")
+    expectEqual(fileNames(.modifiedAsc), ["beta.md", "gamma.md", "alpha.md"], "modified old→new")
+    expectEqual(fileNames(.createdDesc), ["gamma.md", "beta.md", "alpha.md"], "created new→old")
+    expectEqual(fileNames(.createdAsc), ["alpha.md", "beta.md", "gamma.md"], "created old→new")
+
+    // Folders always come first, ordered by name (direction follows name sorts only).
+    let folders = ((try? vault.tree(sort: .modifiedDesc)) ?? []).prefix(2).map(\.name)
+    expectEqual(Array(folders), ["Af", "Zf"], "folders first, by name, under time sorts")
+    let foldersDesc = ((try? vault.tree(sort: .nameDesc)) ?? []).prefix(2).map(\.name)
+    expectEqual(Array(foldersDesc), ["Zf", "Af"], "folder order follows name direction")
+}
+
 func vaultMoveChecks() {
     let fm = FileManager.default
     let root = fm.temporaryDirectory.appendingPathComponent("mk-move-\(UUID().uuidString)")

@@ -38,6 +38,7 @@ runChecks([
     ("VaultTree", vaultTreeChecks),
     ("VaultOps", vaultOpsChecks),
     ("VaultMove", vaultMoveChecks),
+    ("VaultSort", vaultSortChecks),
     ("VaultWatcher", vaultWatcherChecks),
     ("AppStateTree", appStateTreeChecks),
     ("E2E", e2eChecks),

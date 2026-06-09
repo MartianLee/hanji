@@ -11,17 +11,28 @@ public final class AppState: ObservableObject {
     @Published public var recentVaults: [URL] = []
     @Published public var pendingCursorOffset: Int?
     @Published public var tree: [FileNode] = []
+    /// Sidebar sort order; persisted, applies on the next (immediate) reload.
+    @Published public var treeSort: TreeSort = .nameAsc {
+        didSet {
+            defaults.set(treeSort.rawValue, forKey: Self.treeSortKey)
+            reloadTree()
+        }
+    }
     public let rendererRegistry = DefaultRendererRegistry()
 
     private var vault: Vault?
     private var watcher: VaultWatcher?
     private let defaults: UserDefaults
     private static let recentsKey = "io.hanji.recentVaults"
+    private static let treeSortKey = "io.hanji.treeSort"
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         let paths = (defaults.array(forKey: Self.recentsKey) as? [String]) ?? []
         recentVaults = paths.map { URL(fileURLWithPath: $0) }
+        if let raw = defaults.string(forKey: Self.treeSortKey), let sort = TreeSort(rawValue: raw) {
+            treeSort = sort
+        }
     }
 
     public func openVault(at root: URL) {
@@ -29,7 +40,7 @@ public final class AppState: ObservableObject {
         vault = v
         vaultRoot = root
         files = (try? v.markdownFiles()) ?? []
-        tree = (try? v.tree()) ?? []
+        tree = (try? v.tree(sort: treeSort)) ?? []
         index = (try? MetadataIndex.build(from: v)) ?? MetadataIndex()
         selectedFile = nil
         activeText = ""
@@ -42,7 +53,7 @@ public final class AppState: ObservableObject {
     /// this; it is idempotent). Clears the editor if the open note disappeared.
     public func reloadTree() {
         guard let v = vault else { return }
-        tree = (try? v.tree()) ?? []
+        tree = (try? v.tree(sort: treeSort)) ?? []
         files = (try? v.markdownFiles()) ?? files
         index = (try? MetadataIndex.build(from: v)) ?? index
         if let sel = selectedFile, !FileManager.default.fileExists(atPath: sel.url.path) {

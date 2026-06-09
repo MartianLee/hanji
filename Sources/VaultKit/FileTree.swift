@@ -31,32 +31,56 @@ public enum VaultError: Error, LocalizedError {
     }
 }
 
+/// Sidebar sort order. Folders always group first: by name (direction follows
+/// only for the name sorts); files by the chosen criterion (name tiebreak).
+public enum TreeSort: String, CaseIterable {
+    case nameAsc, nameDesc, modifiedDesc, modifiedAsc, createdDesc, createdAsc
+}
+
 extension Vault {
     /// The vault's folder + `.md` hierarchy: folders first (empty ones kept),
-    /// case-insensitive alphabetical, hidden entries (incl. `.obsidian`) and
-    /// non-markdown files skipped.
-    public func tree() throws -> [FileNode] {
-        try nodes(in: root)
+    /// hidden entries (incl. `.obsidian`) and non-markdown files skipped.
+    public func tree(sort: TreeSort = .nameAsc) throws -> [FileNode] {
+        try nodes(in: root, sort: sort)
     }
 
-    private func nodes(in dir: URL) throws -> [FileNode] {
+    private func nodes(in dir: URL, sort: TreeSort) throws -> [FileNode] {
         let fm = FileManager.default
+        let keys: [URLResourceKey] = [.isDirectoryKey, .contentModificationDateKey, .creationDateKey]
         let entries = (try? fm.contentsOfDirectory(at: dir,
-                                                   includingPropertiesForKeys: [.isDirectoryKey],
+                                                   includingPropertiesForKeys: keys,
                                                    options: [.skipsHiddenFiles])) ?? []
-        var out: [FileNode] = []
+        struct Entry { let node: FileNode; let modified: Date; let created: Date }
+        var folders: [Entry] = []
+        var files: [Entry] = []
         for url in entries {
-            let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-            if isDir {
-                out.append(FileNode(url: url, isDirectory: true, children: try nodes(in: url)))
+            let rv = try? url.resourceValues(forKeys: Set(keys))
+            let modified = rv?.contentModificationDate ?? .distantPast
+            let created = rv?.creationDate ?? .distantPast
+            if rv?.isDirectory ?? false {
+                folders.append(Entry(node: FileNode(url: url, isDirectory: true,
+                                                    children: try nodes(in: url, sort: sort)),
+                                     modified: modified, created: created))
             } else if url.pathExtension.lowercased() == "md" {
-                out.append(FileNode(url: url, isDirectory: false, children: nil))
+                files.append(Entry(node: FileNode(url: url, isDirectory: false, children: nil),
+                                   modified: modified, created: created))
             }
         }
-        return out.sorted { a, b in
-            if a.isDirectory != b.isDirectory { return a.isDirectory }
-            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+        func byName(_ a: Entry, _ b: Entry) -> Bool {
+            a.node.name.localizedCaseInsensitiveCompare(b.node.name) == .orderedAscending
         }
+        let sortedFolders = folders.sorted { sort == .nameDesc ? byName($1, $0) : byName($0, $1) }
+        let sortedFiles = files.sorted { a, b in
+            switch sort {
+            case .nameAsc: return byName(a, b)
+            case .nameDesc: return byName(b, a)
+            case .modifiedDesc: return a.modified != b.modified ? a.modified > b.modified : byName(a, b)
+            case .modifiedAsc: return a.modified != b.modified ? a.modified < b.modified : byName(a, b)
+            case .createdDesc: return a.created != b.created ? a.created > b.created : byName(a, b)
+            case .createdAsc: return a.created != b.created ? a.created < b.created : byName(a, b)
+            }
+        }
+        return (sortedFolders + sortedFiles).map(\.node)
     }
 
     // MARK: - File management
