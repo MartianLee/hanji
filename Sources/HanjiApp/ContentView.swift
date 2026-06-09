@@ -46,6 +46,21 @@ struct ContentView: View {
                 List(selection: $treeSelection) {
                     treeRows(visibleTree)
                 }
+                Divider()
+                // Obsidian-style bottom-left shortcut into Settings.
+                HStack {
+                    SettingsLink {
+                        Image(systemName: "gearshape")
+                            .imageScale(.medium)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Settings")
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.bar)
             }
             .contextMenu {
                 // Right-click on empty tree space: create at the vault root.
