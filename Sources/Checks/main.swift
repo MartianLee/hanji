@@ -30,4 +30,5 @@ runChecks([
     ("PeriodicConfig", periodicConfigChecks),
     ("PeriodicPlan", periodicPlanChecks),
     ("TemplaterConfig", templaterConfigChecks),
+    ("FuzzyFilter", fuzzyFilterChecks),
 ])
