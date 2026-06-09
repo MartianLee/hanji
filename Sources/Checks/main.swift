@@ -27,4 +27,5 @@ runChecks([
     ("IndexTags", indexTagsChecks),
     ("MomentFormat", momentFormatChecks),
     ("TemplateEngine", templateEngineChecks),
+    ("PeriodicConfig", periodicConfigChecks),
 ])
