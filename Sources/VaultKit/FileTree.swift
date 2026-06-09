@@ -125,8 +125,34 @@ extension Vault {
     }
 
     /// Move a note or folder to the Trash (recoverable — never a permanent delete).
-    public func delete(_ url: URL) throws {
-        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+    /// Returns the item's URL inside the Trash so the operation can be undone.
+    @discardableResult
+    public func delete(_ url: URL) throws -> URL? {
+        var trashed: NSURL?
+        try FileManager.default.trashItem(at: url, resultingItemURL: &trashed)
+        return trashed as URL?
+    }
+
+    /// Copy a note or folder next to the original with an auto-suffixed name.
+    @discardableResult
+    public func duplicate(_ url: URL) throws -> URL {
+        let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+        let dir = url.deletingLastPathComponent()
+        let base = isDir ? url.lastPathComponent : url.deletingPathExtension().lastPathComponent
+        let dest = availableURL(in: dir, base: base, ext: isDir ? nil : "md")
+        try FileManager.default.copyItem(at: url, to: dest)
+        return dest
+    }
+
+    /// Copy an external `.md` file into the vault (the source is untouched).
+    @discardableResult
+    public func importNote(from source: URL, into folder: URL?) throws -> URL {
+        guard source.pathExtension.lowercased() == "md" else { throw VaultError.invalidName }
+        let dir = folder ?? root
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dest = availableURL(in: dir, base: source.deletingPathExtension().lastPathComponent, ext: "md")
+        try FileManager.default.copyItem(at: source, to: dest)
+        return dest
     }
 
     /// Move a note or folder into another folder (same name kept). Same-parent

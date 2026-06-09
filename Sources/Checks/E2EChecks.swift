@@ -78,6 +78,22 @@ func e2eChecks() {
     expect(appState.selectedFile == nil, "E2E: deleting open note clears editor")
     expect(!fm.fileExists(atPath: root.appendingPathComponent("Projects/Plan.md").path), "E2E: note gone from vault")
 
+    // 6b. Duplicate a note, then undo the duplication (⌥⌘Z path).
+    let dup = appState.duplicate(root.appendingPathComponent("Projects/Welcome.md"))
+    expectEqual(dup?.lastPathComponent, "Welcome 1.md", "E2E: duplicate auto-suffixes")
+    appState.undoLastFileOperation()
+    expect(!fm.fileExists(atPath: dup!.path), "E2E: undo removes the duplicate")
+
+    // 6c. Import an external .md by drag-in (copy; source untouched).
+    let inbox = fm.temporaryDirectory.appendingPathComponent("mk-e2e-inbox-\(UUID().uuidString)")
+    try? fm.createDirectory(at: inbox, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: inbox) }
+    let extNote = inbox.appendingPathComponent("Clipped.md")
+    try? "# Clipped".write(to: extNote, atomically: true, encoding: .utf8)
+    let importedNotes = appState.importNotes([extNote], into: nil)
+    expectEqual(importedNotes.first?.lastPathComponent, "Clipped.md", "E2E: external note imported")
+    expect(fm.fileExists(atPath: extNote.path), "E2E: import copies, source kept")
+
     // 7. An external tool drops a file in: the live watcher refreshes the tree.
     try? "# Ext".write(to: root.appendingPathComponent("External.md"), atomically: true, encoding: .utf8)
     let deadline = Date().addingTimeInterval(5)

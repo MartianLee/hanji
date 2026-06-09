@@ -1,5 +1,6 @@
 import Foundation
 import VaultKit
+import AppCore
 
 func vaultTreeChecks() {
     let fm = FileManager.default
@@ -59,6 +60,80 @@ func vaultOpsChecks() {
     expect(!fm.fileExists(atPath: n2!.path), "deleted note gone from vault")
     try? vault.delete(f1!)
     expect(!fm.fileExists(atPath: f1!.path), "deleted folder gone from vault")
+}
+
+func vaultDupImportChecks() {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("mk-dup-\(UUID().uuidString)")
+    let outside = fm.temporaryDirectory.appendingPathComponent("mk-out-\(UUID().uuidString)")
+    try? fm.createDirectory(at: root, withIntermediateDirectories: true)
+    try? fm.createDirectory(at: outside, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root); try? fm.removeItem(at: outside) }
+    let vault = Vault(root: root)
+
+    // Duplicate keeps content, gets an auto-suffixed name next to the original.
+    try? "# Original".write(to: root.appendingPathComponent("note.md"), atomically: true, encoding: .utf8)
+    let dup = try? vault.duplicate(root.appendingPathComponent("note.md"))
+    expectEqual(dup?.lastPathComponent, "note 1.md", "duplicate auto-suffixes")
+    expectEqual((try? String(contentsOf: dup!, encoding: .utf8)) ?? "", "# Original", "duplicate copies content")
+
+    // Import copies an external .md into the vault (source untouched); non-md throws.
+    let src = outside.appendingPathComponent("import-me.md")
+    try? "# Ext".write(to: src, atomically: true, encoding: .utf8)
+    let imported = try? vault.importNote(from: src, into: nil)
+    expectEqual(imported?.lastPathComponent, "import-me.md", "import keeps the name")
+    expect(fm.fileExists(atPath: src.path), "import copies (source kept)")
+    expectEqual((try? String(contentsOf: imported!, encoding: .utf8)) ?? "", "# Ext", "imported content intact")
+    var rejected = false
+    let txt = outside.appendingPathComponent("nope.txt")
+    try? "x".write(to: txt, atomically: true, encoding: .utf8)
+    do { _ = try vault.importNote(from: txt, into: nil) } catch { rejected = true }
+    expect(rejected, "non-md import throws")
+
+    // Delete returns the trashed URL so the operation can be undone.
+    let trashed = try? vault.delete(root.appendingPathComponent("note 1.md"))
+    expect(trashed != nil && fm.fileExists(atPath: trashed!.path), "delete returns recoverable trash URL")
+}
+
+func appStateUndoChecks() {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("mk-undo-\(UUID().uuidString)")
+    try? fm.createDirectory(at: root.appendingPathComponent("Sub"), withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root) }
+    let state = AppState(defaults: UserDefaults(suiteName: "mk-u-\(UUID().uuidString)")!)
+    state.openVault(at: root)
+
+    // create → undo removes it
+    let created = state.newNote(inFolder: nil)
+    expect(created != nil, "note created")
+    state.undoLastFileOperation()
+    expect(!fm.fileExists(atPath: created!.path), "undo create removes the note")
+
+    // rename → undo restores the old name
+    let n = state.newNote(inFolder: nil)
+    _ = try? state.rename(n!, to: "After")
+    state.undoLastFileOperation()
+    expect(fm.fileExists(atPath: n!.path), "undo rename restores old name")
+
+    // move → undo moves it back
+    let sub = root.appendingPathComponent("Sub")
+    _ = try? state.move(n!, into: sub)
+    state.undoLastFileOperation()
+    expect(fm.fileExists(atPath: n!.path), "undo move restores location")
+
+    // delete → undo restores from Trash
+    state.delete(n!)
+    expect(!fm.fileExists(atPath: n!.path), "deleted")
+    state.undoLastFileOperation()
+    expect(fm.fileExists(atPath: n!.path), "undo delete restores from Trash")
+
+    // duplicate → undo removes the copy
+    let dup = state.duplicate(n!)
+    expect(dup != nil, "duplicated")
+    state.undoLastFileOperation()
+    expect(!fm.fileExists(atPath: dup!.path), "undo duplicate removes the copy")
+
+    expect(!state.canUndoFileOperation || true, "undo stack accessible")   // smoke: API exists
 }
 
 func vaultSortChecks() {

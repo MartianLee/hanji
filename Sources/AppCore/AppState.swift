@@ -99,10 +99,38 @@ public final class AppState: ObservableObject {
 
     // MARK: - File management (file tree)
 
+    /// An undoable sidebar file operation (see `undoLastFileOperation`).
+    public enum FileOperation {
+        case created(URL)
+        case renamed(from: URL, to: URL)
+        case moved(from: URL, to: URL)
+        case trashed(original: URL, trashed: URL)
+        case copied(URL)          // duplicate / import results
+    }
+
+    @Published public private(set) var fileOperations: [FileOperation] = []
+    public var canUndoFileOperation: Bool { !fileOperations.isEmpty }
+
+    /// Undo the most recent file operation (create/rename/move/trash/duplicate/import).
+    public func undoLastFileOperation() {
+        guard let op = fileOperations.popLast(), let v = vault else { return }
+        let fm = FileManager.default
+        switch op {
+        case .created(let url), .copied(let url):
+            try? v.delete(url)                              // to Trash, still recoverable
+        case .renamed(let from, let to), .moved(let from, let to):
+            try? fm.moveItem(at: to, to: from)
+        case .trashed(let original, let trashed):
+            try? fm.moveItem(at: trashed, to: original)
+        }
+        reloadTree()
+    }
+
     /// Create an empty note (auto-named) in `folder` (vault root when nil) and open it.
     @discardableResult
     public func newNote(inFolder folder: URL? = nil, name: String? = nil) -> URL? {
         guard let v = vault, let url = try? v.createNote(inFolder: folder, name: name) else { return nil }
+        fileOperations.append(.created(url))
         reloadTree()
         if let f = files.first(where: { $0.url.standardizedFileURL == url.standardizedFileURL }) { open(f) }
         return url
@@ -112,6 +140,7 @@ public final class AppState: ObservableObject {
     @discardableResult
     public func newFolder(inFolder folder: URL? = nil, name: String? = nil) -> URL? {
         guard let v = vault, let url = try? v.createFolder(inFolder: folder, name: name) else { return nil }
+        fileOperations.append(.created(url))
         reloadTree()
         return url
     }
@@ -122,6 +151,9 @@ public final class AppState: ObservableObject {
         guard let v = vault else { throw VaultError.invalidName }
         let wasOpen = selectedFile?.url.standardizedFileURL == url.standardizedFileURL
         let newURL = try v.rename(url, to: newName)
+        if newURL.standardizedFileURL != url.standardizedFileURL {
+            fileOperations.append(.renamed(from: url, to: newURL))
+        }
         reloadTree()
         if wasOpen, let f = files.first(where: { $0.url.standardizedFileURL == newURL.standardizedFileURL }) { open(f) }
         return newURL
@@ -133,6 +165,9 @@ public final class AppState: ObservableObject {
         guard let v = vault else { throw VaultError.invalidName }
         let wasOpen = selectedFile?.url.standardizedFileURL == url.standardizedFileURL
         let newURL = try v.move(url, into: folder)
+        if newURL.standardizedFileURL != url.standardizedFileURL {
+            fileOperations.append(.moved(from: url, to: newURL))
+        }
         reloadTree()
         if wasOpen, let f = files.first(where: { $0.url.standardizedFileURL == newURL.standardizedFileURL }) { open(f) }
         return newURL
@@ -141,8 +176,34 @@ public final class AppState: ObservableObject {
     /// Move a note or folder to the Trash. Closes the editor if the open note went away.
     public func delete(_ url: URL) {
         guard let v = vault else { return }
-        try? v.delete(url)
+        if let trashed = try? v.delete(url) {
+            fileOperations.append(.trashed(original: url, trashed: trashed))
+        }
         reloadTree()
+    }
+
+    /// Duplicate a note or folder next to the original.
+    @discardableResult
+    public func duplicate(_ url: URL) -> URL? {
+        guard let v = vault, let copy = try? v.duplicate(url) else { return nil }
+        fileOperations.append(.copied(copy))
+        reloadTree()
+        return copy
+    }
+
+    /// Copy external `.md` files into `folder` (vault root when nil); returns the new URLs.
+    @discardableResult
+    public func importNotes(_ sources: [URL], into folder: URL? = nil) -> [URL] {
+        guard let v = vault else { return [] }
+        var imported: [URL] = []
+        for source in sources {
+            if let url = try? v.importNote(from: source, into: folder) {
+                fileOperations.append(.copied(url))
+                imported.append(url)
+            }
+        }
+        if !imported.isEmpty { reloadTree() }
+        return imported
     }
 
     // MARK: - Note operations (used by WorkspaceActions)
