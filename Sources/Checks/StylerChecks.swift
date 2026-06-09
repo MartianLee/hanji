@@ -22,4 +22,10 @@ func stylerChecks() {
     // A hidden marker ('#' at offset 0, caret away) should use a near-zero font.
     let markerFont = storage.attributes(at: 0, effectiveRange: nil)[.font] as? NSFont
     expect(markerFont != nil && markerFont!.pointSize < 1, "off-line marker collapsed to near-zero font")
+
+    // Reading rhythm: body text carries the roomier line height + paragraph gap.
+    let bodyParagraph = storage.attributes(at: 9, effectiveRange: nil)[.paragraphStyle] as? NSParagraphStyle
+    expect(bodyParagraph != nil && abs(bodyParagraph!.lineHeightMultiple - 1.3) < 0.01,
+           "body line height multiple applied")
+    expect(bodyParagraph != nil && bodyParagraph!.paragraphSpacing == 6, "paragraph gap applied")
 }

@@ -45,7 +45,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         textView.isRichText = false
         textView.allowsUndo = true
         textView.font = LivePreviewStyler.baseFont
-        textView.textContainerInset = NSSize(width: 12, height: 12)
+        textView.textContainerInset = NSSize(width: 24, height: 20)
         textView.autoresizingMask = [.width]
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
