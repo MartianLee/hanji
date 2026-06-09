@@ -15,11 +15,12 @@ public struct PeriodicNotesPlugin: Plugin {
     private func register(_ host: PluginHost, kind: PeriodicKind, title: String) {
         host.commands.register(Command(id: "periodic.\(kind.rawValue)", title: title) { [weak ws = host.workspace] in
             guard let ws, let root = ws.vaultRoot else { return }
+            let now = Date()
             let cfg = PeriodicConfig.load(vaultRoot: root)
-            let action = cfg.planOpen(kind, date: Date(),
+            let action = cfg.planOpen(kind, date: now,
                                       exists: { ws.noteExists(relativePath: $0) },
                                       readTemplate: { ws.readNote(relativePath: $0) },
-                                      now: Date())
+                                      now: now)
             switch action {
             case .open(let path):
                 ws.openNote(relativePath: path)

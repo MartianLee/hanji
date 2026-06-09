@@ -14,6 +14,10 @@ struct HanjiApp: App {
     @StateObject private var pluginManager = PluginManager()
     @StateObject private var uiState = UIState()
     @State private var activated = false
+    // Retained for the app's lifetime: plugin command closures capture the host weakly,
+    // so without a strong reference here the Host would deallocate after activation and
+    // every command would become a silent no-op.
+    @State private var host: AppCore.Host?
 
     var body: some Scene {
         WindowGroup {
@@ -27,14 +31,15 @@ struct HanjiApp: App {
                     NSApp.activate(ignoringOtherApps: true)
                     guard !activated else { return }
                     activated = true
-                    let host = Host(appState: appState, pluginManager: pluginManager)
-                    host.renderers.register(CardRenderer())
-                    host.renderers.register(MermaidRenderer())
-                    host.renderers.register(DataviewRenderer(indexProvider: { [weak appState] in
+                    let h = Host(appState: appState, pluginManager: pluginManager)
+                    host = h   // retain for the app's lifetime
+                    h.renderers.register(CardRenderer())
+                    h.renderers.register(MermaidRenderer())
+                    h.renderers.register(DataviewRenderer(indexProvider: { [weak appState] in
                         appState?.index ?? MetadataIndex()
                     }))
                     let plugins: [Plugin] = [WordCountPlugin(), PeriodicNotesPlugin(), TemplaterPlugin()]
-                    pluginManager.activate(plugins, host: host)
+                    pluginManager.activate(plugins, host: h)
 
                     if let vaultPath = ProcessInfo.processInfo.environment["HANJI_OPEN_VAULT"] {
                         let url = URL(fileURLWithPath: (vaultPath as NSString).expandingTildeInPath)
