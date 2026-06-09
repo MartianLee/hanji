@@ -10,6 +10,7 @@ import VaultKit
 struct HanjiApp: App {
     @StateObject private var appState = AppState()
     @StateObject private var pluginManager = PluginManager()
+    @StateObject private var uiState = UIState()
     @State private var activated = false
 
     var body: some Scene {
@@ -17,6 +18,7 @@ struct HanjiApp: App {
             ContentView()
                 .environmentObject(appState)
                 .environmentObject(pluginManager)
+                .environmentObject(uiState)
                 .frame(minWidth: 900, minHeight: 560)
                 .onAppear {
                     NSApp.setActivationPolicy(.regular)
@@ -40,6 +42,14 @@ struct HanjiApp: App {
                         if let first = appState.files.first { appState.open(first) }
                     }
                 }
+        }
+        .commands {
+            CommandMenu("Go") {
+                Button("Command Palette") { uiState.palette = .commands }
+                    .keyboardShortcut("p", modifiers: .command)
+                Button("Quick Switcher") { uiState.palette = .files }
+                    .keyboardShortcut("o", modifiers: .command)
+            }
         }
     }
 }

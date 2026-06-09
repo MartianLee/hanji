@@ -8,6 +8,7 @@ import VaultKit
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var pluginManager: PluginManager
+    @EnvironmentObject var uiState: UIState
 
     private var selection: Binding<MarkdownFile.ID?> {
         Binding(
@@ -58,6 +59,34 @@ struct ContentView: View {
                 .padding()
             }
             .frame(minWidth: 220)
+        }
+        .overlay { paletteOverlay }
+    }
+
+    @ViewBuilder private var paletteOverlay: some View {
+        if let mode = uiState.palette {
+            ZStack(alignment: .top) {
+                Color.black.opacity(0.15).ignoresSafeArea().onTapGesture { uiState.palette = nil }
+                paletteView(for: mode).padding(.top, 80)
+            }
+        }
+    }
+
+    private func paletteView(for mode: PaletteMode) -> some View {
+        switch mode {
+        case .commands:
+            return PaletteView(placeholder: "Run a command…",
+                               items: pluginManager.commands.map { c in
+                                   PaletteItem(id: c.id, title: c.title, subtitle: nil, action: c.run)
+                               },
+                               onClose: { uiState.palette = nil })
+        case .files:
+            return PaletteView(placeholder: "Go to file…",
+                               items: appState.files.map { f in
+                                   PaletteItem(id: f.url.path, title: f.name, subtitle: nil,
+                                               action: { appState.open(f) })
+                               },
+                               onClose: { uiState.palette = nil })
         }
     }
 
