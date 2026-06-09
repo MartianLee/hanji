@@ -3,6 +3,8 @@ import AppKit
 import AppCore
 import ExtensionSDK
 import WordCountPlugin
+import PeriodicNotesPlugin
+import TemplaterPlugin
 import CoreRenderers
 import VaultKit
 
@@ -31,15 +33,16 @@ struct HanjiApp: App {
                     host.renderers.register(DataviewRenderer(indexProvider: { [weak appState] in
                         appState?.index ?? MetadataIndex()
                     }))
-                    let plugins: [Plugin] = [WordCountPlugin()]   // compile-time loading (D5)
+                    let plugins: [Plugin] = [WordCountPlugin(), PeriodicNotesPlugin(), TemplaterPlugin()]
                     pluginManager.activate(plugins, host: host)
 
-                    // Test/E2E hook: auto-open a vault (and its first note) when launched
-                    // with HANJI_OPEN_VAULT set.
                     if let vaultPath = ProcessInfo.processInfo.environment["HANJI_OPEN_VAULT"] {
                         let url = URL(fileURLWithPath: (vaultPath as NSString).expandingTildeInPath)
                         appState.openVault(at: url)
                         if let first = appState.files.first { appState.open(first) }
+                    } else if let recent = appState.recentVaults.first,
+                              FileManager.default.fileExists(atPath: recent.path) {
+                        appState.openVault(at: recent)   // reopen last vault; user picks a note via ⌘O / the list
                     }
                 }
         }
@@ -50,6 +53,9 @@ struct HanjiApp: App {
                 Button("Quick Switcher") { uiState.palette = .files }
                     .keyboardShortcut("o", modifiers: .command)
             }
+        }
+        Settings {
+            SettingsView().environmentObject(appState)
         }
     }
 }

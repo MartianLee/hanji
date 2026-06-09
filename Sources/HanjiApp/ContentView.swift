@@ -22,6 +22,17 @@ struct ContentView: View {
     }
 
     var body: some View {
+        Group {
+            if appState.vaultRoot == nil {
+                WelcomeView(onOpen: openVault, onOpenRecent: openRecent)
+            } else {
+                splitView
+            }
+        }
+        .overlay { paletteOverlay }
+    }
+
+    private var splitView: some View {
         NavigationSplitView {
             List(appState.files, selection: selection) { file in
                 Text(file.name)
@@ -60,7 +71,6 @@ struct ContentView: View {
             }
             .frame(minWidth: 220)
         }
-        .overlay { paletteOverlay }
     }
 
     @ViewBuilder private var paletteOverlay: some View {
@@ -88,6 +98,10 @@ struct ContentView: View {
                                },
                                onClose: { uiState.palette = nil })
         }
+    }
+
+    private func openRecent(_ url: URL) {
+        appState.openVault(at: url)
     }
 
     private func openVault() {
