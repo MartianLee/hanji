@@ -40,6 +40,11 @@ struct HanjiApp: App {
                     }))
                     let plugins: [Plugin] = [WordCountPlugin(), PeriodicNotesPlugin(), TemplaterPlugin()]
                     pluginManager.activate(plugins, host: h)
+                    // First-party shell command: keyboard-driven move via the folder palette.
+                    h.commands.register(Command(id: "file.moveTo", title: "Move note to folder\u{2026}") { [weak uiState, weak appState] in
+                        guard appState?.selectedFile != nil else { return }
+                        uiState?.palette = .moveTo
+                    })
 
                     if let vaultPath = ProcessInfo.processInfo.environment["HANJI_OPEN_VAULT"] {
                         let url = URL(fileURLWithPath: (vaultPath as NSString).expandingTildeInPath)
@@ -53,10 +58,23 @@ struct HanjiApp: App {
         }
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("New Note") { appState.newNote() }
-                    .keyboardShortcut("n", modifiers: .command)
-                Button("New Folder") { appState.newFolder() }
-                    .keyboardShortcut("n", modifiers: [.command, .shift])
+                Button("New Note") {
+                    if let url = appState.newNote() { uiState.renameRequest = url }
+                }
+                .keyboardShortcut("n", modifiers: .command)
+                Button("New Folder") {
+                    if let url = appState.newFolder() { uiState.renameRequest = url }
+                }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+            }
+            CommandGroup(after: .undoRedo) {
+                Button("Undo File Operation") { appState.undoLastFileOperation() }
+                    .keyboardShortcut("z", modifiers: [.command, .option])
+                    .disabled(!appState.canUndoFileOperation)
+            }
+            CommandGroup(after: .sidebar) {
+                Button("Collapse All Folders") { uiState.expandedFolders = [] }
+                Button("Expand All Folders") { uiState.expandedFolders = Self.allFolders(in: appState.tree) }
             }
             CommandMenu("Go") {
                 Button("Command Palette") { uiState.palette = .commands }
@@ -68,5 +86,17 @@ struct HanjiApp: App {
         Settings {
             SettingsView().environmentObject(appState)
         }
+    }
+
+    private static func allFolders(in nodes: [FileNode]) -> Set<URL> {
+        var out = Set<URL>()
+        func walk(_ nodes: [FileNode]) {
+            for node in nodes where node.isDirectory {
+                out.insert(node.url)
+                walk(node.children ?? [])
+            }
+        }
+        walk(nodes)
+        return out
     }
 }
