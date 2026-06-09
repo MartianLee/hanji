@@ -10,10 +10,11 @@ struct ContentView: View {
     @EnvironmentObject var pluginManager: PluginManager
     @EnvironmentObject var uiState: UIState
 
-    @State private var treeSelection: URL?
+    @State private var treeSelection = Set<URL>()
+    @State private var expandedFolders = Set<URL>()
     @State private var renameTarget: FileNode?
     @State private var renameText = ""
-    @State private var deleteTarget: FileNode?
+    @State private var deleteTargets: [FileNode] = []
     @State private var fileErrorMessage: String?
 
     var body: some View {
@@ -37,25 +38,33 @@ struct ContentView: View {
     }
 
     @ViewBuilder private var fileListPane: some View {
-        List(appState.tree, children: \.children, selection: $treeSelection) { node in
-            Label(displayName(node), systemImage: node.isDirectory ? "folder" : "doc.text")
-                .contextMenu { contextMenu(for: node) }
-                .draggable(node.url)
-                .dropDestination(for: URL.self) { urls, _ in
-                    // Dropping on a folder moves into it; on a file, into its parent.
-                    handleDrop(urls, into: node.isDirectory ? node.url : node.url.deletingLastPathComponent())
-                }
-        }
-        .contextMenu {
-            // Right-click on empty tree space: create at the vault root.
-            Button("New Note") { newNote(in: nil) }
-            Button("New Folder") { newFolder(in: nil) }
-        }
-        .dropDestination(for: URL.self) { urls, _ in
-            handleDrop(urls, into: appState.vaultRoot)   // empty space = vault root
-        }
-        .onChange(of: treeSelection) { _, url in
-            if let url, let f = appState.files.first(where: { $0.url == url }) { appState.open(f) }
+        ScrollViewReader { proxy in
+            List(selection: $treeSelection) {
+                treeRows(appState.tree)
+            }
+            .contextMenu {
+                // Right-click on empty tree space: create at the vault root.
+                Button("New Note") { newNote(in: nil) }
+                Button("New Folder") { newFolder(in: nil) }
+            }
+            .dropDestination(for: URL.self) { urls, _ in
+                handleDrop(urls, into: appState.vaultRoot)   // empty space = vault root
+            }
+            .onChange(of: treeSelection) { _, sel in
+                // Single-selecting a file opens it (multi-select doesn't).
+                guard sel.count == 1, let url = sel.first,
+                      appState.selectedFile?.url.standardizedFileURL != url.standardizedFileURL,
+                      let f = appState.files.first(where: { $0.url.standardizedFileURL == url.standardizedFileURL })
+                else { return }
+                appState.open(f)
+            }
+            .onChange(of: appState.selectedFile, initial: true) { _, file in
+                // Auto-reveal the active note (opened via ⌘O, a command, or the
+                // launch auto-open — `initial` catches a note opened before the
+                // view appeared).
+                guard let url = file?.url else { return }
+                reveal(url, with: proxy)
+            }
         }
         .navigationTitle(appState.vaultRoot?.lastPathComponent ?? "Hanji")
         .toolbar {
@@ -64,6 +73,7 @@ struct ContentView: View {
                     .help("New note")
                 Button(action: { newFolder(in: targetFolder) }) { Image(systemName: "folder.badge.plus") }
                     .help("New folder")
+                sortMenu
                 Button(action: openVault) { Image(systemName: "folder") }
                     .help("Open vault folder")
             }
@@ -73,7 +83,7 @@ struct ContentView: View {
             TextField("Name", text: $renameText)
             Button("Rename") {
                 if let target = renameTarget {
-                    do { let url = try appState.rename(target.url, to: renameText); treeSelection = url }
+                    do { let url = try appState.rename(target.url, to: renameText); treeSelection = [url] }
                     catch { fileErrorMessage = error.localizedDescription }
                 }
                 renameTarget = nil
@@ -82,15 +92,17 @@ struct ContentView: View {
         } message: {
             Text(renameTarget.map { "Rename \u{201C}\(displayName($0))\u{201D}" } ?? "")
         }
-        .alert("Move to Trash?", isPresented: Binding(get: { deleteTarget != nil },
-                                                      set: { if !$0 { deleteTarget = nil } })) {
+        .alert("Move to Trash?", isPresented: Binding(get: { !deleteTargets.isEmpty },
+                                                      set: { if !$0 { deleteTargets = [] } })) {
             Button("Move to Trash", role: .destructive) {
-                if let target = deleteTarget { appState.delete(target.url) }
-                deleteTarget = nil
+                deleteTargets.forEach { appState.delete($0.url) }
+                deleteTargets = []
             }
-            Button("Cancel", role: .cancel) { deleteTarget = nil }
+            Button("Cancel", role: .cancel) { deleteTargets = [] }
         } message: {
-            Text(deleteTarget.map { "\u{201C}\(displayName($0))\u{201D} will be moved to the Trash." } ?? "")
+            Text(deleteTargets.count == 1
+                 ? "\u{201C}\(displayName(deleteTargets[0]))\u{201D} will be moved to the Trash."
+                 : "\(deleteTargets.count) items will be moved to the Trash.")
         }
         .alert("Couldn\u{2019}t complete", isPresented: Binding(get: { fileErrorMessage != nil },
                                                                 set: { if !$0 { fileErrorMessage = nil } })) {
@@ -100,22 +112,98 @@ struct ContentView: View {
         }
     }
 
-    @ViewBuilder private func contextMenu(for node: FileNode) -> some View {
-        if node.isDirectory {
-            Button("New Note") { newNote(in: node.url) }
-            Button("New Folder") { newFolder(in: node.url) }
-            Divider()
+    /// Recursive tree rows with controlled folder expansion (so auto-reveal can
+    /// programmatically expand ancestors). AnyView breaks the recursive opaque type.
+    @ViewBuilder private func treeRows(_ nodes: [FileNode]) -> some View {
+        ForEach(nodes) { node in
+            if node.isDirectory {
+                DisclosureGroup(isExpanded: expansionBinding(node.url)) {
+                    AnyView(treeRows(node.children ?? []))
+                } label: {
+                    treeRow(node)
+                }
+            } else {
+                treeRow(node)
+            }
         }
-        Button("Rename\u{2026}") { startRename(node) }
-        Button("Delete\u{2026}") { deleteTarget = node }
-        Divider()
-        Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([node.url]) }
+    }
+
+    private func treeRow(_ node: FileNode) -> some View {
+        Label(displayName(node), systemImage: node.isDirectory ? "folder" : "doc.text")
+            .contextMenu { contextMenu(for: node) }
+            .draggable(node.url)
+            .dropDestination(for: URL.self) { urls, _ in
+                // Dropping on a folder moves into it; on a file, into its parent.
+                handleDrop(urls, into: node.isDirectory ? node.url : node.url.deletingLastPathComponent())
+            }
+    }
+
+    private func expansionBinding(_ url: URL) -> Binding<Bool> {
+        Binding(get: { expandedFolders.contains(url) },
+                set: { expanded in
+                    if expanded { expandedFolders.insert(url) } else { expandedFolders.remove(url) }
+                })
+    }
+
+    /// Expand the note's ancestor folders, select it, and scroll it into view.
+    private func reveal(_ url: URL, with proxy: ScrollViewProxy) {
+        guard let root = appState.vaultRoot else { return }
+        let rootPath = root.standardizedFileURL.path
+        var dir = url.deletingLastPathComponent()
+        while dir.standardizedFileURL.path.hasPrefix(rootPath), dir.standardizedFileURL.path != rootPath {
+            expandedFolders.insert(dir)
+            dir = dir.deletingLastPathComponent()
+        }
+        if treeSelection != [url] { treeSelection = [url] }
+        DispatchQueue.main.async { withAnimation { proxy.scrollTo(url) } }
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            Picker("Sort by", selection: $appState.treeSort) {
+                Text("File name (A \u{2192} Z)").tag(TreeSort.nameAsc)
+                Text("File name (Z \u{2192} A)").tag(TreeSort.nameDesc)
+                Text("Modified (new \u{2192} old)").tag(TreeSort.modifiedDesc)
+                Text("Modified (old \u{2192} new)").tag(TreeSort.modifiedAsc)
+                Text("Created (new \u{2192} old)").tag(TreeSort.createdDesc)
+                Text("Created (old \u{2192} new)").tag(TreeSort.createdAsc)
+            }
+            .pickerStyle(.inline)
+        } label: {
+            Image(systemName: "arrow.up.arrow.down")
+        }
+        .help("Sort order")
+    }
+
+    @ViewBuilder private func contextMenu(for node: FileNode) -> some View {
+        let targets = bulkTargets(including: node)
+        if targets.count > 1 {
+            Button("Delete \(targets.count) Items\u{2026}") { deleteTargets = targets }
+            Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting(targets.map(\.url)) }
+        } else {
+            if node.isDirectory {
+                Button("New Note") { newNote(in: node.url) }
+                Button("New Folder") { newFolder(in: node.url) }
+                Divider()
+            }
+            Button("Rename\u{2026}") { startRename(node) }
+            Button("Delete\u{2026}") { deleteTargets = [node] }
+            Divider()
+            Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([node.url]) }
+        }
+    }
+
+    /// When the right-clicked row is part of a multi-selection, act on all of it.
+    private func bulkTargets(including node: FileNode) -> [FileNode] {
+        guard treeSelection.contains(node.url), treeSelection.count > 1 else { return [node] }
+        return treeSelection.compactMap { findNode($0, in: appState.tree) }
     }
 
     /// Folder that New note / New folder should target: the selected folder, the
     /// selected file's parent, or the vault root.
     private var targetFolder: URL? {
-        guard let sel = treeSelection, let node = findNode(sel, in: appState.tree) else { return nil }
+        guard treeSelection.count == 1, let sel = treeSelection.first,
+              let node = findNode(sel, in: appState.tree) else { return nil }
         return node.isDirectory ? node.url : node.url.deletingLastPathComponent()
     }
 
@@ -134,7 +222,7 @@ struct ContentView: View {
     /// Create with an auto-name, then immediately offer the rename (Obsidian-style).
     private func newNote(in folder: URL?) {
         guard let url = appState.newNote(inFolder: folder) else { return }
-        treeSelection = url
+        treeSelection = [url]
         startRename(FileNode(url: url, isDirectory: false, children: nil))
     }
 
@@ -152,12 +240,18 @@ struct ContentView: View {
     /// outside the vault are ignored (import is out of scope for now).
     private func handleDrop(_ urls: [URL], into folder: URL?) -> Bool {
         guard let root = appState.vaultRoot, let dest = folder ?? appState.vaultRoot else { return false }
+        // Dragging a row that is part of a multi-selection moves the whole selection.
+        var toMove = urls
+        if urls.count == 1, let u = urls.first, treeSelection.contains(u), treeSelection.count > 1 {
+            toMove = Array(treeSelection)
+        }
         var moved = false
-        for url in urls {
+        var newSelection = Set<URL>()
+        for url in toMove {
             guard url.standardizedFileURL.path.hasPrefix(root.standardizedFileURL.path + "/") else { continue }
             do {
                 let newURL = try appState.move(url, into: dest)
-                if treeSelection == url { treeSelection = newURL }
+                newSelection.insert(newURL)
                 moved = true
             } catch let error as VaultError {
                 if case .cannotMoveIntoItself = error { continue }   // silent no-op, like Finder
@@ -166,6 +260,7 @@ struct ContentView: View {
                 fileErrorMessage = error.localizedDescription
             }
         }
+        if moved { treeSelection = newSelection }
         return moved
     }
 
