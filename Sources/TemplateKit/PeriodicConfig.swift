@@ -75,3 +75,29 @@ public struct PeriodicConfig {
         return obj
     }
 }
+
+public enum OpenAction: Equatable {
+    case open(path: String)
+    case create(path: String, text: String, cursor: Int?)
+}
+
+extension PeriodicConfig {
+    /// Decide whether to open an existing periodic note or create one from its template.
+    public func planOpen(_ kind: PeriodicKind, date: Date,
+                         exists: (String) -> Bool,
+                         readTemplate: (String) -> String?,
+                         now: Date? = nil,
+                         timeZone: TimeZone = .current) -> OpenAction {
+        let path = notePath(kind, date: date, timeZone: timeZone)
+        if exists(path) { return .open(path: path) }
+        let base = (path as NSString).lastPathComponent
+        let title = (base as NSString).deletingPathExtension
+        let templateText = templatePath(kind).flatMap { readTemplate($0) } ?? ""
+        // Default the template clock to the note's own date so the filename and the
+        // rendered tp.date.now() can't drift apart for a non-today note.
+        let effectiveNow = now ?? date
+        let rendered = TemplateEngine.render(templateText,
+            TemplateContext(now: effectiveNow, title: title, creationDate: effectiveNow, timeZone: timeZone))
+        return .create(path: path, text: rendered.text, cursor: rendered.cursorOffset)
+    }
+}

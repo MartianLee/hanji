@@ -28,4 +28,5 @@ runChecks([
     ("MomentFormat", momentFormatChecks),
     ("TemplateEngine", templateEngineChecks),
     ("PeriodicConfig", periodicConfigChecks),
+    ("PeriodicPlan", periodicPlanChecks),
 ])
