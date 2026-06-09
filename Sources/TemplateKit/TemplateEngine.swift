@@ -18,7 +18,10 @@ public struct RenderedTemplate: Equatable {
 
 public enum TemplateEngine {
     public static func render(_ template: String, _ ctx: TemplateContext) -> RenderedTemplate {
-        let s = Array(template)
+        // Obsidian core-template syntax ({{date}}, {{time}}, {{title}}) is
+        // substituted first — it never carries a cursor, so the Templater pass
+        // below computes offsets against the final text.
+        let s = Array(substituteCoreTokens(template, ctx))
         var out = ""
         var cursor: (order: Int, offset: Int)? = nil
         var i = 0
@@ -44,6 +47,49 @@ public enum TemplateEngine {
             }
         }
         return RenderedTemplate(text: out, cursorOffset: cursor?.offset)
+    }
+
+    // MARK: - Obsidian core-template tokens
+
+    /// Replace `{{date}}`, `{{date:FMT}}`, `{{time}}`, `{{time:FMT}}`, and
+    /// `{{title}}` (the syntax of Obsidian's core Templates/Daily notes).
+    /// Unknown tokens stay raw, as Obsidian leaves them.
+    static func substituteCoreTokens(_ template: String, _ ctx: TemplateContext) -> String {
+        let chars = Array(template)
+        var out = ""
+        var i = 0
+        while i < chars.count {
+            if chars[i] == "{", i + 1 < chars.count, chars[i + 1] == "{" {
+                var j = i + 2
+                while j + 1 < chars.count && !(chars[j] == "}" && chars[j + 1] == "}") { j += 1 }
+                if j + 1 < chars.count {
+                    let token = String(chars[(i + 2)..<j]).trimmingCharacters(in: .whitespaces)
+                    out += coreTokenValue(token, ctx) ?? "{{\(token)}}"
+                    i = j + 2
+                    continue
+                }
+            }
+            out.append(chars[i])
+            i += 1
+        }
+        return out
+    }
+
+    private static func coreTokenValue(_ token: String, _ ctx: TemplateContext) -> String? {
+        switch true {
+        case token == "title":
+            return ctx.title
+        case token == "date":
+            return MomentFormat.format(ctx.now, "YYYY-MM-DD", timeZone: ctx.timeZone)
+        case token == "time":
+            return MomentFormat.format(ctx.now, "HH:mm", timeZone: ctx.timeZone)
+        case token.hasPrefix("date:"):
+            return MomentFormat.format(ctx.now, String(token.dropFirst(5)), timeZone: ctx.timeZone)
+        case token.hasPrefix("time:"):
+            return MomentFormat.format(ctx.now, String(token.dropFirst(5)), timeZone: ctx.timeZone)
+        default:
+            return nil
+        }
     }
 
     // MARK: - Parsing

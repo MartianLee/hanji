@@ -43,5 +43,6 @@ runChecks([
     ("AppStateUndo", appStateUndoChecks),
     ("VaultWatcher", vaultWatcherChecks),
     ("AppStateTree", appStateTreeChecks),
+    ("HRParser", hrParserChecks),
     ("E2E", e2eChecks),
 ])

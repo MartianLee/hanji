@@ -163,6 +163,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 }
             }
             specs.append(contentsOf: imageWidgets(caret: caret, nstext: nstext))
+            specs.append(contentsOf: hrWidgets(caret: caret, nstext: nstext))
 
             let inset = textView.textContainerInset.width
             let width = max(50, textView.bounds.width - inset * 2)
@@ -218,6 +219,26 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 )
                 out.append(WidgetSpec(key: "img-\(ref.line.lowerBound)-\(ref.line.upperBound)",
                                       region: ref.line, view: view))
+            }
+            return out
+        }
+
+        /// Horizontal rules (`---` lines) drawn as real divider lines; the raw
+        /// text reveals when the caret enters the line, like other widgets.
+        func hrWidgets(caret: Range<Int>, nstext: NSString) -> [WidgetSpec] {
+            var out: [WidgetSpec] = []
+            for line in HRParser.lines(in: nstext as String) {
+                if intersects(line, caret) { continue }
+                let view = AnyView(
+                    Rectangle()
+                        .fill(Color(nsColor: .separatorColor))
+                        .frame(height: 1)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color(nsColor: .textBackgroundColor))
+                )
+                out.append(WidgetSpec(key: "hr-\(line.lowerBound)-\(line.upperBound)",
+                                      region: line, view: view))
             }
             return out
         }

@@ -23,6 +23,17 @@ func templateEngineChecks() {
     expectEqual(TemplateEngine.render("<% tp.unknown.fn() %>!", ctx).text, "!", "unknown call → empty")
     expectEqual(TemplateEngine.render("a<%* tp.whatever() %>b", ctx).text, "ab", "exec block stripped")
 
+    // Obsidian core-template syntax ({{...}}), used by core Daily/Templates.
+    expectEqual(TemplateEngine.render("Created: {{date:YYYY-MM-DD}}", ctx).text,
+                "Created: 2026-06-09", "core {{date:fmt}}")
+    expectEqual(TemplateEngine.render("{{date}}", ctx).text, "2026-06-09", "core {{date}} default format")
+    expectEqual(TemplateEngine.render("{{time}}", ctx).text, "00:00", "core {{time}} default format")
+    expectEqual(TemplateEngine.render("{{title}}", ctx).text, "My Note", "core {{title}}")
+    expectEqual(TemplateEngine.render("{{unknown}}", ctx).text, "{{unknown}}", "unknown core token stays raw")
+    let mixed = TemplateEngine.render("{{date}} <% tp.file.cursor() %>X", ctx)
+    expectEqual(mixed.text, "2026-06-09 X", "core + templater mix")
+    expectEqual(mixed.cursorOffset, 11, "cursor offset counts substituted core tokens")
+
     let cursor = TemplateEngine.render("AB<% tp.file.cursor() %>CD", ctx)
     expectEqual(cursor.text, "ABCD", "cursor token removed from text")
     expectEqual(cursor.cursorOffset, 2, "cursor offset recorded (UTF-16)")
