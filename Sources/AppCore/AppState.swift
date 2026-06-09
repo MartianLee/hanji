@@ -18,6 +18,11 @@ public final class AppState: ObservableObject {
             reloadTree()
         }
     }
+
+    /// Editor base font size (Settings ▸ Appearance ▸ Font size); persisted.
+    @Published public var fontSize: Double = 15 {
+        didSet { defaults.set(fontSize, forKey: Self.fontSizeKey) }
+    }
     public let rendererRegistry = DefaultRendererRegistry()
 
     private var vault: Vault?
@@ -25,6 +30,7 @@ public final class AppState: ObservableObject {
     private let defaults: UserDefaults
     private static let recentsKey = "io.hanji.recentVaults"
     private static let treeSortKey = "io.hanji.treeSort"
+    private static let fontSizeKey = "io.hanji.fontSize"
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -33,6 +39,8 @@ public final class AppState: ObservableObject {
         if let raw = defaults.string(forKey: Self.treeSortKey), let sort = TreeSort(rawValue: raw) {
             treeSort = sort
         }
+        let storedSize = defaults.double(forKey: Self.fontSizeKey)
+        if storedSize >= 10 && storedSize <= 30 { fontSize = storedSize }
     }
 
     public func openVault(at root: URL) {

@@ -5,6 +5,39 @@ struct SettingsView: View {
     @EnvironmentObject var appState: AppState
 
     var body: some View {
+        TabView {
+            appearanceTab
+                .tabItem { Label("Appearance", systemImage: "paintbrush") }
+            vaultTab
+                .tabItem { Label("Vault", systemImage: "folder") }
+        }
+        .frame(width: 480, height: 380)
+    }
+
+    /// Obsidian-style appearance settings.
+    private var appearanceTab: some View {
+        Form {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Font size").font(.headline)
+                    Spacer()
+                    Text("\(Int(appState.fontSize)) pt")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                    Button("Reset") { appState.fontSize = 15 }
+                        .disabled(appState.fontSize == 15)
+                }
+                Text("Change the default font size of the editor.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(value: $appState.fontSize, in: 12...24, step: 1)
+            }
+            .padding(.vertical, 4)
+        }
+        .padding(20)
+    }
+
+    private var vaultTab: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Vault").font(.headline)
             Text(appState.vaultRoot?.path ?? "No vault open").foregroundStyle(.secondary)
@@ -35,6 +68,5 @@ struct SettingsView: View {
             Spacer()
         }
         .padding(20)
-        .frame(width: 460, height: 340)
     }
 }

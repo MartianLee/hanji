@@ -44,5 +44,6 @@ runChecks([
     ("VaultWatcher", vaultWatcherChecks),
     ("AppStateTree", appStateTreeChecks),
     ("HRParser", hrParserChecks),
+    ("FontSetting", fontSettingChecks),
     ("E2E", e2eChecks),
 ])

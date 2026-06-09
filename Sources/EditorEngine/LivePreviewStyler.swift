@@ -4,7 +4,10 @@ import MarkdownCore
 /// Applies a DecorationSet to an NSTextStorage. The marker-hiding technique
 /// (M1 spike, R1) collapses marker glyphs with a near-zero font + clear color.
 public enum LivePreviewStyler {
-    public static let baseFont = NSFont.systemFont(ofSize: 15)
+    /// User-adjustable editor font size (Settings ▸ Appearance ▸ Font size,
+    /// Obsidian-style). Every text role scales from this.
+    public static var baseFontSize: CGFloat = 15
+    public static var baseFont: NSFont { .systemFont(ofSize: baseFontSize) }
 
     /// Reading rhythm shared by all paragraph styles (body, lists, quotes, …):
     /// a roomier line height plus a visible gap between paragraphs, instead of
@@ -48,18 +51,21 @@ public enum LivePreviewStyler {
     static func attributes(for style: SpanStyle) -> [NSAttributedString.Key: Any] {
         switch style {
         case .heading(let level):
-            let sizes: [Int: CGFloat] = [1: 28, 2: 24, 3: 20, 4: 18, 5: 16, 6: 15]
+            // Heading sizes as multiples of the base, so the user's font-size
+            // setting scales the whole hierarchy.
+            let ratios: [Int: CGFloat] = [1: 1.85, 2: 1.6, 3: 1.35, 4: 1.2, 5: 1.05, 6: 1.0]
+            let size = (baseFontSize * (ratios[level] ?? 1.0)).rounded()
             // Headings get breathing room above (more for higher levels).
             let p = bodyParagraph()
             p.paragraphSpacingBefore = [1: 16, 2: 12, 3: 10][level] ?? 8
-            return [.font: NSFont.boldSystemFont(ofSize: sizes[level] ?? 15),
+            return [.font: NSFont.boldSystemFont(ofSize: size),
                     .paragraphStyle: p]
         case .bold:
             return [.font: NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)]
         case .italic:
             return [.font: NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)]
         case .inlineCode:
-            return [.font: NSFont.monospacedSystemFont(ofSize: 14, weight: .regular),
+            return [.font: NSFont.monospacedSystemFont(ofSize: baseFontSize - 1, weight: .regular),
                     .backgroundColor: NSColor.quaternaryLabelColor]
         case .link:
             return [.foregroundColor: NSColor.linkColor,
@@ -70,7 +76,7 @@ public enum LivePreviewStyler {
             p.headIndent = 16
             return [.foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: p]
         case .frontmatter:
-            return [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+            return [.font: NSFont.monospacedSystemFont(ofSize: baseFontSize - 3, weight: .regular),
                     .foregroundColor: NSColor.tertiaryLabelColor]
         case .listItem:
             let p = bodyParagraph()
@@ -91,7 +97,7 @@ public enum LivePreviewStyler {
             let p = bodyParagraph()
             p.lineHeightMultiple = 1.2   // code reads better a touch tighter
             p.paragraphSpacing = 0
-            return [.font: NSFont.monospacedSystemFont(ofSize: 14, weight: .regular),
+            return [.font: NSFont.monospacedSystemFont(ofSize: baseFontSize - 1, weight: .regular),
                     .backgroundColor: NSColor.quaternaryLabelColor,
                     .paragraphStyle: p]
         case .callout:

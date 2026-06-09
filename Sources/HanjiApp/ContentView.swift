@@ -351,7 +351,7 @@ struct ContentView: View {
     @ViewBuilder private var editorPane: some View {
         VStack(spacing: 0) {
             if appState.selectedFile != nil {
-                MarkdownEditorView(text: $appState.activeText, renderers: appState.rendererRegistry, vaultRoot: appState.vaultRoot, cursorOffset: $appState.pendingCursorOffset)
+                MarkdownEditorView(text: $appState.activeText, renderers: appState.rendererRegistry, vaultRoot: appState.vaultRoot, cursorOffset: $appState.pendingCursorOffset, fontSize: CGFloat(appState.fontSize))
             } else {
                 Text("Open a vault, then select a note")
                     .foregroundStyle(.secondary)

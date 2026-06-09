@@ -31,15 +31,19 @@ public struct MarkdownEditorView: NSViewRepresentable {
     public var renderers: RendererRegistry?
     public var vaultRoot: URL?
     @Binding public var cursorOffset: Int?
+    public var fontSize: CGFloat
 
-    public init(text: Binding<String>, renderers: RendererRegistry? = nil, vaultRoot: URL? = nil, cursorOffset: Binding<Int?> = .constant(nil)) {
+    public init(text: Binding<String>, renderers: RendererRegistry? = nil, vaultRoot: URL? = nil,
+                cursorOffset: Binding<Int?> = .constant(nil), fontSize: CGFloat = 15) {
         self._text = text
         self.renderers = renderers
         self.vaultRoot = vaultRoot
         self._cursorOffset = cursorOffset
+        self.fontSize = fontSize
     }
 
     public func makeNSView(context: Context) -> NSScrollView {
+        LivePreviewStyler.baseFontSize = fontSize
         let textView = ClickableTextView(usingTextLayoutManager: true)
         textView.delegate = context.coordinator
         textView.isRichText = false
@@ -74,6 +78,11 @@ public struct MarkdownEditorView: NSViewRepresentable {
         guard let textView = nsView.documentView as? NSTextView else { return }
         context.coordinator.renderers = renderers
         context.coordinator.vaultRoot = vaultRoot
+        if LivePreviewStyler.baseFontSize != fontSize {
+            LivePreviewStyler.baseFontSize = fontSize
+            textView.font = LivePreviewStyler.baseFont
+            context.coordinator.refresh()
+        }
         if textView.string != text {
             textView.string = text
             context.coordinator.refresh()
