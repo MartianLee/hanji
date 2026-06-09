@@ -22,11 +22,13 @@ public struct MarkdownEditorView: NSViewRepresentable {
     @Binding public var text: String
     public var renderers: RendererRegistry?
     public var vaultRoot: URL?
+    @Binding public var cursorOffset: Int?
 
-    public init(text: Binding<String>, renderers: RendererRegistry? = nil, vaultRoot: URL? = nil) {
+    public init(text: Binding<String>, renderers: RendererRegistry? = nil, vaultRoot: URL? = nil, cursorOffset: Binding<Int?> = .constant(nil)) {
         self._text = text
         self.renderers = renderers
         self.vaultRoot = vaultRoot
+        self._cursorOffset = cursorOffset
     }
 
     public func makeNSView(context: Context) -> NSScrollView {
@@ -67,6 +69,14 @@ public struct MarkdownEditorView: NSViewRepresentable {
         if textView.string != text {
             textView.string = text
             context.coordinator.refresh()
+        }
+        if let offset = cursorOffset,
+           let tv = nsView.documentView as? NSTextView {
+            let clamped = max(0, min(offset, (tv.string as NSString).length))
+            tv.setSelectedRange(NSRange(location: clamped, length: 0))
+            tv.scrollRangeToVisible(NSRange(location: clamped, length: 0))
+            tv.window?.makeFirstResponder(tv)
+            DispatchQueue.main.async { self.cursorOffset = nil }
         }
     }
 

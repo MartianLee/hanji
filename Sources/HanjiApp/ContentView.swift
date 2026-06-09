@@ -34,7 +34,7 @@ struct ContentView: View {
             }
         } content: {
             if appState.selectedFile != nil {
-                MarkdownEditorView(text: $appState.activeText, renderers: appState.rendererRegistry, vaultRoot: appState.vaultRoot)
+                MarkdownEditorView(text: $appState.activeText, renderers: appState.rendererRegistry, vaultRoot: appState.vaultRoot, cursorOffset: $appState.pendingCursorOffset)
                     .toolbar {
                         ToolbarItem { Button("Save", action: appState.save) }
                     }
