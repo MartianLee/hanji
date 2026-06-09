@@ -17,26 +17,25 @@ public struct WordCountPlugin: Plugin {
 
     public func activate(host: PluginHost) {
         let textPublisher = host.editor.activeText
-        host.ui.addSidebarView(id: "wordcount", title: "Word Count") {
-            AnyView(WordCountView(textPublisher: textPublisher))
+        host.ui.addStatusItem(id: "wordcount") {
+            AnyView(WordCountStatusView(textPublisher: textPublisher))
         }
     }
 }
 
-struct WordCountView: View {
+/// Compact one-line word/character count for the editor status bar.
+struct WordCountStatusView: View {
     let textPublisher: AnyPublisher<String, Never>
     @State private var words = 0
     @State private var chars = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Words: \(words)")
-            Text("Characters: \(chars)")
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .onReceive(textPublisher) { text in
-            words = WordCounter.words(in: text)
-            chars = WordCounter.characters(in: text)
-        }
+        Text("\(words) words · \(chars) chars")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .onReceive(textPublisher) { text in
+                words = WordCounter.words(in: text)
+                chars = WordCounter.characters(in: text)
+            }
     }
 }

@@ -14,9 +14,27 @@ public struct SidebarContribution: Identifiable {
     }
 }
 
-/// Surface ③ (UI): where plugins register sidebar views.
+/// A compact item a plugin contributes to the editor status bar (footer).
+public struct StatusItem: Identifiable {
+    public let id: String
+    public let makeView: () -> AnyView
+    public init(id: String, makeView: @escaping () -> AnyView) {
+        self.id = id
+        self.makeView = makeView
+    }
+}
+
+/// Surface ③ (UI): where plugins register sidebar views and status-bar items.
 public protocol UIRegistry: AnyObject {
     func addSidebarView(id: String, title: String, _ make: @escaping () -> AnyView)
+    /// Register a small footer item shown in the editor status bar.
+    func addStatusItem(id: String, _ make: @escaping () -> AnyView)
+}
+
+public extension Notification.Name {
+    /// Posted by a block renderer when its rendered content changes height, so the
+    /// editor can re-measure and re-reserve the inline widget's space.
+    static let hanjiWidgetDidResize = Notification.Name("io.hanji.widgetDidResize")
 }
 
 /// Read-only access to the active editor document.

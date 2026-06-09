@@ -26,6 +26,10 @@ public final class Host: PluginHost, UIRegistry, EditorContext, CommandRegistry,
         pluginManager.addSidebar(SidebarContribution(id: id, title: title, makeView: make))
     }
 
+    public func addStatusItem(id: String, _ make: @escaping () -> AnyView) {
+        pluginManager.addStatusItem(StatusItem(id: id, makeView: make))
+    }
+
     // EditorContext
     public var activeText: AnyPublisher<String, Never> { appState.$activeText.eraseToAnyPublisher() }
 

@@ -14,6 +14,14 @@ final class ClickableTextView: NSTextView {
     }
 }
 
+/// Hosting view for inline widgets that is transparent to hit-testing, so clicks and
+/// scroll fall through to the text view beneath: clicking a rendered block places the
+/// caret in it (revealing the source, like arrow keys do) and scrolling over it scrolls
+/// the editor instead of being swallowed by the widget (e.g. a mermaid WKWebView).
+final class PassthroughHostingView: NSHostingView<AnyView> {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 /// Markdown editing surface (TextKit 2): incremental Live Preview (inline styling
 /// + caret-aware marker hiding) + inline widget rendering for fenced code blocks
 /// (via the registered renderers) and images. Widgets reserve the height they need
@@ -89,7 +97,20 @@ public struct MarkdownEditorView: NSViewRepresentable {
         var vaultRoot: URL?
         private var overlays: [String: NSHostingView<AnyView>] = [:]
 
-        init(_ parent: MarkdownEditorView) { self.parent = parent }
+        init(_ parent: MarkdownEditorView) {
+            self.parent = parent
+            super.init()
+            // A block renderer (e.g. mermaid) reports its real height asynchronously;
+            // re-measure and re-reserve when that happens.
+            NotificationCenter.default.addObserver(self, selector: #selector(widgetDidResize),
+                                                   name: .hanjiWidgetDidResize, object: nil)
+        }
+
+        deinit { NotificationCenter.default.removeObserver(self) }
+
+        @objc private func widgetDidResize() {
+            DispatchQueue.main.async { [weak self] in self?.updateWidgets() }
+        }
 
         struct WidgetSpec { let key: String; let region: Range<Int>; let view: AnyView }
 
@@ -153,7 +174,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 live.insert(spec.key)
                 let host: NSHostingView<AnyView>
                 if let existing = overlays[spec.key] { host = existing; host.rootView = spec.view }
-                else { host = NSHostingView(rootView: spec.view); textView.addSubview(host); overlays[spec.key] = host }
+                else { host = PassthroughHostingView(rootView: spec.view); textView.addSubview(host); overlays[spec.key] = host }
                 host.frame.size.width = width
                 let h = min(max(20, host.fittingSize.height), 600)
                 reserve(region: spec.region, height: h, in: storage)
