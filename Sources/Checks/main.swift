@@ -31,4 +31,6 @@ runChecks([
     ("PeriodicPlan", periodicPlanChecks),
     ("TemplaterConfig", templaterConfigChecks),
     ("FuzzyFilter", fuzzyFilterChecks),
+    ("AppRecents", appRecentsChecks),
+    ("AppCreateNote", appCreateNoteChecks),
 ])
