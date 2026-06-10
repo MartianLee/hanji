@@ -53,5 +53,6 @@ runChecks([
     ("LinkTable", linkTableChecks),
     ("MetadataQuerying", metadataQueryingChecks),
     ("BacklinksPlugin", backlinksPluginChecks),
+    ("PluginToggle", pluginToggleChecks),
     ("E2E", e2eChecks),
 ])

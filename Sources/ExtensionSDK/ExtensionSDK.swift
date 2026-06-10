@@ -70,8 +70,17 @@ public protocol RendererRegistry: AnyObject {
 /// A compile-time-loaded extension.
 public protocol Plugin {
     static var id: String { get }
+    /// Shown in Settings ▸ Plugins (defaults to the last id component).
+    static var displayName: String { get }
     init()
     func activate(host: PluginHost)
+    /// Called when the user toggles the plugin off (release resources here).
+    func deactivate()
+}
+
+public extension Plugin {
+    static var displayName: String { id.split(separator: ".").last.map(String.init) ?? id }
+    func deactivate() {}
 }
 
 /// Surface ③ (commands): a user-invokable action shown in the ⌘P palette.
