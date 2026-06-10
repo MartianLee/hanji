@@ -4,6 +4,7 @@ import ExtensionSDK
 import MarkdownCore
 import PeriodicNotesPlugin
 import WordCountPlugin
+import MKSearchKit
 
 /// One happy-path end-to-end scenario over the real stack (AppState + Host +
 /// plugins + filesystem) — the same object graph the app wires in HanjiApp.
@@ -64,6 +65,12 @@ func e2eChecks() {
     appState.save()
     let onDisk = (try? String(contentsOf: root.appendingPathComponent("Projects/Plan.md"), encoding: .utf8)) ?? ""
     expectEqual(onDisk, "# Plan\n- [ ] first step", "E2E: edits saved to disk")
+
+    // 4b. Global search finds the freshly saved content (sync reindex for determinism).
+    try? appState.searchIndex?.reindexAll(vault: root)
+    let searchHits = (try? appState.searchIndex?.search("first step")) ?? []
+    expectEqual(searchHits.first?.path, "Projects/Plan.md", "E2E: global search finds saved note")
+    expect(searchHits.first?.firstMatchOffset != nil, "E2E: search hit carries a caret offset")
 
     // 5. ⌘O quick-switcher logic finds it by fuzzy name.
     let hit = FuzzyFilter.filter("plan", appState.files, key: { $0.name }).first

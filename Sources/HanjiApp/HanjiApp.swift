@@ -46,6 +46,10 @@ struct HanjiApp: App {
                         uiState?.palette = .moveTo
                     })
 
+                    // Test/E2E hook: open the sidebar in search mode (screenshot runs).
+                    if ProcessInfo.processInfo.environment["HANJI_SIDEBAR"] == "search" {
+                        uiState.sidebarMode = .search
+                    }
                     if let vaultPath = ProcessInfo.processInfo.environment["HANJI_OPEN_VAULT"] {
                         let url = URL(fileURLWithPath: (vaultPath as NSString).expandingTildeInPath)
                         appState.openVault(at: url)

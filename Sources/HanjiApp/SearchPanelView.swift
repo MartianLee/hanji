@@ -55,7 +55,13 @@ struct SearchPanelView: View {
                 .listStyle(.sidebar)
             }
         }
-        .onAppear { focused = true }
+        .onAppear {
+            focused = true
+            // Test/E2E hook: pre-fill a query for screenshot runs.
+            if query.isEmpty, let q = ProcessInfo.processInfo.environment["HANJI_SEARCH"] {
+                query = q
+            }
+        }
         .task(id: query) {
             try? await Task.sleep(for: .milliseconds(200))   // debounce
             guard !Task.isCancelled else { return }

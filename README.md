@@ -30,6 +30,9 @@ with a Swift extension SDK. Design: [`docs/2026-06-06-native-markdown-editor-des
   editing). Built-in: **mermaid** diagrams (WKWebView), **Dataview-lite** (`LIST FROM #tag`),
   and a `card` renderer
 - **Inline images** — `![[file]]` / `![alt](path)` rendered from the vault
+- **Global search (⇧⌘F)** — sidebar search panel over a persistent FTS5 index
+  (Korean-friendly trigram matching); results jump the caret to the match. The
+  index lives in Application Support and updates incrementally as you edit
 
 ## Build & run
 
@@ -52,6 +55,7 @@ WordCountPlugin · CoreRenderers → ExtensionSDK
 PeriodicNotesPlugin · TemplaterPlugin → { ExtensionSDK, TemplateKit }
 ```
 
+`MKSearchKit → GRDB` is the only external dependency (FTS5 search index).
 Plugins depend only on `ExtensionSDK` (plus pure libs like `TemplateKit`) — never on
 `AppCore`/the app. First-party features are built on the same SDK. The template/periodic
 logic lives in the pure, dependency-free `TemplateKit`, fully covered by `swift run Checks`.
