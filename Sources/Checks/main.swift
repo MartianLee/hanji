@@ -54,5 +54,6 @@ runChecks([
     ("MetadataQuerying", metadataQueryingChecks),
     ("BacklinksPlugin", backlinksPluginChecks),
     ("PluginToggle", pluginToggleChecks),
+    ("CalendarGrid", calendarGridChecks),
     ("E2E", e2eChecks),
 ])
