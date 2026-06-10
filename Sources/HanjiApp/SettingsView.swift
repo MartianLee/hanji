@@ -19,7 +19,7 @@ struct SettingsView: View {
 
     /// Obsidian-style appearance settings.
     private var appearanceTab: some View {
-        Form {
+        VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text("Font size").font(.headline)
@@ -36,13 +36,15 @@ struct SettingsView: View {
                 Slider(value: $appState.fontSize, in: 12...24, step: 1)
             }
             .padding(.vertical, 4)
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(20)
     }
 
     /// Obsidian-style plugin toggles (applied live).
     private var pluginsTab: some View {
-        Form {
+        VStack(alignment: .leading, spacing: 0) {
             ForEach(pluginManager.plugins) { plugin in
                 HStack {
                     VStack(alignment: .leading, spacing: 1) {
@@ -57,9 +59,12 @@ struct SettingsView: View {
                     .labelsHidden()
                     .toggleStyle(.switch)
                 }
-                .padding(.vertical, 2)
+                .padding(.vertical, 4)
+                Divider()
             }
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(20)
     }
 
