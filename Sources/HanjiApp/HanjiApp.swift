@@ -79,6 +79,8 @@ struct HanjiApp: App {
                     .disabled(!appState.canUndoFileOperation)
             }
             CommandGroup(after: .sidebar) {
+                Button("Toggle Right Sidebar") { uiState.rightSidebarVisible.toggle() }
+                    .keyboardShortcut("b", modifiers: [.command, .option])
                 Button("Collapse All Folders") { uiState.expandedFolders = [] }
                 Button("Expand All Folders") { uiState.expandedFolders = Self.allFolders(in: appState.tree) }
             }

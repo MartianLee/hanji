@@ -31,8 +31,9 @@ struct ContentView: View {
     }
 
     @ViewBuilder private var splitView: some View {
-        // Two columns until a plugin contributes a right-sidebar panel, then three.
-        if pluginManager.sidebar.isEmpty {
+        // Two columns until a plugin contributes a right-sidebar panel (and the
+        // user hasn't collapsed it), then three.
+        if pluginManager.sidebar.isEmpty || !uiState.rightSidebarVisible {
             NavigationSplitView { fileListPane } detail: { editorPane }
         } else {
             NavigationSplitView { fileListPane } content: { editorPane } detail: { sidebarPane }
@@ -402,6 +403,13 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItem { Button("Save", action: appState.save) }
+            ToolbarItem {
+                Button { uiState.rightSidebarVisible.toggle() } label: {
+                    Image(systemName: "sidebar.trailing")
+                }
+                .help("Toggle right sidebar (⌥⌘B)")
+                .disabled(pluginManager.sidebar.isEmpty)
+            }
         }
     }
 
