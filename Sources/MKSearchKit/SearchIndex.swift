@@ -6,7 +6,7 @@ import GRDB
 /// Lives in Application Support — outside the vault, so index writes never
 /// pollute the vault or wake the vault's FSEvents watcher.
 public final class SearchIndex {
-    let dbQueue: DatabaseQueue
+    private let dbQueue: DatabaseQueue
 
     public init(vaultRoot: URL) throws {
         let url = Self.indexFileURL(forVault: vaultRoot)
