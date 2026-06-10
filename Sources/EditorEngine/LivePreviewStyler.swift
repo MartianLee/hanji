@@ -24,7 +24,10 @@ public enum LivePreviewStyler {
         storage.beginEditing()
         storage.setAttributes([.font: baseFont, .foregroundColor: NSColor.textColor,
                                .paragraphStyle: bodyParagraph()], range: full)
-        for run in deco.styles {
+        // Phase 1: absolute styles (fonts/colors/paragraphs). Trait styles wait
+        // so they can compose with whatever font phase 1 set (bold inside a
+        // heading keeps the heading size).
+        for run in deco.styles where !isTraitStyle(run.style) {
             let r = clamp(run.range, length: storage.length)
             guard r.length > 0 else { continue }
             var attrs = attributes(for: run.style)
@@ -38,6 +41,13 @@ public enum LivePreviewStyler {
             }
             if !attrs.isEmpty { storage.addAttributes(attrs, range: r) }
         }
+        // Phase 2: trait styles (bold/italic/inline code) derived from the
+        // current font at each position.
+        for run in deco.styles where isTraitStyle(run.style) {
+            let r = clamp(run.range, length: storage.length)
+            guard r.length > 0 else { continue }
+            applyTrait(run.style, in: r, to: storage)
+        }
         for hiddenRange in deco.hidden {
             let r = clamp(hiddenRange, length: storage.length)
             if r.length > 0 {
@@ -46,6 +56,33 @@ public enum LivePreviewStyler {
             }
         }
         storage.endEditing()
+    }
+
+    static func isTraitStyle(_ style: SpanStyle) -> Bool {
+        switch style {
+        case .bold, .italic, .inlineCode: return true
+        default: return false
+        }
+    }
+
+    /// Compose a trait style with the font already present (heading-size bold,
+    /// heading-size inline code, …).
+    static func applyTrait(_ style: SpanStyle, in range: NSRange, to storage: NSTextStorage) {
+        storage.enumerateAttribute(.font, in: range, options: []) { value, sub, _ in
+            let current = (value as? NSFont) ?? baseFont
+            switch style {
+            case .bold:
+                storage.addAttribute(.font, value: NSFontManager.shared.convert(current, toHaveTrait: .boldFontMask), range: sub)
+            case .italic:
+                storage.addAttribute(.font, value: NSFontManager.shared.convert(current, toHaveTrait: .italicFontMask), range: sub)
+            case .inlineCode:
+                let size = max(4, current.pointSize - 1)
+                storage.addAttributes([.font: NSFont.monospacedSystemFont(ofSize: size, weight: .regular),
+                                       .backgroundColor: NSColor.quaternaryLabelColor], range: sub)
+            default:
+                break
+            }
+        }
     }
 
     static func attributes(for style: SpanStyle) -> [NSAttributedString.Key: Any] {
@@ -97,8 +134,9 @@ public enum LivePreviewStyler {
             let p = bodyParagraph()
             p.lineHeightMultiple = 1.2   // code reads better a touch tighter
             p.paragraphSpacing = 0
+            // Background comes from CodeBlockFragment (full-width slab), not
+            // per-glyph backgroundColor — that left gaps between lines/fences.
             return [.font: NSFont.monospacedSystemFont(ofSize: baseFontSize - 1, weight: .regular),
-                    .backgroundColor: NSColor.quaternaryLabelColor,
                     .paragraphStyle: p]
         case .callout:
             let p = bodyParagraph()

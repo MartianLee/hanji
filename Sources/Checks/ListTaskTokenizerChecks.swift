@@ -17,4 +17,19 @@ func listTaskTokenizerChecks() {
 
     let it = InlineTokenizer.spans(in: "*italic*")
     expectEqual(it.first?.style, .italic, "no-space star is italic, not a list")
+
+    // Inline styles render INSIDE bullets/tasks (regression: were skipped).
+    let boldInBullet = InlineTokenizer.spans(in: "- **a** b")
+    expect(boldInBullet.contains { $0.style == .listItem }, "bullet recognized")
+    expect(boldInBullet.contains { $0.style == .bold }, "bold inside bullet")
+    let linkInTask = InlineTokenizer.spans(in: "- [ ] see [[Note]]")
+    expect(linkInTask.contains { $0.style == .link }, "wikilink inside task")
+
+    // Indented bullets are still bullets.
+    let nested = InlineTokenizer.spans(in: "  - nested")
+    expect(nested.contains { $0.style == .listItem }, "indented bullet recognized")
+
+    // Headings scan inline too (code keeps composing in the styler).
+    let codeInHeading = InlineTokenizer.spans(in: "## A `c` B")
+    expect(codeInHeading.contains { $0.style == .inlineCode }, "inline code inside heading")
 }

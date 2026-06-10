@@ -28,4 +28,24 @@ func stylerChecks() {
     expect(bodyParagraph != nil && abs(bodyParagraph!.lineHeightMultiple - 1.3) < 0.01,
            "body line height multiple applied")
     expect(bodyParagraph != nil && bodyParagraph!.paragraphSpacing == 6, "paragraph gap applied")
+
+    // Trait composition: bold inside a heading keeps the heading size.
+    let h = "# A **b** c"
+    let hs = NSTextStorage(string: h)
+    LivePreviewStyler.apply(Decorator.decorations(spans: InlineTokenizer.spans(in: h),
+                                                  selection: 100..<100), to: hs)
+    let boldFont = hs.attributes(at: 6, effectiveRange: nil)[.font] as? NSFont   // 'b'
+    expect(boldFont != nil && boldFont!.pointSize >= 26, "bold in heading keeps heading size")
+    expect(boldFont.map { NSFontManager.shared.traits(of: $0).contains(.boldFontMask) } ?? false,
+           "bold trait applied")
+
+    // Inline code inside a heading: mono + near-heading size + background.
+    let ch = "## A `cd` B"
+    let chs = NSTextStorage(string: ch)
+    LivePreviewStyler.apply(Decorator.decorations(spans: InlineTokenizer.spans(in: ch),
+                                                  selection: 100..<100), to: chs)
+    let codeAttrs = chs.attributes(at: 6, effectiveRange: nil)   // 'c'
+    let codeFont = codeAttrs[.font] as? NSFont
+    expect(codeFont != nil && codeFont!.pointSize >= 20, "heading inline code keeps heading-ish size")
+    expect(codeAttrs[.backgroundColor] != nil, "heading inline code shaded")
 }

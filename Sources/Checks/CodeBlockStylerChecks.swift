@@ -8,9 +8,11 @@ func codeBlockStylerChecks() {
     let spans = InlineTokenizer.spans(in: text)
     LivePreviewStyler.apply(Decorator.decorations(spans: spans, selection: 100..<100), to: storage)
 
-    // 'let' at offset 4 -> background-shaded code region
+    // 'let' at offset 4 -> code region. The slab background is drawn by the
+    // layout fragment (full width), NOT as a per-glyph attribute — per-glyph
+    // backgrounds left gaps between lines and fences.
     let a = storage.attributes(at: 4, effectiveRange: nil)
-    expect(a[.backgroundColor] != nil, "code block has background")
+    expect(a[.backgroundColor] == nil, "no per-glyph background (slab fill instead)")
     let f = a[.font] as? NSFont
     expect(f != nil && f!.pointSize == 14, "code block uses the mono code font size")
 

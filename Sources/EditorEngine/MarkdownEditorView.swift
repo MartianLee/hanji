@@ -14,6 +14,25 @@ final class ClickableTextView: NSTextView {
     }
 }
 
+/// Layout fragment that paints a full-width background behind code-block
+/// paragraphs, so a fenced block reads as one solid slab — leading between
+/// lines, blank lines, and the (marker-hidden) ``` fence lines included.
+final class CodeBlockFragment: NSTextLayoutFragment {
+    override func draw(at point: CGPoint, in context: CGContext) {
+        context.saveGState()
+        context.translateBy(x: point.x, y: point.y)
+        var rect = renderingSurfaceBounds
+        if let width = textLayoutManager?.textContainer?.size.width, width > 0 {
+            rect.origin.x = 0
+            rect.size.width = width
+        }
+        context.setFillColor(NSColor.quaternaryLabelColor.withAlphaComponent(0.5).cgColor)
+        context.fill(rect)
+        context.restoreGState()
+        super.draw(at: point, in: context)
+    }
+}
+
 /// Hosting view for inline widgets that is transparent to hit-testing, so clicks and
 /// scroll fall through to the text view beneath: clicking a rendered block places the
 /// caret in it (revealing the source, like arrow keys do) and scrolling over it scrolls
@@ -67,6 +86,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         context.coordinator.textView = textView
         context.coordinator.renderers = renderers
         context.coordinator.vaultRoot = vaultRoot
+        textView.textLayoutManager?.delegate = context.coordinator
         textView.onClick = { [weak coordinator = context.coordinator] idx in
             coordinator?.toggleCheckbox(at: idx) ?? false
         }
@@ -99,12 +119,15 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
     public func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    public final class Coordinator: NSObject, NSTextViewDelegate {
+    public final class Coordinator: NSObject, NSTextViewDelegate, NSTextLayoutManagerDelegate {
         var parent: MarkdownEditorView
         weak var textView: NSTextView?
         var renderers: RendererRegistry?
         var vaultRoot: URL?
         private var overlays: [String: NSHostingView<AnyView>] = [:]
+        /// Full UTF-16 ranges (incl. fences) of fenced code blocks, kept fresh by
+        /// restyle() for the layout-fragment background fill.
+        private var codeRegions: [Range<Int>] = []
 
         init(_ parent: MarkdownEditorView) {
             self.parent = parent
@@ -131,6 +154,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// Inline styling + caret-aware marker hiding (Live Preview).
         func restyle() {
             guard let textView, let storage = textView.textStorage else { return }
+            codeRegions = CodeBlockParser.regions(in: storage.string).map(\.full)
             let spans = InlineTokenizer.spans(in: storage.string)
             let sel = textView.selectedRange()
             let selection = sel.location..<(sel.location + sel.length)
@@ -286,13 +310,38 @@ public struct MarkdownEditorView: NSViewRepresentable {
             a.lowerBound <= b.upperBound && b.lowerBound <= a.upperBound
         }
 
+        // MARK: NSTextLayoutManagerDelegate — code blocks get a slab background.
+
+        public func textLayoutManager(_ textLayoutManager: NSTextLayoutManager,
+                                      textLayoutFragmentFor location: NSTextLocation,
+                                      in textElement: NSTextElement) -> NSTextLayoutFragment {
+            if let tcs = textLayoutManager.textContentManager as? NSTextContentStorage,
+               let range = textElement.elementRange {
+                let start = tcs.offset(from: tcs.documentRange.location, to: range.location)
+                if codeRegions.contains(where: { $0.contains(start) }) {
+                    return CodeBlockFragment(textElement: textElement, range: textElement.elementRange)
+                }
+            }
+            return NSTextLayoutFragment(textElement: textElement, range: textElement.elementRange)
+        }
+
         public func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
+            lastCaretParagraph = (textView.string as NSString).paragraphRange(for: textView.selectedRange())
             refresh()
         }
 
+        private var lastCaretParagraph: NSRange?
+
         public func textViewDidChangeSelection(_ notification: Notification) {
+            // Marker reveal only depends on which line the caret is on — moving
+            // within a line must not restyle the whole document (it re-laid out
+            // everything and flickered).
+            guard let textView else { return }
+            let paragraph = (textView.string as NSString).paragraphRange(for: textView.selectedRange())
+            if paragraph == lastCaretParagraph { return }
+            lastCaretParagraph = paragraph
             refresh()
         }
     }

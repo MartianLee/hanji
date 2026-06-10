@@ -38,6 +38,7 @@ public enum InlineTokenizer {
                 let markers = [lineStart..<(lineStart + 2)]
                 let content = (lineStart + 2)..<(lineStart + (lineText as NSString).length)
                 result.append(MarkSpan(style: .callout, content: content, markers: markers, line: lineRange))
+                scanInline(lineText as NSString, from: 2, lineStart: lineStart, lineRange: lineRange, into: &result)
             } else {
                 inCallout = false
                 parseLine(lineText as NSString, lineStart: lineStart, lineRange: lineRange, into: &result)
@@ -69,22 +70,35 @@ public enum InlineTokenizer {
                                   into result: inout [MarkSpan]) {
         if let heading = headingSpan(ns, lineStart: lineStart, lineRange: lineRange) {
             result.append(heading)
+            // Inline styles compose with the heading font (trait-based styler).
+            let markerEnd = heading.content.lowerBound - lineStart
+            scanInline(ns, from: markerEnd, lineStart: lineStart, lineRange: lineRange, into: &result)
             return
         }
         if let quote = blockquoteSpan(ns, lineStart: lineStart, lineRange: lineRange) {
             result.append(quote)
+            scanInline(ns, from: 2, lineStart: lineStart, lineRange: lineRange, into: &result)
             return
         }
-        if let task = taskSpan(ns, lineStart: lineStart, lineRange: lineRange) {
+        if let (task, contentOffset) = taskSpan(ns, lineStart: lineStart, lineRange: lineRange) {
             result.append(task)
+            scanInline(ns, from: contentOffset, lineStart: lineStart, lineRange: lineRange, into: &result)
             return
         }
-        if let list = listSpan(ns, lineStart: lineStart, lineRange: lineRange) {
+        if let (list, contentOffset) = listSpan(ns, lineStart: lineStart, lineRange: lineRange) {
             result.append(list)
+            scanInline(ns, from: contentOffset, lineStart: lineStart, lineRange: lineRange, into: &result)
             return
         }
+        scanInline(ns, from: 0, lineStart: lineStart, lineRange: lineRange, into: &result)
+    }
+
+    /// Bold/italic/inline-code/links scanned from `from` (so list bullets,
+    /// quotes, callouts, and tasks style their content like plain lines).
+    private static func scanInline(_ ns: NSString, from: Int, lineStart: Int, lineRange: Range<Int>,
+                                   into result: inout [MarkSpan]) {
         let n = ns.length
-        var i = 0
+        var i = from
         while i < n {
             let c = ns.character(at: i)
             if c == backtick, let (span, next) = codeSpan(ns, from: i, lineStart: lineStart, lineRange: lineRange) {
@@ -125,28 +139,37 @@ public enum InlineTokenizer {
         return MarkSpan(style: .blockquote, content: content, markers: markers, line: lineRange)
     }
 
-    private static func taskSpan(_ ns: NSString, lineStart: Int, lineRange: Range<Int>) -> MarkSpan? {
+    private static func leadingIndent(_ ns: NSString) -> Int {
+        let tab = UInt16(9)
+        var i = 0
+        while i < ns.length, ns.character(at: i) == space || ns.character(at: i) == tab { i += 1 }
+        return i
+    }
+
+    private static func taskSpan(_ ns: NSString, lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {
         let n = ns.length
-        guard n >= 6,
-              ns.character(at: 0) == dash, ns.character(at: 1) == space,
-              ns.character(at: 2) == openBracket, ns.character(at: 4) == closeBracket,
-              ns.character(at: 5) == space else { return nil }
-        let mark = ns.character(at: 3)
+        let base = leadingIndent(ns)
+        guard n >= base + 6,
+              ns.character(at: base) == dash, ns.character(at: base + 1) == space,
+              ns.character(at: base + 2) == openBracket, ns.character(at: base + 4) == closeBracket,
+              ns.character(at: base + 5) == space else { return nil }
+        let mark = ns.character(at: base + 3)
         let done: Bool
         if mark == space { done = false }
         else if mark == xLower || mark == xUpper { done = true }
         else { return nil }
-        let content = (lineStart + 6)..<(lineStart + n)
-        return MarkSpan(style: .task(done), content: content, markers: [], line: lineRange)
+        let content = (lineStart + base + 6)..<(lineStart + n)
+        return (MarkSpan(style: .task(done), content: content, markers: [], line: lineRange), base + 6)
     }
 
-    private static func listSpan(_ ns: NSString, lineStart: Int, lineRange: Range<Int>) -> MarkSpan? {
+    private static func listSpan(_ ns: NSString, lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {
         let n = ns.length
-        guard n >= 2, ns.character(at: 1) == space else { return nil }
-        let c0 = ns.character(at: 0)
+        let base = leadingIndent(ns)
+        guard n >= base + 2, ns.character(at: base + 1) == space else { return nil }
+        let c0 = ns.character(at: base)
         guard c0 == dash || c0 == star || c0 == plus else { return nil }
-        let content = (lineStart + 2)..<(lineStart + n)
-        return MarkSpan(style: .listItem, content: content, markers: [], line: lineRange)
+        let content = (lineStart + base + 2)..<(lineStart + n)
+        return (MarkSpan(style: .listItem, content: content, markers: [], line: lineRange), base + 2)
     }
 
     private static func codeSpan(_ ns: NSString, from start: Int, lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {
