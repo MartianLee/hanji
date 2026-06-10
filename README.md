@@ -33,6 +33,10 @@ with a Swift extension SDK. Design: [`docs/2026-06-06-native-markdown-editor-des
 - **Backlinks panel** — right sidebar lists notes linking to the active note
   (wikilinks + markdown links) with context snippets, live-updating; built as a
   first-party plugin on the SDK’s `MetadataQuerying` surface
+- **Calendar panel** — right-sidebar month view; days with a daily note are
+  dotted, clicking any day opens-or-creates it from your template
+- **Plugin toggles** — Settings ▸ Plugins switches any first-party plugin on or
+  off live, Obsidian-style (persisted per plugin)
 - **Global search (⇧⌘F)** — sidebar search panel over a persistent FTS5 index
   (Korean-friendly trigram matching); results jump the caret to the match. The
   index lives in Application Support and updates incrementally as you edit
