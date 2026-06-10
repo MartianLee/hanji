@@ -18,16 +18,41 @@ final class ClickableTextView: NSTextView {
 /// paragraphs, so a fenced block reads as one solid slab — leading between
 /// lines, blank lines, and the (marker-hidden) ``` fence lines included.
 final class CodeBlockFragment: NSTextLayoutFragment {
+    /// First/last paragraph of the block → rounded top/bottom corners.
+    var roundsTop = false
+    var roundsBottom = false
+
     override func draw(at point: CGPoint, in context: CGContext) {
         context.saveGState()
         context.translateBy(x: point.x, y: point.y)
-        var rect = renderingSurfaceBounds
-        if let width = textLayoutManager?.textContainer?.size.width, width > 0 {
-            rect.origin.x = 0
-            rect.size.width = width
-        }
+        // Fill the whole paragraph frame (not the glyph surface): empty lines
+        // and line leading then read as one continuous slab.
+        let width = textLayoutManager?.textContainer?.size.width ?? renderingSurfaceBounds.width
+        let rect = CGRect(x: 0, y: 0, width: max(width, renderingSurfaceBounds.width),
+                          height: layoutFragmentFrame.height)
+        let radius: CGFloat = 8
+        let path = CGMutablePath()
+        let tl: CGFloat = roundsTop ? radius : 0
+        let tr: CGFloat = roundsTop ? radius : 0
+        let bl: CGFloat = roundsBottom ? radius : 0
+        let br: CGFloat = roundsBottom ? radius : 0
+        path.move(to: CGPoint(x: rect.minX + tl, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - tr, y: rect.minY))
+        if tr > 0 { path.addArc(tangent1End: CGPoint(x: rect.maxX, y: rect.minY),
+                                tangent2End: CGPoint(x: rect.maxX, y: rect.minY + tr), radius: tr) }
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - br))
+        if br > 0 { path.addArc(tangent1End: CGPoint(x: rect.maxX, y: rect.maxY),
+                                tangent2End: CGPoint(x: rect.maxX - br, y: rect.maxY), radius: br) }
+        path.addLine(to: CGPoint(x: rect.minX + bl, y: rect.maxY))
+        if bl > 0 { path.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.maxY),
+                                tangent2End: CGPoint(x: rect.minX, y: rect.maxY - bl), radius: bl) }
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + tl))
+        if tl > 0 { path.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.minY),
+                                tangent2End: CGPoint(x: rect.minX + tl, y: rect.minY), radius: tl) }
+        path.closeSubpath()
+        context.addPath(path)
         context.setFillColor(NSColor.quaternaryLabelColor.withAlphaComponent(0.5).cgColor)
-        context.fill(rect)
+        context.fillPath()
         context.restoreGState()
         super.draw(at: point, in: context)
     }
@@ -318,8 +343,12 @@ public struct MarkdownEditorView: NSViewRepresentable {
             if let tcs = textLayoutManager.textContentManager as? NSTextContentStorage,
                let range = textElement.elementRange {
                 let start = tcs.offset(from: tcs.documentRange.location, to: range.location)
-                if codeRegions.contains(where: { $0.contains(start) }) {
-                    return CodeBlockFragment(textElement: textElement, range: textElement.elementRange)
+                let end = tcs.offset(from: tcs.documentRange.location, to: range.endLocation)
+                if let region = codeRegions.first(where: { $0.contains(start) }) {
+                    let fragment = CodeBlockFragment(textElement: textElement, range: textElement.elementRange)
+                    fragment.roundsTop = start <= region.lowerBound
+                    fragment.roundsBottom = end >= region.upperBound
+                    return fragment
                 }
             }
             return NSTextLayoutFragment(textElement: textElement, range: textElement.elementRange)
