@@ -41,6 +41,8 @@ public extension Notification.Name {
 public protocol EditorContext {
     /// Emits the current document text and every subsequent change.
     var activeText: AnyPublisher<String, Never> { get }
+    /// Vault-relative path of the open note (nil when none).
+    var activeNotePath: AnyPublisher<String?, Never> { get }
 }
 
 /// Capabilities handed to a plugin at activation (M0 subset of PluginHost).
@@ -50,6 +52,7 @@ public protocol PluginHost: AnyObject {
     var renderers: RendererRegistry { get }
     var commands: CommandRegistry { get }
     var workspace: WorkspaceActions { get }
+    var query: MetadataQuerying { get }
 }
 
 /// Surface ①: renders a fenced code block of a given language as a view.
@@ -98,4 +101,26 @@ public protocol WorkspaceActions: AnyObject {
     func openNote(relativePath: String)
     func pickNote(title: String, startingFolder: String?) -> String?
     func promptNewNotePath(suggestedName: String) -> String?
+}
+
+/// One backlink (SDK-owned type — the index implementation stays hidden).
+public struct SDKBacklink: Identifiable {
+    public let sourcePath: String
+    public let sourceTitle: String
+    public let snippet: String
+    public let matchRanges: [Range<Int>]   // UTF-16 ranges inside `snippet`
+    public var id: String { sourcePath }
+    public init(sourcePath: String, sourceTitle: String, snippet: String, matchRanges: [Range<Int>]) {
+        self.sourcePath = sourcePath
+        self.sourceTitle = sourceTitle
+        self.snippet = snippet
+        self.matchRanges = matchRanges
+    }
+}
+
+/// Surface ② (metadata queries): read access to the vault index.
+public protocol MetadataQuerying: AnyObject {
+    func backlinks(toNoteAt relativePath: String) -> [SDKBacklink]
+    /// Fires after the index absorbs changes (debounced upstream).
+    var indexDidUpdate: AnyPublisher<Void, Never> { get }
 }

@@ -51,5 +51,6 @@ runChecks([
     ("SearchQuery", searchQueryChecks),
     ("AppStateSearch", appStateSearchChecks),
     ("LinkTable", linkTableChecks),
+    ("MetadataQuerying", metadataQueryingChecks),
     ("E2E", e2eChecks),
 ])

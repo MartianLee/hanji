@@ -3,9 +3,10 @@ import AppKit
 import UniformTypeIdentifiers
 import Combine
 import ExtensionSDK
+import MKSearchKit
 
 /// Concrete host wiring AppState + PluginManager to the SDK surfaces.
-public final class Host: PluginHost, UIRegistry, EditorContext, CommandRegistry, WorkspaceActions {
+public final class Host: PluginHost, UIRegistry, EditorContext, CommandRegistry, WorkspaceActions, MetadataQuerying {
     private let appState: AppState
     private let pluginManager: PluginManager
 
@@ -20,6 +21,7 @@ public final class Host: PluginHost, UIRegistry, EditorContext, CommandRegistry,
     public var renderers: RendererRegistry { appState.rendererRegistry }
     public var commands: CommandRegistry { self }
     public var workspace: WorkspaceActions { self }
+    public var query: MetadataQuerying { self }
 
     // UIRegistry
     public func addSidebarView(id: String, title: String, _ make: @escaping () -> AnyView) {
@@ -32,6 +34,17 @@ public final class Host: PluginHost, UIRegistry, EditorContext, CommandRegistry,
 
     // EditorContext
     public var activeText: AnyPublisher<String, Never> { appState.$activeText.eraseToAnyPublisher() }
+
+    public var activeNotePath: AnyPublisher<String?, Never> {
+        appState.$selectedFile.combineLatest(appState.$vaultRoot)
+            .map { file, root -> String? in
+                guard let file, let root else { return nil }
+                let prefix = root.standardizedFileURL.path + "/"
+                let path = file.url.standardizedFileURL.path
+                return path.hasPrefix(prefix) ? String(path.dropFirst(prefix.count)) : file.name
+            }
+            .eraseToAnyPublisher()
+    }
 
     // CommandRegistry
     public func register(_ command: Command) { pluginManager.addCommand(command) }
@@ -75,5 +88,19 @@ public final class Host: PluginHost, UIRegistry, EditorContext, CommandRegistry,
         let sep = r.hasSuffix("/") ? r : r + "/"
         guard u.hasPrefix(sep) else { return nil }
         return String(u.dropFirst(sep.count))
+    }
+
+    // MARK: - MetadataQuerying
+
+    public func backlinks(toNoteAt relativePath: String) -> [SDKBacklink] {
+        let hits = (try? appState.searchIndex?.backlinks(of: relativePath)) ?? []
+        return hits.map {
+            SDKBacklink(sourcePath: $0.sourcePath, sourceTitle: $0.sourceTitle,
+                        snippet: $0.snippet, matchRanges: $0.matchRanges)
+        }
+    }
+
+    public var indexDidUpdate: AnyPublisher<Void, Never> {
+        appState.$searchIndexUpdatedAt.map { _ in () }.eraseToAnyPublisher()
     }
 }
