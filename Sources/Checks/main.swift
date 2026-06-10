@@ -46,5 +46,7 @@ runChecks([
     ("HRParser", hrParserChecks),
     ("FontSetting", fontSettingChecks),
     ("SearchIndex", searchIndexChecks),
+    ("SearchReindex", searchReindexChecks),
+    ("SearchQuery", searchQueryChecks),
     ("E2E", e2eChecks),
 ])

@@ -38,4 +38,123 @@ public final class SearchIndex {
                                                in: .userDomainMask)[0]
         return support.appendingPathComponent("hanji/index/\(hex).db")
     }
+
+    // MARK: - Indexing
+
+    /// Index every `.md` under the vault, skipping files whose mtime is
+    /// unchanged. Returns the number of files (re)indexed.
+    @discardableResult
+    public func reindexAll(vault root: URL) throws -> Int {
+        let fm = FileManager.default
+        var seen: Set<String> = []
+        var changed = 0
+        if let en = fm.enumerator(at: root, includingPropertiesForKeys: [.contentModificationDateKey],
+                                  options: [.skipsHiddenFiles]) {
+            for case let url as URL in en where url.pathExtension.lowercased() == "md" {
+                let path = relativePath(of: url, under: root)
+                seen.insert(path)
+                let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                    .contentModificationDate?.timeIntervalSince1970 ?? 0
+                let stored = try dbQueue.read { db in
+                    try Double.fetchOne(db, sql: "SELECT mtime FROM note WHERE path = ?", arguments: [path])
+                }
+                if let stored, abs(stored - mtime) < 0.001 { continue }
+                try upsert(path: path, url: url, mtime: mtime)
+                changed += 1
+            }
+        }
+        // Drop rows for files that no longer exist.
+        let indexed = try dbQueue.read { db in
+            try String.fetchAll(db, sql: "SELECT path FROM note")
+        }
+        let gone = indexed.filter { !seen.contains($0) }
+        if !gone.isEmpty { try remove(paths: gone) }
+        return changed
+    }
+
+    /// Incrementally (re)index specific vault-relative paths; missing files are removed.
+    public func reindex(paths: [String], vault root: URL) throws {
+        for path in paths {
+            let url = root.appendingPathComponent(path)
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                try remove(paths: [path])
+                continue
+            }
+            let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate?.timeIntervalSince1970 ?? 0
+            try upsert(path: path, url: url, mtime: mtime)
+        }
+    }
+
+    public func remove(paths: [String]) throws {
+        try dbQueue.write { db in
+            for path in paths {
+                try db.execute(sql: "DELETE FROM note WHERE path = ?", arguments: [path])
+                try db.execute(sql: "DELETE FROM note_fts WHERE path = ?", arguments: [path])
+            }
+        }
+    }
+
+    public func indexedCount() throws -> Int {
+        try dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM note") ?? 0
+        }
+    }
+
+    private func upsert(path: String, url: URL, mtime: Double) throws {
+        let body = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        let title = url.deletingPathExtension().lastPathComponent
+        try dbQueue.write { db in
+            try db.execute(sql: "INSERT OR REPLACE INTO note (path, title, mtime) VALUES (?, ?, ?)",
+                           arguments: [path, title, mtime])
+            try db.execute(sql: "DELETE FROM note_fts WHERE path = ?", arguments: [path])
+            try db.execute(sql: "INSERT INTO note_fts (path, title, body) VALUES (?, ?, ?)",
+                           arguments: [path, title, body])
+        }
+    }
+
+    private func relativePath(of url: URL, under root: URL) -> String {
+        let r = root.standardizedFileURL.path + "/"
+        let u = url.standardizedFileURL.path
+        return u.hasPrefix(r) ? String(u.dropFirst(r.count)) : url.lastPathComponent
+    }
+
+    // MARK: - Search
+
+    /// Full-text search. Queries of 3+ characters use FTS5 trigram MATCH with
+    /// bm25 ranking; shorter ones fall back to LIKE (substring) so 1–2-char
+    /// Korean queries still work.
+    public func search(_ query: String, limit: Int = 50) throws -> [SearchHit] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return [] }
+        struct Stored { let path: String; let title: String; let body: String; let score: Double }
+        let stored: [Stored]
+        if q.count >= 3 {
+            let match = "\"" + q.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+            stored = try dbQueue.read { db in
+                try Row.fetchAll(db, sql: """
+                    SELECT path, title, body, bm25(note_fts) AS score
+                    FROM note_fts WHERE note_fts MATCH ?
+                    ORDER BY score LIMIT ?
+                    """, arguments: [match, limit])
+                .map { Stored(path: $0["path"], title: $0["title"], body: $0["body"], score: $0["score"]) }
+            }
+        } else {
+            let escaped = q.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "%", with: "\\%")
+                .replacingOccurrences(of: "_", with: "\\_")
+            let like = "%\(escaped)%"
+            stored = try dbQueue.read { db in
+                try Row.fetchAll(db, sql: """
+                    SELECT path, title, body, 0.0 AS score
+                    FROM note_fts
+                    WHERE title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\'
+                    ORDER BY (title LIKE ? ESCAPE '\\') DESC, path LIMIT ?
+                    """, arguments: [like, like, like, limit])
+                .map { Stored(path: $0["path"], title: $0["title"], body: $0["body"], score: $0["score"]) }
+            }
+        }
+        return stored.map { SearchHit.make(path: $0.path, title: $0.title, body: $0.body,
+                                           query: q, score: $0.score) }
+    }
 }
