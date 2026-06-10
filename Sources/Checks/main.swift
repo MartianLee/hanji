@@ -45,6 +45,7 @@ runChecks([
     ("AppStateTree", appStateTreeChecks),
     ("HRParser", hrParserChecks),
     ("FontSetting", fontSettingChecks),
+    ("LinkParser", linkParserChecks),
     ("SearchIndex", searchIndexChecks),
     ("SearchReindex", searchReindexChecks),
     ("SearchQuery", searchQueryChecks),
