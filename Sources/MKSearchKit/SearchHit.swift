@@ -17,17 +17,24 @@ public struct SearchHit: Identifiable {
         let ns = body as NSString
         let match = ns.range(of: query, options: [.caseInsensitive])
         guard match.location != NSNotFound else {
-            // Title-only match: snippet is the body head.
-            let head = ns.substring(to: min(80, ns.length))
+            // Title-only match: snippet is the body head. Snap the cut to a
+            // composed-character boundary so a surrogate pair (e.g. 💯) at the
+            // edge is never split into a malformed string.
+            let headRange = ns.length == 0 ? NSRange(location: 0, length: 0)
+                : ns.rangeOfComposedCharacterSequences(for: NSRange(location: 0, length: min(80, ns.length)))
+            let head = ns.substring(with: headRange)
             return SearchHit(path: path, title: title, snippet: head,
                              matchRanges: [], firstMatchOffset: nil, score: score)
         }
         let start = max(0, match.location - 40)
         let end = min(ns.length, match.location + match.length + 40)
-        var snippet = ns.substring(with: NSRange(location: start, length: end - start))
+        // Snap the ±40 UTF-16 window to composed-character boundaries (emoji etc.
+        // are surrogate pairs — cutting between the halves corrupts the string).
+        let window = ns.rangeOfComposedCharacterSequences(for: NSRange(location: start, length: end - start))
+        var snippet = ns.substring(with: window)
         snippet = snippet.replacingOccurrences(of: "\n", with: " ")
-        if start > 0 { snippet = "…" + snippet }
-        if end < ns.length { snippet += "…" }
+        if window.location > 0 { snippet = "…" + snippet }
+        if NSMaxRange(window) < ns.length { snippet += "…" }
 
         // Highlight every occurrence inside the snippet (cap 5).
         let sns = snippet as NSString

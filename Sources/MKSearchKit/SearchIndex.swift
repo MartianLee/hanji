@@ -48,6 +48,14 @@ public final class SearchIndex {
         let fm = FileManager.default
         var seen: Set<String> = []
         var changed = 0
+        // One read up front instead of a DB roundtrip per file.
+        let storedMtimes: [String: Double] = try dbQueue.read { db in
+            var out: [String: Double] = [:]
+            for row in try Row.fetchAll(db, sql: "SELECT path, mtime FROM note") {
+                out[row["path"]] = row["mtime"]
+            }
+            return out
+        }
         if let en = fm.enumerator(at: root, includingPropertiesForKeys: [.contentModificationDateKey],
                                   options: [.skipsHiddenFiles]) {
             for case let url as URL in en where url.pathExtension.lowercased() == "md" {
@@ -55,10 +63,7 @@ public final class SearchIndex {
                 seen.insert(path)
                 let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
                     .contentModificationDate?.timeIntervalSince1970 ?? 0
-                let stored = try dbQueue.read { db in
-                    try Double.fetchOne(db, sql: "SELECT mtime FROM note WHERE path = ?", arguments: [path])
-                }
-                if let stored, abs(stored - mtime) < 0.001 { continue }
+                if let stored = storedMtimes[path], abs(stored - mtime) < 0.001 { continue }
                 try upsert(path: path, url: url, mtime: mtime)
                 changed += 1
             }
@@ -140,6 +145,9 @@ public final class SearchIndex {
                 .map { Stored(path: $0["path"], title: $0["title"], body: $0["body"], score: $0["score"]) }
             }
         } else {
+            // Deliberate full scan: FTS5 trigram cannot MATCH patterns shorter
+            // than 3 chars, and vault sizes keep a LIKE scan cheap. Do not
+            // "optimize" this to MATCH — it errors on short queries.
             let escaped = q.replacingOccurrences(of: "\\", with: "\\\\")
                 .replacingOccurrences(of: "%", with: "\\%")
                 .replacingOccurrences(of: "_", with: "\\_")

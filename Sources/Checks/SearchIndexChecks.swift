@@ -93,4 +93,16 @@ func searchQueryChecks() {
     // No hits / blank query.
     expect(((try? index.search("zzqqxx")) ?? []).isEmpty, "no false hits")
     expect(((try? index.search("  ")) ?? []).isEmpty, "blank query → empty")
+
+    // Surrogate-pair safety: a 💯 (supplementary plane) sits exactly where the
+    // ±40 snippet window would cut; the snippet must stay a valid string.
+    let pad = String(repeating: "x", count: 39)
+    try? (pad + "💯 unique-needle here").write(to: vault.appendingPathComponent("emoji.md"),
+                                               atomically: true, encoding: .utf8)
+    try? index.reindex(paths: ["emoji.md"], vault: vault)
+    let emoji = (try? index.search("unique-needle")) ?? []
+    expectEqual(emoji.first?.path, "emoji.md", "match next to an emoji boundary")
+    let snip = emoji.first?.snippet ?? ""
+    expect(!snip.unicodeScalars.contains { $0.value == 0xFFFD }, "snippet has no replacement chars")
+    expect(snip.contains("unique-needle"), "snippet contains the match")
 }
