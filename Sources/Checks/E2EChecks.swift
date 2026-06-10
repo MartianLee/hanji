@@ -30,9 +30,17 @@ func e2eChecks() {
 
     // -- App wiring, exactly as HanjiApp does it.
     let appState = AppState(defaults: UserDefaults(suiteName: "mk-e2e-\(UUID().uuidString)")!)
-    let pm = PluginManager()
+    let pm = PluginManager(defaults: UserDefaults(suiteName: "mk-e2e-pm-\(UUID().uuidString)")!)
     let host = Host(appState: appState, pluginManager: pm)
     pm.activate([WordCountPlugin(), PeriodicNotesPlugin()], host: host)
+
+    // 0b. Plugin toggles: disabling removes the plugin's commands, enabling restores.
+    let periodicID = "io.hanji.periodicnotes"
+    let commandCountBefore = pm.commands.count
+    pm.setEnabled(periodicID, false)
+    expectEqual(pm.commands.count, commandCountBefore - 3, "E2E: disable drops the 3 periodic commands")
+    pm.setEnabled(periodicID, true)
+    expectEqual(pm.commands.count, commandCountBefore, "E2E: enable restores them")
 
     // 1. Open the vault: tree, files, and index are populated.
     appState.openVault(at: root)

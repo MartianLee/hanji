@@ -94,7 +94,9 @@ struct HanjiApp: App {
             }
         }
         Settings {
-            SettingsView().environmentObject(appState)
+            SettingsView()
+                .environmentObject(appState)
+                .environmentObject(pluginManager)
         }
     }
 

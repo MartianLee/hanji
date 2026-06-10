@@ -3,6 +3,7 @@ import AppCore
 
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject var pluginManager: PluginManager
 
     var body: some View {
         TabView {
@@ -10,6 +11,8 @@ struct SettingsView: View {
                 .tabItem { Label("Appearance", systemImage: "paintbrush") }
             vaultTab
                 .tabItem { Label("Vault", systemImage: "folder") }
+            pluginsTab
+                .tabItem { Label("Plugins", systemImage: "puzzlepiece.extension") }
         }
         .frame(width: 480, height: 380)
     }
@@ -33,6 +36,29 @@ struct SettingsView: View {
                 Slider(value: $appState.fontSize, in: 12...24, step: 1)
             }
             .padding(.vertical, 4)
+        }
+        .padding(20)
+    }
+
+    /// Obsidian-style plugin toggles (applied live).
+    private var pluginsTab: some View {
+        Form {
+            ForEach(pluginManager.plugins) { plugin in
+                HStack {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(plugin.displayName)
+                        Text(plugin.id).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { pluginManager.isEnabled(plugin.id) },
+                        set: { pluginManager.setEnabled(plugin.id, $0) }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                }
+                .padding(.vertical, 2)
+            }
         }
         .padding(20)
     }
