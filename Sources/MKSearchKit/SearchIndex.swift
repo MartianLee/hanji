@@ -34,6 +34,11 @@ public final class SearchIndex {
                 t.column("offset", .integer).notNull() // UTF-16 offset of the link in source body
             }
             try db.create(indexOn: "link", columns: ["target"])
+            // Force a full re-derive on the next reindex pass: links are
+            // extracted during upsert, and mtime-skip would otherwise leave
+            // pre-v2 rows without link data forever.
+            try db.execute(sql: "DELETE FROM note")
+            try db.execute(sql: "DELETE FROM note_fts")
         }
         try migrator.migrate(dbQueue)
     }
