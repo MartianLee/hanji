@@ -7,11 +7,15 @@ let package = Package(
     products: [
         .executable(name: "hanji", targets: ["HanjiApp"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0")
+    ],
     targets: [
         .target(name: "MarkdownCore"),
         .target(name: "VaultKit", dependencies: ["MarkdownCore"]),
         .target(name: "ExtensionSDK"),
-        .target(name: "AppCore", dependencies: ["VaultKit", "ExtensionSDK"]),
+        .target(name: "MKSearchKit", dependencies: [.product(name: "GRDB", package: "GRDB.swift")]),
+        .target(name: "AppCore", dependencies: ["VaultKit", "ExtensionSDK", "MKSearchKit"]),
         .target(name: "WordCountPlugin", dependencies: ["ExtensionSDK"]),
         .target(name: "CoreRenderers", dependencies: ["ExtensionSDK", "VaultKit", "MarkdownCore"]),
         .target(name: "EditorEngine", dependencies: ["MarkdownCore", "ExtensionSDK"]),
@@ -22,6 +26,6 @@ let package = Package(
             "AppCore", "EditorEngine", "ExtensionSDK", "WordCountPlugin", "CoreRenderers",
             "VaultKit", "MarkdownCore", "TemplateKit", "PeriodicNotesPlugin", "TemplaterPlugin"
         ]),
-        .executableTarget(name: "Checks", dependencies: ["MarkdownCore", "VaultKit", "AppCore", "ExtensionSDK", "WordCountPlugin", "EditorEngine", "TemplateKit", "PeriodicNotesPlugin"]),
+        .executableTarget(name: "Checks", dependencies: ["MarkdownCore", "VaultKit", "AppCore", "ExtensionSDK", "WordCountPlugin", "EditorEngine", "TemplateKit", "PeriodicNotesPlugin", "MKSearchKit"]),
     ]
 )

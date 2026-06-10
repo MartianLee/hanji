@@ -45,5 +45,6 @@ runChecks([
     ("AppStateTree", appStateTreeChecks),
     ("HRParser", hrParserChecks),
     ("FontSetting", fontSettingChecks),
+    ("SearchIndex", searchIndexChecks),
     ("E2E", e2eChecks),
 ])
