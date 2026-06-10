@@ -1,6 +1,7 @@
 import Foundation
 import CryptoKit
 import GRDB
+import MarkdownCore
 
 /// Persistent per-vault full-text index (SQLite + FTS5 trigram via GRDB).
 /// Lives in Application Support — outside the vault, so index writes never
@@ -25,6 +26,14 @@ public final class SearchIndex {
                   path UNINDEXED, title, body, tokenize='trigram'
                 )
                 """)
+        }
+        migrator.registerMigration("v2") { db in
+            try db.create(table: "link") { t in
+                t.column("source", .text).notNull()    // vault-relative path of the linking note
+                t.column("target", .text).notNull()    // normalized: lowercased, .md stripped
+                t.column("offset", .integer).notNull() // UTF-16 offset of the link in source body
+            }
+            try db.create(indexOn: "link", columns: ["target"])
         }
         try migrator.migrate(dbQueue)
     }
@@ -96,6 +105,7 @@ public final class SearchIndex {
             for path in paths {
                 try db.execute(sql: "DELETE FROM note WHERE path = ?", arguments: [path])
                 try db.execute(sql: "DELETE FROM note_fts WHERE path = ?", arguments: [path])
+                try db.execute(sql: "DELETE FROM link WHERE source = ?", arguments: [path])
             }
         }
     }
@@ -115,6 +125,11 @@ public final class SearchIndex {
             try db.execute(sql: "DELETE FROM note_fts WHERE path = ?", arguments: [path])
             try db.execute(sql: "INSERT INTO note_fts (path, title, body) VALUES (?, ?, ?)",
                            arguments: [path, title, body])
+            try db.execute(sql: "DELETE FROM link WHERE source = ?", arguments: [path])
+            for ref in LinkParser.links(in: body) {
+                try db.execute(sql: "INSERT INTO link (source, target, offset) VALUES (?, ?, ?)",
+                               arguments: [path, Self.normalizeTarget(ref.target), ref.range.lowerBound])
+            }
         }
     }
 
@@ -165,4 +180,55 @@ public final class SearchIndex {
         return stored.map { SearchHit.make(path: $0.path, title: $0.title, body: $0.body,
                                            query: q, score: $0.score) }
     }
+
+    // MARK: - Backlinks
+
+    /// Notes whose links resolve to the note at `relativePath` (filename base
+    /// or full relative path, Obsidian-style), one entry per source, with a
+    /// context snippet around the first link.
+    public func backlinks(of relativePath: String) throws -> [Backlink] {
+        let url = URL(fileURLWithPath: "/" + relativePath)   // path math only
+        let base = Self.normalizeTarget(url.deletingPathExtension().lastPathComponent)
+        let full = Self.normalizeTarget(relativePath)
+        let targets = base == full ? [base] : [base, full]
+        let placeholders = targets.map { _ in "?" }.joined(separator: ", ")
+        struct Row0 { let source: String; let title: String; let body: String; let offset: Int }
+        let rows: [Row0] = try dbQueue.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT l.source AS source, n.title AS title, f.body AS body, MIN(l.offset) AS offset
+                FROM link l
+                JOIN note n ON n.path = l.source
+                JOIN note_fts f ON f.path = l.source
+                WHERE l.target IN (\(placeholders))
+                GROUP BY l.source
+                ORDER BY n.title COLLATE NOCASE
+                """, arguments: StatementArguments(targets))
+            .map { Row0(source: $0["source"], title: $0["title"], body: $0["body"], offset: $0["offset"]) }
+        }
+        return rows.map { row in
+            let ns = row.body as NSString
+            let loc = min(max(0, row.offset), max(0, ns.length - 1))
+            let linkRange = NSRange(location: loc, length: 0)
+            let (snippet, ranges) = SnippetWindow.make(body: row.body, around: linkRange,
+                                                       highlight: base)
+            return Backlink(sourcePath: row.source, sourceTitle: row.title,
+                            snippet: snippet, matchRanges: ranges)
+        }
+    }
+
+    static func normalizeTarget(_ raw: String) -> String {
+        var t = raw.trimmingCharacters(in: .whitespaces).lowercased()
+        if t.hasSuffix(".md") { t = String(t.dropLast(3)) }
+        if t.hasPrefix("./") { t = String(t.dropFirst(2)) }
+        return t
+    }
+}
+
+/// One backlink: a note whose body links to the queried note.
+public struct Backlink: Identifiable {
+    public let sourcePath: String
+    public let sourceTitle: String
+    public let snippet: String
+    public let matchRanges: [Range<Int>]
+    public var id: String { sourcePath }
 }

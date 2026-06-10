@@ -141,3 +141,40 @@ func appStateSearchChecks() {
     }
     expectEqual(edited.first?.path, "n.md", "save reindexes the note")
 }
+
+func linkTableChecks() {
+    let fm = FileManager.default
+    let vault = fm.temporaryDirectory.appendingPathComponent("mk-lt-\(UUID().uuidString)")
+    try? fm.createDirectory(at: vault.appendingPathComponent("Projects"), withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: vault) }
+    try? "# Plan\ncontent".write(to: vault.appendingPathComponent("Projects/Plan.md"), atomically: true, encoding: .utf8)
+    try? "허브 노트입니다. [[Plan]] 참고, 그리고 [[Plan|계획]]도."
+        .write(to: vault.appendingPathComponent("Hub.md"), atomically: true, encoding: .utf8)
+    try? "경로로 링크: [전체](Projects/Plan.md)"
+        .write(to: vault.appendingPathComponent("Path.md"), atomically: true, encoding: .utf8)
+    try? "무관한 노트".write(to: vault.appendingPathComponent("Other.md"), atomically: true, encoding: .utf8)
+
+    guard let index = try? SearchIndex(vaultRoot: vault) else { expect(false, "index opens"); return }
+    defer { try? fm.removeItem(at: SearchIndex.indexFileURL(forVault: vault)) }
+    try? index.reindexAll(vault: vault)
+
+    // Backlinks of Projects/Plan.md: Hub (wikilink, filename-base) + Path (full path md link).
+    let back = (try? index.backlinks(of: "Projects/Plan.md")) ?? []
+    expectEqual(back.map(\.sourcePath).sorted(), ["Hub.md", "Path.md"], "filename-base + full-path links found")
+    expect(!back.contains { $0.sourcePath == "Other.md" }, "unrelated note absent")
+
+    // One row per source (Hub links twice), snippet shows context with ranges.
+    let hub = back.first { $0.sourcePath == "Hub.md" }
+    expectEqual(hub?.sourceTitle, "Hub", "source title is filename base")
+    expect(hub?.snippet.contains("[[Plan]]") ?? false, "snippet shows the link context")
+    expect(!(hub?.matchRanges.isEmpty ?? true), "snippet highlight ranges present")
+
+    // Editing the source away removes the backlink; deleting the file too.
+    try? "이제 링크 없음".write(to: vault.appendingPathComponent("Hub.md"), atomically: true, encoding: .utf8)
+    try? index.reindex(paths: ["Hub.md"], vault: vault)
+    let afterEdit = (try? index.backlinks(of: "Projects/Plan.md")) ?? []
+    expect(!afterEdit.contains { $0.sourcePath == "Hub.md" }, "edited-away link gone")
+    try? index.remove(paths: ["Path.md"])
+    let afterRemove = (try? index.backlinks(of: "Projects/Plan.md")) ?? []
+    expect(afterRemove.isEmpty, "removed source drops its links")
+}

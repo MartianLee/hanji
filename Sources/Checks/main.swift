@@ -50,5 +50,6 @@ runChecks([
     ("SearchReindex", searchReindexChecks),
     ("SearchQuery", searchQueryChecks),
     ("AppStateSearch", appStateSearchChecks),
+    ("LinkTable", linkTableChecks),
     ("E2E", e2eChecks),
 ])
