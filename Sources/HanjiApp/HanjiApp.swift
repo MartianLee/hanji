@@ -81,6 +81,11 @@ struct HanjiApp: App {
                     .keyboardShortcut("p", modifiers: .command)
                 Button("Quick Switcher") { uiState.palette = .files }
                     .keyboardShortcut("o", modifiers: .command)
+                Button("Search in Vault") {
+                    uiState.sidebarMode = .search
+                    uiState.searchFocusToken += 1
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
             }
         }
         Settings {

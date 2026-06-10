@@ -39,28 +39,54 @@ struct ContentView: View {
         }
     }
 
+    @ViewBuilder private var modeTabs: some View {
+        HStack(spacing: 14) {
+            modeTab(.files, icon: "doc.text", help: "Files")
+            modeTab(.search, icon: "magnifyingglass", help: "Search (⇧⌘F)")
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(.bar)
+    }
+
+    private func modeTab(_ mode: SidebarMode, icon: String, help: String) -> some View {
+        Button { uiState.sidebarMode = mode } label: {
+            Image(systemName: icon)
+                .foregroundStyle(uiState.sidebarMode == mode ? Color.accentColor : Color.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
     @ViewBuilder private var fileListPane: some View {
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
-                filterField
-                List(selection: $treeSelection) {
-                    treeRows(visibleTree)
-                }
+                modeTabs
                 Divider()
-                // Obsidian-style bottom-left shortcut into Settings.
-                HStack {
-                    SettingsLink {
-                        Image(systemName: "gearshape")
-                            .imageScale(.medium)
+                if uiState.sidebarMode == .search {
+                    SearchPanelView()
+                } else {
+                    filterField
+                    List(selection: $treeSelection) {
+                        treeRows(visibleTree)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .help("Settings")
-                    Spacer()
+                    Divider()
+                    // Obsidian-style bottom-left shortcut into Settings.
+                    HStack {
+                        SettingsLink {
+                            Image(systemName: "gearshape")
+                                .imageScale(.medium)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("Settings")
+                        Spacer()
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.bar)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(.bar)
             }
             .contextMenu {
                 // Right-click on empty tree space: create at the vault root.
