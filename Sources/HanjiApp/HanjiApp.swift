@@ -7,6 +7,7 @@ import PeriodicNotesPlugin
 import TemplaterPlugin
 import CoreRenderers
 import VaultKit
+import BacklinksPlugin
 
 @main
 struct HanjiApp: App {
@@ -38,7 +39,7 @@ struct HanjiApp: App {
                     h.renderers.register(DataviewRenderer(indexProvider: { [weak appState] in
                         appState?.index ?? MetadataIndex()
                     }))
-                    let plugins: [Plugin] = [WordCountPlugin(), PeriodicNotesPlugin(), TemplaterPlugin()]
+                    let plugins: [Plugin] = [WordCountPlugin(), PeriodicNotesPlugin(), TemplaterPlugin(), BacklinksPlugin()]
                     pluginManager.activate(plugins, host: h)
                     // First-party shell command: keyboard-driven move via the folder palette.
                     h.commands.register(Command(id: "file.moveTo", title: "Move note to folder\u{2026}") { [weak uiState, weak appState] in

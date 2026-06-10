@@ -52,5 +52,6 @@ runChecks([
     ("AppStateSearch", appStateSearchChecks),
     ("LinkTable", linkTableChecks),
     ("MetadataQuerying", metadataQueryingChecks),
+    ("BacklinksPlugin", backlinksPluginChecks),
     ("E2E", e2eChecks),
 ])
