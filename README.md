@@ -30,6 +30,9 @@ with a Swift extension SDK. Design: [`docs/2026-06-06-native-markdown-editor-des
   editing). Built-in: **mermaid** diagrams (WKWebView), **Dataview-lite** (`LIST FROM #tag`),
   and a `card` renderer
 - **Inline images** — `![[file]]` / `![alt](path)` rendered from the vault
+- **Backlinks panel** — right sidebar lists notes linking to the active note
+  (wikilinks + markdown links) with context snippets, live-updating; built as a
+  first-party plugin on the SDK’s `MetadataQuerying` surface
 - **Global search (⇧⌘F)** — sidebar search panel over a persistent FTS5 index
   (Korean-friendly trigram matching); results jump the caret to the match. The
   index lives in Application Support and updates incrementally as you edit

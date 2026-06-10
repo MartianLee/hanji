@@ -72,6 +72,12 @@ func e2eChecks() {
     expectEqual(searchHits.first?.path, "Projects/Plan.md", "E2E: global search finds saved note")
     expect(searchHits.first?.firstMatchOffset != nil, "E2E: search hit carries a caret offset")
 
+    // 4c. Backlinks: a hub note linking [[Plan]] shows up as Plan's backlink.
+    try? "허브: [[Plan]] 참고".write(to: root.appendingPathComponent("Hub.md"), atomically: true, encoding: .utf8)
+    try? appState.searchIndex?.reindexAll(vault: root)
+    let planBacklinks = (try? appState.searchIndex?.backlinks(of: "Projects/Plan.md")) ?? []
+    expectEqual(planBacklinks.map(\.sourcePath), ["Hub.md"], "E2E: backlink found via link table")
+
     // 5. ⌘O quick-switcher logic finds it by fuzzy name.
     let hit = FuzzyFilter.filter("plan", appState.files, key: { $0.name }).first
     expectEqual(hit?.name, "Plan.md", "E2E: fuzzy switcher finds the note")
