@@ -15,6 +15,7 @@ func linkParserChecks() {
     expectEqual(targets("[pic](photo.png)"), [], "non-md markdown link skipped")
     expectEqual(targets("```\n[[NotALink]]\n```\n[[Real]]"), ["Real"], "fenced code skipped")
     expectEqual(targets("[[A]] and [[B]]"), ["A", "B"], "multiple links in order")
+    expectEqual(targets("[[Plan.md]]"), ["Plan.md"], "wikilink typed with .md suffix kept raw")
 
     // Ranges are UTF-16 and cover the whole link token.
     let refs = LinkParser.links(in: "한글 [[Plan]] 끝")

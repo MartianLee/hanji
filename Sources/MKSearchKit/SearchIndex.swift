@@ -27,6 +27,8 @@ public final class SearchIndex {
                 )
                 """)
         }
+        // ⚠️ Never edit an applied migration's body — GRDB tracks identifiers
+        // only and silently skips re-runs. Repairs go in a NEW migration.
         migrator.registerMigration("v2") { db in
             try db.create(table: "link") { t in
                 t.column("source", .text).notNull()    // vault-relative path of the linking note
@@ -221,7 +223,7 @@ public final class SearchIndex {
         }
     }
 
-    static func normalizeTarget(_ raw: String) -> String {
+    private static func normalizeTarget(_ raw: String) -> String {
         var t = raw.trimmingCharacters(in: .whitespaces).lowercased()
         if t.hasSuffix(".md") { t = String(t.dropLast(3)) }
         if t.hasPrefix("./") { t = String(t.dropFirst(2)) }
