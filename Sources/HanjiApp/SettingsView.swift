@@ -78,20 +78,25 @@ struct SettingsView: View {
             if appState.recentVaults.isEmpty {
                 Text("None").foregroundStyle(.secondary)
             } else {
-                ForEach(appState.recentVaults, id: \.self) { url in
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(url.lastPathComponent)
-                            Text(url.path).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                // Up to 8 recents — scroll instead of overflowing the fixed window.
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(appState.recentVaults, id: \.self) { url in
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(url.lastPathComponent)
+                                    Text(url.path).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                                Spacer()
+                                Button("Open") { appState.openVault(at: url) }
+                                    .disabled(!FileManager.default.fileExists(atPath: url.path))
+                                Button("Remove") { appState.removeRecent(url) }
+                            }
                         }
-                        Spacer()
-                        Button("Open") { appState.openVault(at: url) }
-                            .disabled(!FileManager.default.fileExists(atPath: url.path))
-                        Button("Remove") { appState.removeRecent(url) }
                     }
                 }
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
         .padding(20)
     }
