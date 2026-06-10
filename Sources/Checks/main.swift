@@ -55,5 +55,6 @@ runChecks([
     ("BacklinksPlugin", backlinksPluginChecks),
     ("PluginToggle", pluginToggleChecks),
     ("CalendarGrid", calendarGridChecks),
+    ("CalendarPlugin", calendarPluginChecks),
     ("E2E", e2eChecks),
 ])

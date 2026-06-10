@@ -1,5 +1,9 @@
 import Foundation
 import CalendarPlugin
+import ExtensionSDK
+import AppCore
+import TemplateKit
+import MKSearchKit
 
 func calendarGridChecks() {
     var sunCal = Calendar(identifier: .gregorian)
@@ -33,4 +37,36 @@ func calendarGridChecks() {
     // Month title is locale-aware.
     let title = CalendarGrid.monthTitle(for: date(2026, 6, 15, sunCal), locale: Locale(identifier: "ko_KR"))
     expect(title.contains("2026") && title.contains("6"), "Korean month title has year+month")
+}
+
+func calendarPluginChecks() {
+    let fm = FileManager.default
+    let vault = fm.temporaryDirectory.appendingPathComponent("mk-cal-\(UUID().uuidString)")
+    let pluginDir = vault.appendingPathComponent(".obsidian/plugins/periodic-notes")
+    try? fm.createDirectory(at: pluginDir, withIntermediateDirectories: true)
+    try? fm.createDirectory(at: vault.appendingPathComponent("Daily"), withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: vault) }
+    try? "{ \"daily\": { \"folder\": \"Daily\", \"format\": \"YYYY-MM-DD\" } }"
+        .write(to: pluginDir.appendingPathComponent("data.json"), atomically: true, encoding: .utf8)
+    try? "# today".write(to: vault.appendingPathComponent("Daily/2026-06-10.md"), atomically: true, encoding: .utf8)
+
+    let appState = AppState(defaults: UserDefaults(suiteName: "mk-cal-\(UUID().uuidString)")!)
+    appState.openVault(at: vault)
+    defer { try? fm.removeItem(at: SearchIndex.indexFileURL(forVault: vault)) }
+    let pm = PluginManager(defaults: UserDefaults(suiteName: "mk-calpm-\(UUID().uuidString)")!)
+    let host = Host(appState: appState, pluginManager: pm)
+    pm.activate([CalendarPlugin()], host: host)
+
+    expectEqual(pm.sidebar.count, 1, "calendar sidebar registered")
+    expectEqual(pm.sidebar.first?.title ?? "", "Calendar", "panel title")
+    expectEqual(CalendarPlugin.displayName, "Calendar", "display name override")
+    _ = pm.sidebar.first?.makeView()
+
+    // The dot predicate the view uses: daily note exists for 2026-06-10, not for 06-11.
+    let cfg = PeriodicConfig.load(vaultRoot: vault)
+    var cal = Calendar(identifier: .gregorian); cal.timeZone = .current
+    let d10 = cal.date(from: DateComponents(year: 2026, month: 6, day: 10))!
+    let d11 = cal.date(from: DateComponents(year: 2026, month: 6, day: 11))!
+    expect(host.workspace.noteExists(relativePath: cfg.notePath(.daily, date: d10)), "dot day detected")
+    expect(!host.workspace.noteExists(relativePath: cfg.notePath(.daily, date: d11)), "non-dot day clean")
 }

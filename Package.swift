@@ -27,7 +27,7 @@ let package = Package(
         .executableTarget(name: "HanjiApp", dependencies: [
             "AppCore", "EditorEngine", "ExtensionSDK", "WordCountPlugin", "CoreRenderers",
             "VaultKit", "MarkdownCore", "TemplateKit", "PeriodicNotesPlugin", "TemplaterPlugin",
-            "MKSearchKit", "BacklinksPlugin"
+            "MKSearchKit", "BacklinksPlugin", "CalendarPlugin"
         ]),
         .executableTarget(name: "Checks", dependencies: ["MarkdownCore", "VaultKit", "AppCore", "ExtensionSDK", "WordCountPlugin", "EditorEngine", "TemplateKit", "PeriodicNotesPlugin", "MKSearchKit", "BacklinksPlugin", "CalendarPlugin"]),
     ]
