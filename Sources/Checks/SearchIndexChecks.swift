@@ -1,5 +1,6 @@
 import Foundation
 import MKSearchKit
+import AppCore
 
 func searchIndexChecks() {
     let fm = FileManager.default
@@ -105,4 +106,38 @@ func searchQueryChecks() {
     let snip = emoji.first?.snippet ?? ""
     expect(!snip.unicodeScalars.contains { $0.value == 0xFFFD }, "snippet has no replacement chars")
     expect(snip.contains("unique-needle"), "snippet contains the match")
+}
+
+func appStateSearchChecks() {
+    let fm = FileManager.default
+    let vault = fm.temporaryDirectory.appendingPathComponent("mk-as-\(UUID().uuidString)")
+    try? fm.createDirectory(at: vault, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: vault) }
+    try? "# Note\nxylophone serenade".write(to: vault.appendingPathComponent("n.md"), atomically: true, encoding: .utf8)
+
+    let state = AppState(defaults: UserDefaults(suiteName: "mk-as-\(UUID().uuidString)")!)
+    state.openVault(at: vault)
+    defer { try? fm.removeItem(at: SearchIndex.indexFileURL(forVault: vault)) }
+    expect(state.searchIndex != nil, "search index opens with the vault")
+
+    // openVault schedules a background reindex; pump until searchable.
+    var hits: [SearchHit] = []
+    let deadline = Date().addingTimeInterval(5)
+    while hits.isEmpty && Date() < deadline {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        hits = (try? state.searchIndex?.search("xylophone")) ?? []
+    }
+    expectEqual(hits.first?.path, "n.md", "vault open indexes existing notes")
+
+    // Saving an edit reindexes incrementally (via scheduleReindex).
+    state.open(state.files[0])
+    state.activeText = "# Note\nquixotic melody"
+    state.save()
+    var edited: [SearchHit] = []
+    let deadline2 = Date().addingTimeInterval(5)
+    while edited.isEmpty && Date() < deadline2 {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        edited = (try? state.searchIndex?.search("quixotic")) ?? []
+    }
+    expectEqual(edited.first?.path, "n.md", "save reindexes the note")
 }

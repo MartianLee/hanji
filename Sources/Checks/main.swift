@@ -48,5 +48,6 @@ runChecks([
     ("SearchIndex", searchIndexChecks),
     ("SearchReindex", searchReindexChecks),
     ("SearchQuery", searchQueryChecks),
+    ("AppStateSearch", appStateSearchChecks),
     ("E2E", e2eChecks),
 ])

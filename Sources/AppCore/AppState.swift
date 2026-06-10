@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import VaultKit
+import MKSearchKit
 
 public final class AppState: ObservableObject {
     @Published public var vaultRoot: URL?
@@ -27,6 +28,10 @@ public final class AppState: ObservableObject {
 
     private var vault: Vault?
     private var watcher: VaultWatcher?
+    public private(set) var searchIndex: SearchIndex?
+    /// Bumps whenever a background reindex completes (search panel refresh hook).
+    @Published public private(set) var searchIndexUpdatedAt = Date()
+    private let searchQueue = DispatchQueue(label: "io.hanji.searchindex", qos: .utility)
     private let defaults: UserDefaults
     private static let recentsKey = "io.hanji.recentVaults"
     private static let treeSortKey = "io.hanji.treeSort"
@@ -55,6 +60,8 @@ public final class AppState: ObservableObject {
         addRecent(root)
         watcher?.stop()
         watcher = VaultWatcher(root: root) { [weak self] in self?.reloadTree() }
+        searchIndex = try? SearchIndex(vaultRoot: root)
+        scheduleReindex()
     }
 
     /// Rebuild tree/files/index from disk (our ops and the FS watcher both call
@@ -68,6 +75,7 @@ public final class AppState: ObservableObject {
             selectedFile = nil
             activeText = ""
         }
+        scheduleReindex()
     }
 
     public func open(_ file: MarkdownFile) {
@@ -78,6 +86,18 @@ public final class AppState: ObservableObject {
     public func save() {
         guard let file = selectedFile, let vault else { return }
         try? vault.write(activeText, to: file)
+        scheduleReindex()
+    }
+
+    /// Background reindex. A full pass with mtime-skip is cheap and
+    /// self-correcting, so every write path and the FS watcher just call this;
+    /// the serial utility queue coalesces bursts.
+    public func scheduleReindex() {
+        guard let index = searchIndex, let root = vaultRoot else { return }
+        searchQueue.async { [weak self] in
+            guard (try? index.reindexAll(vault: root)) != nil else { return }
+            DispatchQueue.main.async { self?.searchIndexUpdatedAt = Date() }
+        }
     }
 
     // MARK: - Recent vaults
