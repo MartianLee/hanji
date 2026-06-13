@@ -52,3 +52,56 @@ func autosaveChecks() {
     s.flushPendingSave()
     expect(!s.isDirty, "still clean after no-op flush")
 }
+
+func conflictChecks() {
+    let vault = tempVault("mk-conflict")
+    defer { cleanup(vault) }
+    let aURL = vault.appendingPathComponent("A.md")
+    try? "v1".write(to: aURL, atomically: true, encoding: .utf8)
+
+    let s = newState(vault)
+    guard let a = s.files.first(where: { $0.name == "A.md" }) else { expect(false, "A found"); return }
+    s.open(a)
+
+    // Clean buffer + external change → silent reload.
+    try? "external v2".write(to: aURL, atomically: true, encoding: .utf8)
+    s.reloadTree()
+    expect(s.externalConflict == nil, "clean buffer does not raise a conflict")
+    expectEqual(s.activeText, "external v2", "clean buffer reloaded from disk")
+    expect(!s.isDirty, "reloaded buffer is clean")
+
+    // Our own write does NOT raise a false conflict.
+    s.activeText = "my v3"
+    s.flushPendingSave()
+    s.reloadTree()
+    expect(s.externalConflict == nil, "our own save is not a conflict")
+    expectEqual(s.activeText, "my v3", "buffer unchanged after own-write reload")
+
+    // Dirty buffer + external change → conflict, autosave paused.
+    s.activeText = "my v4 (unsaved)"
+    expect(s.isDirty, "dirty before external change")
+    try? "external v4".write(to: aURL, atomically: true, encoding: .utf8)
+    s.reloadTree()
+    expectEqual(s.externalConflict, "external v4", "conflict captured disk version")
+    expectEqual(s.activeText, "my v4 (unsaved)", "my edits preserved during conflict")
+    s.flushPendingSave()   // paused — must not write
+    let duringConflict = try? String(contentsOf: aURL, encoding: .utf8)
+    expectEqual(duringConflict, "external v4", "autosave paused during conflict")
+
+    // Resolve: keep mine → my buffer written over disk, conflict cleared.
+    s.resolveConflictKeepingMine()
+    expect(s.externalConflict == nil, "conflict cleared after keep-mine")
+    let kept = try? String(contentsOf: aURL, encoding: .utf8)
+    expectEqual(kept, "my v4 (unsaved)", "keep-mine wrote my version to disk")
+    expect(!s.isDirty, "clean after keep-mine flush")
+
+    // Resolve: reload from disk → buffer replaced, conflict cleared.
+    s.activeText = "my v5 (unsaved)"
+    try? "external v5".write(to: aURL, atomically: true, encoding: .utf8)
+    s.reloadTree()
+    expectEqual(s.externalConflict, "external v5", "second conflict raised")
+    s.resolveConflictReloadingDisk()
+    expect(s.externalConflict == nil, "conflict cleared after reload")
+    expectEqual(s.activeText, "external v5", "reload took the disk version")
+    expect(!s.isDirty, "clean after reload")
+}

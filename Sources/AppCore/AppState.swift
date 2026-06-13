@@ -90,6 +90,18 @@ public final class AppState: ObservableObject {
             selectedFile = nil
             activeText = ""
         }
+        // Detect external edits to the open note (content-based, so our own
+        // writes — where diskText == savedText — never raise a conflict).
+        if let file = selectedFile, FileManager.default.fileExists(atPath: file.url.path),
+           let diskText = try? vault?.read(file), diskText != savedText {
+            if isDirty {
+                conflictPaused = true
+                externalConflict = diskText        // banner; autosave paused
+            } else {
+                activeText = diskText               // clean buffer → silent reload
+                savedText = diskText
+            }
+        }
         scheduleReindex()
     }
 
@@ -289,5 +301,25 @@ public final class AppState: ObservableObject {
         if let f = files.first(where: { $0.url.standardizedFileURL == target }) { open(f); return }
         if let v = vault { files = (try? v.markdownFiles()) ?? files }
         if let f = files.first(where: { $0.url.standardizedFileURL == target }) { open(f) }
+    }
+
+    // MARK: - Conflict resolution
+
+    /// Conflict banner: discard my unsaved edits and take the on-disk version.
+    public func resolveConflictReloadingDisk() {
+        guard let diskText = externalConflict else { return }
+        activeText = diskText
+        savedText = diskText
+        externalConflict = nil
+        conflictPaused = false
+    }
+
+    /// Conflict banner: keep my edits and write them over the on-disk version.
+    public func resolveConflictKeepingMine() {
+        guard let diskText = externalConflict else { return }
+        savedText = diskText                        // now activeText != savedText → dirty
+        externalConflict = nil
+        conflictPaused = false
+        flushPendingSave()                          // write my version to disk
     }
 }

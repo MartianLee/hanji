@@ -4,6 +4,7 @@ runChecks([
     ("MetadataIndex", metadataIndexChecks),
     ("AppState", appStateChecks),
     ("Autosave", autosaveChecks),
+    ("Conflict", conflictChecks),
     ("PluginLoop", pluginLoopChecks),
     ("WordCounter", wordCounterChecks),
     ("Tokenizer", tokenizerChecks),
