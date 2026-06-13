@@ -44,6 +44,7 @@ runChecks([
     ("VaultWatcher", vaultWatcherChecks),
     ("AppStateTree", appStateTreeChecks),
     ("HRParser", hrParserChecks),
+    ("Frontmatter", frontmatterChecks),
     ("FontSetting", fontSettingChecks),
     ("LinkParser", linkParserChecks),
     ("SearchIndex", searchIndexChecks),
