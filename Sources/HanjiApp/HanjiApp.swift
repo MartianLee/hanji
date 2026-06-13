@@ -37,8 +37,8 @@ struct HanjiApp: App {
                     host = h   // retain for the app's lifetime
                     h.renderers.register(CardRenderer())
                     h.renderers.register(MermaidRenderer())
-                    h.renderers.register(DataviewRenderer(indexProvider: { [weak appState] in
-                        appState?.index ?? MetadataIndex()
+                    h.renderers.register(DataviewRenderer(query: { [weak appState] parsed in
+                        (try? appState?.searchIndex?.dataview(parsed)) ?? []
                     }))
                     let plugins: [any Plugin] = [WordCountPlugin(), PeriodicNotesPlugin(), TemplaterPlugin(), BacklinksPlugin(), CalendarPlugin()]
                     pluginManager.activate(plugins, host: h)

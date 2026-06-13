@@ -86,6 +86,15 @@ func e2eChecks() {
     let planBacklinks = (try? appState.searchIndex?.backlinks(of: "Projects/Plan.md")) ?? []
     expectEqual(planBacklinks.map(\.sourcePath), ["Hub.md"], "E2E: backlink found via link table")
 
+    // 4d. Dataview: frontmatter fields queryable as a TABLE.
+    try? "---\nstatus: active\npriority: 5\n---\n#dv one".write(to: root.appendingPathComponent("DV1.md"), atomically: true, encoding: .utf8)
+    try? "---\nstatus: done\npriority: 1\n---\n#dv two".write(to: root.appendingPathComponent("DV2.md"), atomically: true, encoding: .utf8)
+    try? appState.searchIndex?.reindexAll(vault: root)
+    let dvq = DataviewQuery.parse("TABLE status FROM #dv WHERE priority > 2")!
+    let dv = (try? appState.searchIndex?.dataview(dvq)) ?? []
+    expectEqual(dv.map(\.title), ["DV1"], "E2E: dataview TABLE filters by frontmatter")
+    expectEqual(dv.first?.values.first ?? nil, "active", "E2E: column value")
+
     // 5. ⌘O quick-switcher logic finds it by fuzzy name.
     let hit = FuzzyFilter.filter("plan", appState.files, key: { $0.name }).first
     expectEqual(hit?.name, "Plan.md", "E2E: fuzzy switcher finds the note")

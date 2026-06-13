@@ -1,42 +1,91 @@
 import SwiftUI
 import ExtensionSDK
-import VaultKit
 import MarkdownCore
 
-/// Dataview-lite renderer: supports `LIST FROM #tag`, rendering the titles of
-/// notes carrying that tag (read from the current metadata index).
+/// Renders a ```dataview block: LIST as bullets, TABLE as a grid. Queries run
+/// through a closure so this stays decoupled from the index implementation.
 public struct DataviewRenderer: CodeBlockRenderer {
     public let language = "dataview"
-    private let indexProvider: () -> MetadataIndex
+    let runQuery: (DataviewQuery.Parsed) -> [DataviewQuery.ResultRow]
 
-    public init(indexProvider: @escaping () -> MetadataIndex) {
-        self.indexProvider = indexProvider
+    public init(query: @escaping (DataviewQuery.Parsed) -> [DataviewQuery.ResultRow]) {
+        self.runQuery = query
     }
 
     public func makeView(source: String) -> AnyView {
-        guard let tag = DataviewQuery.tagForListQuery(source) else {
-            return AnyView(
-                Text("Unsupported query — Dataview-lite supports: LIST FROM #tag")
-                    .font(.callout).foregroundColor(.secondary)
-                    .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.08)))
-            )
+        guard let parsed = DataviewQuery.parse(source) else {
+            return AnyView(DataviewErrorView(source: source))
         }
-        let results = indexProvider().notes(withTag: tag)
-        return AnyView(
-            VStack(alignment: .leading, spacing: 4) {
-                Text("LIST FROM #\(tag)").font(.caption).foregroundColor(.secondary)
-                if results.isEmpty {
-                    Text("(no results)").foregroundColor(.secondary)
-                } else {
-                    ForEach(results, id: \.path) { note in
-                        Text("• \(note.title)")
-                    }
+        let rows = runQuery(parsed)
+        switch parsed.kind {
+        case .list:
+            return AnyView(DataviewListView(rows: rows))
+        case .table:
+            return AnyView(DataviewTableView(columns: parsed.columns, rows: rows))
+        }
+    }
+}
+
+struct DataviewListView: View {
+    let rows: [DataviewQuery.ResultRow]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if rows.isEmpty {
+                Text("No results").font(.callout).foregroundStyle(.secondary)
+            } else {
+                ForEach(rows) { row in
+                    Text("•  \(row.title)").font(.callout)
                 }
             }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.08)))
-        )
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+}
+
+struct DataviewTableView: View {
+    let columns: [String]
+    let rows: [DataviewQuery.ResultRow]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if rows.isEmpty {
+                Text("No results").font(.callout).foregroundStyle(.secondary).padding(10)
+            } else {
+                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
+                    GridRow {
+                        Text("File").font(.caption.bold())
+                        ForEach(columns, id: \.self) { Text($0).font(.caption.bold()) }
+                    }
+                    Divider()
+                    ForEach(rows) { row in
+                        GridRow {
+                            Text(row.title).font(.callout).lineLimit(1)
+                            ForEach(Array(row.values.enumerated()), id: \.offset) { _, v in
+                                Text(v ?? "—").font(.callout).monospacedDigit().lineLimit(1)
+                            }
+                        }
+                    }
+                }
+                .padding(10)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+}
+
+struct DataviewErrorView: View {
+    let source: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Dataview: 구문을 이해하지 못했어요").font(.caption).foregroundStyle(.red)
+            Text(source.trimmingCharacters(in: .whitespacesAndNewlines))
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .textBackgroundColor))
     }
 }

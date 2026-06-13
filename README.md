@@ -27,7 +27,7 @@ with a Swift extension SDK. Design: [`docs/2026-06-06-native-markdown-editor-des
   the host↔plugin loop
 - **Extensible code-block renderers** (`CodeBlockRenderer` SDK surface): fenced blocks
   render as inline widgets that reserve their own height (raw source revealed while
-  editing). Built-in: **mermaid** diagrams (WKWebView), **Dataview-lite** (`LIST FROM #tag`),
+  editing). Built-in: **mermaid** diagrams (WKWebView), **Dataview** (`LIST`/`TABLE` with `FROM #tag`/`"folder"`, `WHERE`, `SORT`, frontmatter fields + `file.name`/`file.mtime`),
   and a `card` renderer
 - **Inline images** — `![[file]]` / `![alt](path)` rendered from the vault
 - **Backlinks panel** — right sidebar lists notes linking to the active note
