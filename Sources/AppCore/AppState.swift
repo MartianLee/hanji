@@ -61,6 +61,7 @@ public final class AppState: ObservableObject {
     }
 
     public func openVault(at root: URL) {
+        flushPendingSave()                       // don't lose edits when switching vaults
         let v = Vault(root: root)
         vault = v
         vaultRoot = root
@@ -91,8 +92,11 @@ public final class AppState: ObservableObject {
             activeText = ""
         }
         // Detect external edits to the open note (content-based, so our own
-        // writes — where diskText == savedText — never raise a conflict).
-        if let file = selectedFile, FileManager.default.fileExists(atPath: file.url.path),
+        // writes — where diskText == savedText — never raise a conflict). Skip
+        // while a conflict is already on screen so a second watcher fire can't
+        // swap the banner's version out from under the user mid-resolution.
+        if externalConflict == nil,
+           let file = selectedFile, FileManager.default.fileExists(atPath: file.url.path),
            let diskText = try? vault?.read(file), diskText != savedText {
             if isDirty {
                 conflictPaused = true

@@ -51,6 +51,15 @@ func autosaveChecks() {
     expect(!s.isDirty, "reopened clean")
     s.flushPendingSave()
     expect(!s.isDirty, "still clean after no-op flush")
+
+    // Switching vaults flushes the outgoing edit too (no data loss).
+    s.activeText = "alpha edited before vault switch"
+    let vault2 = tempVault("mk-autosave2")
+    defer { cleanup(vault2) }
+    try? "other".write(to: vault2.appendingPathComponent("C.md"), atomically: true, encoding: .utf8)
+    s.openVault(at: vault2)
+    let aAfterVaultSwitch = try? String(contentsOf: vault.appendingPathComponent("A.md"), encoding: .utf8)
+    expectEqual(aAfterVaultSwitch, "alpha edited before vault switch", "switching vaults saved the edit")
 }
 
 func conflictChecks() {
@@ -87,6 +96,11 @@ func conflictChecks() {
     s.flushPendingSave()   // paused — must not write
     let duringConflict = try? String(contentsOf: aURL, encoding: .utf8)
     expectEqual(duringConflict, "external v4", "autosave paused during conflict")
+
+    // A second watcher fire mid-conflict must NOT swap the banner's version.
+    try? "external v4-newer".write(to: aURL, atomically: true, encoding: .utf8)
+    s.reloadTree()
+    expectEqual(s.externalConflict, "external v4", "conflict version is stable across re-fires")
 
     // Resolve: keep mine → my buffer written over disk, conflict cleared.
     s.resolveConflictKeepingMine()
