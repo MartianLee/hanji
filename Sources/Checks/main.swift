@@ -24,6 +24,7 @@ runChecks([
     ("ImageParser", imageParserChecks),
     ("Tags", tagsChecks),
     ("DataviewQuery", dataviewQueryChecks),
+    ("DataviewParse", dataviewParseChecks),
     ("IndexTags", indexTagsChecks),
     ("MomentFormat", momentFormatChecks),
     ("TemplateEngine", templateEngineChecks),
