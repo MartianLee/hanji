@@ -48,8 +48,14 @@ func dataviewParseChecks() {
     expect(DataviewQuery.parse("LIST FROM proj") == nil, "bare FROM target")
     expect(DataviewQuery.parse("TABLE a WHERE b ~ 2") == nil, "unknown operator")
 
-    // Legacy wrapper unchanged.
+    // A quoted value containing " and " is one condition, not split.
+    let quoted = DataviewQuery.parse("TABLE x WHERE project = \"Design and Research\"")
+    expectEqual(quoted?.conditions.count, 1, "quoted AND not split")
+    expectEqual(quoted?.conditions.first, DataviewQuery.Condition(field: "project", op: .eq, value: "Design and Research"), "quoted value intact")
+
+    // Legacy wrapper unchanged (tags normalized lowercase per index contract).
     expectEqual(DataviewQuery.tagForListQuery("LIST FROM #proj"), "proj", "legacy wrapper")
+    expectEqual(DataviewQuery.tagForListQuery("LIST FROM #MyTag"), "mytag", "wrapper lowercases tag")
     expect(DataviewQuery.tagForListQuery("TABLE foo") == nil, "wrapper rejects table")
 }
 

@@ -38,6 +38,10 @@ public enum DataviewQuery {
         }
     }
 
+    // `\b…\b` protects compound names (sort_order, transformer), but a column or
+    // field literally named `from`/`where`/`sort` is read as the clause keyword
+    // and the query fails to parse (renderer shows an error widget) — acceptable
+    // for the subset; revisit with a real tokenizer if it bites.
     private static let shape = try! NSRegularExpression(
         pattern: #"^\s*(LIST|TABLE)\b(.*?)(?:\bFROM\b(.*?))?(?:\bWHERE\b(.*?))?(?:\bSORT\b(.*?))?\s*$"#,
         options: [.caseInsensitive, .dotMatchesLineSeparators])
@@ -75,7 +79,7 @@ public enum DataviewQuery {
 
         var conditions: [Condition] = []
         if let wherePart = group(4), !wherePart.isEmpty {
-            for clause in splitCaseInsensitive(wherePart, on: " AND ") {
+            for clause in splitConditions(wherePart) {
                 guard let cond = parseCondition(clause) else { return nil }
                 conditions.append(cond)
             }
@@ -114,14 +118,26 @@ public enum DataviewQuery {
         return nil
     }
 
-    private static func splitCaseInsensitive(_ s: String, on separator: String) -> [String] {
+    /// Split a WHERE clause on " AND " (case-insensitive) that occurs OUTSIDE a
+    /// double-quoted value, so `project = "Design and Research"` stays one clause.
+    private static func splitConditions(_ s: String) -> [String] {
+        let chars = Array(s)
         var parts: [String] = []
-        var rest = Substring(s)
-        while let r = rest.range(of: separator, options: [.caseInsensitive]) {
-            parts.append(String(rest[..<r.lowerBound]))
-            rest = rest[r.upperBound...]
+        var start = 0
+        var i = 0
+        var inQuote = false
+        while i < chars.count {
+            if chars[i] == "\"" { inQuote.toggle(); i += 1; continue }
+            if !inQuote, i + 5 <= chars.count,
+               String(chars[i..<i + 5]).caseInsensitiveCompare(" and ") == .orderedSame {
+                parts.append(String(chars[start..<i]))
+                i += 5
+                start = i
+                continue
+            }
+            i += 1
         }
-        parts.append(String(rest))
+        parts.append(String(chars[start..<chars.count]))
         return parts
     }
 
