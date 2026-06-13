@@ -146,3 +146,44 @@ title, `file.mtime` → `YYYY-MM-DD` via MomentFormat-style formatting in Swift.
 OR/parentheses, functions (`date()`, `length()`), GROUP BY, task queries,
 inline `key:: value` fields, clickable rows, live table refresh on index
 update without a note re-render.
+
+## 5. Performance (measured/analyzed 2026-06-14)
+
+Variables: N = notes, F = `field` rows, T = `tag` rows, C = notes matched by
+`FROM`, f_c = field rows of those candidates, k = WHERE conditions, R = result
+rows, cols = TABLE columns. `dataview(_:)` runs in `SearchIndex.swift`.
+
+Per-query cost, by phase:
+
+| Phase | Code | Time | Space |
+|---|---|---|---|
+| Source filter — `FROM #tag` | `JOIN tag` (tag(tag) index, note.path PK) | O(log T + C·log N) | O(C) |
+| Source filter — folder / all | `note` scan (LIKE prefix not index-optimized) | O(N) | O(C) |
+| Field fetch | `SELECT … FROM field WHERE path IN (…)` — **no `field(path)` index → full scan** | **O(F)** | O(f_c) |
+| fieldMap build | dictionary fill | O(f_c) | O(f_c) |
+| WHERE filter | numeric if both `Double`, else CI string; missing field ⇒ false | O(C·k) | — |
+| SORT | `sorted`; `sortValue` recomputed per comparison (not memoized) | O(R log R) | — |
+| Render | `Grid` (eager, not lazy) + synchronous `fittingSize` height reserve | O(R·cols) | O(R·cols) |
+
+**Total: time O(F + N + R·log R); space O(C + f_c + R).** The field fetch is
+O(F) (not O(C)) because `field` is indexed on `key`, not `path`.
+
+**Decision — no optimization for v1.** A full scan of F = 10,000 small SQLite
+rows is ~1–3 ms (SQLite scans millions of rows/sec); negligible even though the
+complexity is O(F) rather than O(C). Optimization is deferred until vaults reach
+hundreds of thousands of field rows or tens of thousands of notes.
+
+Structural notes for that future scale (tracked, NOT fixed now):
+1. `dataview` runs on the **main thread** via `makeView`, re-executed on every
+   note re-render, **no result cache** — the first thing to bite under repeated
+   edits on a large query.
+2. `WHERE path IN (…)` binds one placeholder per candidate; a broad source
+   (`FROM` omitted / large folder) on a vault exceeding
+   `SQLITE_MAX_VARIABLE_NUMBER` (~32,766 on current macOS SQLite) makes the
+   query **throw → empty result**. Batch the IN-list or use a temp table.
+3. Add migration v4 index `field(path)` (and `tag(path)`) → field fetch becomes
+   O(C·log F + f_c); also speeds the upsert/remove deletes.
+4. `Tags.extract` scans the whole body **including fenced code blocks**, so a
+   note whose `dataview` block literally contains `#tag` is tagged with it
+   (observed: a `LIST FROM #proj` dashboard lists itself). Skip fences in tag
+   extraction.
