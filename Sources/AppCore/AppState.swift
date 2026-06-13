@@ -8,6 +8,11 @@ public final class AppState: ObservableObject {
     @Published public var files: [MarkdownFile] = []
     @Published public var selectedFile: MarkdownFile?
     @Published public var activeText: String = ""
+    /// Disk baseline of the open note; the buffer is dirty when it differs.
+    @Published public var savedText: String = ""
+    /// External (on-disk) version of the open note awaiting conflict resolution.
+    @Published public var externalConflict: String? = nil
+    public var isDirty: Bool { activeText != savedText }
     @Published public var index: MetadataIndex = MetadataIndex()
     @Published public var recentVaults: [URL] = []
     @Published public var pendingCursorOffset: Int?
@@ -28,6 +33,9 @@ public final class AppState: ObservableObject {
 
     private var vault: Vault?
     private var watcher: VaultWatcher?
+    private var autosaveCancellable: AnyCancellable?
+    private var conflictPaused = false
+    private let autosaveInterval: TimeInterval
     public private(set) var searchIndex: SearchIndex?
     /// Bumps whenever a background reindex completes (search panel refresh hook).
     @Published public private(set) var searchIndexUpdatedAt = Date()
@@ -37,8 +45,9 @@ public final class AppState: ObservableObject {
     private static let treeSortKey = "io.hanji.treeSort"
     private static let fontSizeKey = "io.hanji.fontSize"
 
-    public init(defaults: UserDefaults = .standard) {
+    public init(defaults: UserDefaults = .standard, autosaveInterval: TimeInterval = 0.8) {
         self.defaults = defaults
+        self.autosaveInterval = autosaveInterval
         let paths = (defaults.array(forKey: Self.recentsKey) as? [String]) ?? []
         recentVaults = paths.map { URL(fileURLWithPath: $0) }
         if let raw = defaults.string(forKey: Self.treeSortKey), let sort = TreeSort(rawValue: raw) {
@@ -46,6 +55,9 @@ public final class AppState: ObservableObject {
         }
         let storedSize = defaults.double(forKey: Self.fontSizeKey)
         if storedSize >= 10 && storedSize <= 30 { fontSize = storedSize }
+        autosaveCancellable = $activeText
+            .debounce(for: .seconds(autosaveInterval), scheduler: RunLoop.main)
+            .sink { [weak self] _ in self?.flushPendingSave() }
     }
 
     public func openVault(at root: URL) {
@@ -57,6 +69,9 @@ public final class AppState: ObservableObject {
         index = (try? MetadataIndex.build(from: v)) ?? MetadataIndex()
         selectedFile = nil
         activeText = ""
+        savedText = ""
+        externalConflict = nil
+        conflictPaused = false
         addRecent(root)
         watcher?.stop()
         watcher = VaultWatcher(root: root) { [weak self] in self?.reloadTree() }
@@ -79,13 +94,24 @@ public final class AppState: ObservableObject {
     }
 
     public func open(_ file: MarkdownFile) {
+        flushPendingSave()                       // don't lose edits on the previous note
         selectedFile = file
-        activeText = (try? vault?.read(file)) ?? ""
+        let text = (try? vault?.read(file)) ?? ""
+        activeText = text
+        savedText = text
+        externalConflict = nil
+        conflictPaused = false
     }
 
-    public func save() {
-        guard let file = selectedFile, let vault else { return }
+    /// Toolbar/menu "Save" — writes only if there are unsaved changes.
+    public func save() { flushPendingSave() }
+
+    /// Write the buffer if dirty and not paused for a conflict. Safe to call
+    /// directly (tests, note switch, quit); idempotent when clean.
+    public func flushPendingSave() {
+        guard !conflictPaused, isDirty, let file = selectedFile, let vault else { return }
         try? vault.write(activeText, to: file)
+        savedText = activeText
         scheduleReindex()
     }
 

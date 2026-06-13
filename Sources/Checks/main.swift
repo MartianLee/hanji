@@ -3,6 +3,7 @@ runChecks([
     ("Vault", vaultChecks),
     ("MetadataIndex", metadataIndexChecks),
     ("AppState", appStateChecks),
+    ("Autosave", autosaveChecks),
     ("PluginLoop", pluginLoopChecks),
     ("WordCounter", wordCounterChecks),
     ("Tokenizer", tokenizerChecks),
