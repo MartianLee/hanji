@@ -1,5 +1,6 @@
 import Foundation
 import MKSearchKit
+import MarkdownCore
 import AppCore
 
 func searchIndexChecks() {
@@ -177,4 +178,45 @@ func linkTableChecks() {
     try? index.remove(paths: ["Path.md"])
     let afterRemove = (try? index.backlinks(of: "Projects/Plan.md")) ?? []
     expect(afterRemove.isEmpty, "removed source drops its links")
+}
+
+func dataviewExecChecks() {
+    let fm = FileManager.default
+    let vault = fm.temporaryDirectory.appendingPathComponent("mk-dv-\(UUID().uuidString)")
+    try? fm.createDirectory(at: vault.appendingPathComponent("Projects"), withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: vault) }
+    try? "---\nstatus: active\npriority: 3\n---\n#proj alpha".write(to: vault.appendingPathComponent("Projects/Alpha.md"), atomically: true, encoding: .utf8)
+    try? "---\nstatus: done\npriority: 10\n---\n#proj beta".write(to: vault.appendingPathComponent("Projects/Beta.md"), atomically: true, encoding: .utf8)
+    try? "---\nstatus: active\npriority: 2\n---\n#proj 감마".write(to: vault.appendingPathComponent("Gamma.md"), atomically: true, encoding: .utf8)
+    try? "no tag, no fields".write(to: vault.appendingPathComponent("Plain.md"), atomically: true, encoding: .utf8)
+
+    guard let index = try? SearchIndex(vaultRoot: vault) else { expect(false, "index opens"); return }
+    defer { try? fm.removeItem(at: SearchIndex.indexFileURL(forVault: vault)) }
+    try? index.reindexAll(vault: vault)
+
+    // TABLE … FROM #tag WHERE … SORT … (numeric compare + desc).
+    let q = DataviewQuery.parse("TABLE status, priority FROM #proj WHERE priority >= 2 AND status != \"done\" SORT priority DESC")!
+    let rows = (try? index.dataview(q)) ?? []
+    expectEqual(rows.map(\.title), ["Alpha", "Gamma"], "filtered + numeric sort desc")
+    expectEqual(rows.first?.values, ["active", "3"], "column values aligned")
+
+    // Folder source.
+    let folder = DataviewQuery.parse("LIST FROM \"Projects\"")!
+    expectEqual((try? index.dataview(folder))?.map(\.title).sorted(), ["Alpha", "Beta"], "folder source")
+
+    // All source + missing field ⇒ condition false.
+    let all = DataviewQuery.parse("TABLE status WHERE status = \"active\"")!
+    expectEqual((try? index.dataview(all))?.count, 2, "missing-field notes excluded")
+
+    // Built-ins: sort by file.mtime works; file.name column resolves.
+    let builtin = DataviewQuery.parse("TABLE file.name FROM #proj SORT file.mtime ASC")!
+    let b = (try? index.dataview(builtin)) ?? []
+    expectEqual(b.count, 3, "builtin query returns all tagged")
+    expectEqual(b.first?.values.first ?? nil, b.first?.title, "file.name column mirrors title")
+
+    // Editing away the tag drops the note from results.
+    try? "no more tag".write(to: vault.appendingPathComponent("Gamma.md"), atomically: true, encoding: .utf8)
+    try? index.reindex(paths: ["Gamma.md"], vault: vault)
+    let after = (try? index.dataview(DataviewQuery.parse("LIST FROM #proj")!)) ?? []
+    expect(!after.contains { $0.title == "Gamma" }, "reindex removes stale tag rows")
 }

@@ -53,6 +53,7 @@ runChecks([
     ("SearchQuery", searchQueryChecks),
     ("AppStateSearch", appStateSearchChecks),
     ("LinkTable", linkTableChecks),
+    ("DataviewExec", dataviewExecChecks),
     ("MetadataQuerying", metadataQueryingChecks),
     ("BacklinksPlugin", backlinksPluginChecks),
     ("PluginToggle", pluginToggleChecks),

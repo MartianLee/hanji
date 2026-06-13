@@ -42,6 +42,22 @@ public final class SearchIndex {
             try db.execute(sql: "DELETE FROM note")
             try db.execute(sql: "DELETE FROM note_fts")
         }
+        migrator.registerMigration("v3") { db in
+            try db.create(table: "tag") { t in
+                t.column("path", .text).notNull()
+                t.column("tag", .text).notNull()      // lowercased, no '#'
+            }
+            try db.create(table: "field") { t in
+                t.column("path", .text).notNull()
+                t.column("key", .text).notNull()      // lowercased
+                t.column("value", .text).notNull()
+            }
+            try db.create(indexOn: "tag", columns: ["tag"])
+            try db.create(indexOn: "field", columns: ["key"])
+            // Backfill: force re-derive (mtime-skip would starve the new tables).
+            try db.execute(sql: "DELETE FROM note")
+            try db.execute(sql: "DELETE FROM note_fts")
+        }
         try migrator.migrate(dbQueue)
     }
 
@@ -113,6 +129,8 @@ public final class SearchIndex {
                 try db.execute(sql: "DELETE FROM note WHERE path = ?", arguments: [path])
                 try db.execute(sql: "DELETE FROM note_fts WHERE path = ?", arguments: [path])
                 try db.execute(sql: "DELETE FROM link WHERE source = ?", arguments: [path])
+                try db.execute(sql: "DELETE FROM tag WHERE path = ?", arguments: [path])
+                try db.execute(sql: "DELETE FROM field WHERE path = ?", arguments: [path])
             }
         }
     }
@@ -136,6 +154,16 @@ public final class SearchIndex {
             for ref in LinkParser.links(in: body) {
                 try db.execute(sql: "INSERT INTO link (source, target, offset) VALUES (?, ?, ?)",
                                arguments: [path, Self.normalizeTarget(ref.target), ref.range.lowerBound])
+            }
+            try db.execute(sql: "DELETE FROM tag WHERE path = ?", arguments: [path])
+            try db.execute(sql: "DELETE FROM field WHERE path = ?", arguments: [path])
+            for tag in Tags.extract(from: body) {
+                try db.execute(sql: "INSERT INTO tag (path, tag) VALUES (?, ?)",
+                               arguments: [path, tag.lowercased()])
+            }
+            for (key, value) in Frontmatter.parse(body) {
+                try db.execute(sql: "INSERT INTO field (path, key, value) VALUES (?, ?, ?)",
+                               arguments: [path, key, value])
             }
         }
     }
@@ -228,6 +256,110 @@ public final class SearchIndex {
         if t.hasSuffix(".md") { t = String(t.dropLast(3)) }
         if t.hasPrefix("./") { t = String(t.dropFirst(2)) }
         return t
+    }
+
+    // MARK: - Dataview
+
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    /// Execute a parsed dataview query: source filter → WHERE → SORT.
+    public func dataview(_ query: DataviewQuery.Parsed) throws -> [DataviewQuery.ResultRow] {
+        struct Candidate { let path: String; let title: String; let mtime: Double; var fields: [String: String] }
+        var candidates: [Candidate] = try dbQueue.read { db in
+            let rows: [Row]
+            switch query.source {
+            case .tag(let tag):
+                rows = try Row.fetchAll(db, sql: """
+                    SELECT n.path AS path, n.title AS title, n.mtime AS mtime
+                    FROM note n JOIN tag t ON t.path = n.path WHERE t.tag = ?
+                    """, arguments: [tag.lowercased()])
+            case .folder(let folder):
+                let escaped = folder.replacingOccurrences(of: "\\", with: "\\\\")
+                    .replacingOccurrences(of: "%", with: "\\%")
+                    .replacingOccurrences(of: "_", with: "\\_")
+                rows = try Row.fetchAll(db, sql: """
+                    SELECT path, title, mtime FROM note WHERE path LIKE ? ESCAPE '\\'
+                    """, arguments: [escaped + "/%"])
+            case .all:
+                rows = try Row.fetchAll(db, sql: "SELECT path, title, mtime FROM note")
+            }
+            return rows.map { Candidate(path: $0["path"], title: $0["title"], mtime: $0["mtime"], fields: [:]) }
+        }
+        guard !candidates.isEmpty else { return [] }
+
+        let fieldRows: [(String, String, String)] = try dbQueue.read { db in
+            try Row.fetchAll(db, sql: "SELECT path, key, value FROM field")
+                .map { ($0["path"], $0["key"], $0["value"]) }
+        }
+        var fieldMap: [String: [String: String]] = [:]
+        for (path, key, value) in fieldRows { fieldMap[path, default: [:]][key] = value }
+        for i in candidates.indices { candidates[i].fields = fieldMap[candidates[i].path] ?? [:] }
+
+        func value(_ c: Candidate, _ key: String) -> String? {
+            switch key {
+            case "file.name": return c.title
+            case "file.mtime": return Self.dayFormatter.string(from: Date(timeIntervalSince1970: c.mtime))
+            default: return c.fields[key]
+            }
+        }
+
+        let filtered = candidates.filter { c in
+            query.conditions.allSatisfy { cond in
+                guard let lhs = value(c, cond.field) else { return false }   // missing field ⇒ false
+                if let ln = Double(lhs), let rn = Double(cond.value) {
+                    switch cond.op {
+                    case .eq: return ln == rn
+                    case .ne: return ln != rn
+                    case .lt: return ln < rn
+                    case .le: return ln <= rn
+                    case .gt: return ln > rn
+                    case .ge: return ln >= rn
+                    }
+                }
+                let cmp = lhs.caseInsensitiveCompare(cond.value)
+                switch cond.op {
+                case .eq: return cmp == .orderedSame
+                case .ne: return cmp != .orderedSame
+                case .lt: return cmp == .orderedAscending
+                case .le: return cmp != .orderedDescending
+                case .gt: return cmp == .orderedDescending
+                case .ge: return cmp != .orderedAscending
+                }
+            }
+        }
+
+        let sortField = query.sort?.field ?? "file.name"
+        let ascending = query.sort?.ascending ?? true
+        func sortValue(_ c: Candidate) -> (Double?, String) {
+            if sortField == "file.mtime" { return (c.mtime, "") }
+            let v = value(c, sortField) ?? ""
+            return (Double(v), v.lowercased())
+        }
+        let sorted = filtered.sorted { a, b in
+            let av = sortValue(a), bv = sortValue(b)
+            let comparison: ComparisonResult
+            if let an = av.0, let bn = bv.0 {
+                comparison = an == bn ? .orderedSame : (an < bn ? .orderedAscending : .orderedDescending)
+            } else if av.1 != bv.1 {
+                comparison = av.1 < bv.1 ? .orderedAscending : .orderedDescending
+            } else {
+                comparison = .orderedSame
+            }
+            if comparison == .orderedSame {
+                return a.title.lowercased() < b.title.lowercased()   // stable tiebreak
+            }
+            return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
+        }
+
+        return sorted.map { c in
+            DataviewQuery.ResultRow(path: c.path, title: c.title,
+                                    values: query.columns.map { value(c, $0) })
+        }
     }
 }
 
