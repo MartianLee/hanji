@@ -292,8 +292,13 @@ public final class SearchIndex {
         }
         guard !candidates.isEmpty else { return [] }
 
+        // Scope the field read to the candidate paths so a small FROM result
+        // doesn't materialize the whole vault's fields.
+        let candidatePaths = candidates.map { $0.path }
+        let placeholders = candidatePaths.map { _ in "?" }.joined(separator: ",")
         let fieldRows: [(String, String, String)] = try dbQueue.read { db in
-            try Row.fetchAll(db, sql: "SELECT path, key, value FROM field")
+            try Row.fetchAll(db, sql: "SELECT path, key, value FROM field WHERE path IN (\(placeholders))",
+                             arguments: StatementArguments(candidatePaths))
                 .map { ($0["path"], $0["key"], $0["value"]) }
         }
         var fieldMap: [String: [String: String]] = [:]
