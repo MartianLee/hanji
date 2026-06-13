@@ -393,6 +393,17 @@ struct ContentView: View {
     @ViewBuilder private var editorPane: some View {
         VStack(spacing: 0) {
             if appState.selectedFile != nil {
+                if appState.externalConflict != nil {
+                    HStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        Text("This note changed on disk.")
+                        Spacer()
+                        Button("Reload from disk") { appState.resolveConflictReloadingDisk() }
+                        Button("Keep my edits") { appState.resolveConflictKeepingMine() }
+                    }
+                    .padding(8)
+                    .background(Color.orange.opacity(0.15))
+                }
                 MarkdownEditorView(text: $appState.activeText, renderers: appState.rendererRegistry, vaultRoot: appState.vaultRoot, cursorOffset: $appState.pendingCursorOffset, fontSize: CGFloat(appState.fontSize))
             } else {
                 Text("Open a vault, then select a note")

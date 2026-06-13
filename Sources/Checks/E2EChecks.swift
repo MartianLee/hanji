@@ -95,6 +95,23 @@ func e2eChecks() {
     expectEqual(dv.map(\.title), ["DV1"], "E2E: dataview TABLE filters by frontmatter")
     expectEqual(dv.first?.values.first ?? nil, "active", "E2E: column value")
 
+    // 4e. External-edit reload: a clean buffer picks up an on-disk change.
+    let extReloadNote = root.appendingPathComponent("Ext.md")
+    try? "before".write(to: extReloadNote, atomically: true, encoding: .utf8)
+    appState.reloadTree()
+    if let ext = appState.files.first(where: { $0.name == "Ext.md" }) {
+        appState.open(ext)
+        expectEqual(appState.activeText, "before", "E2E: opened external note")
+        try? "after (external)".write(to: extReloadNote, atomically: true, encoding: .utf8)
+        appState.reloadTree()
+        expectEqual(appState.activeText, "after (external)", "E2E: clean buffer reloaded external edit")
+        expect(appState.externalConflict == nil, "E2E: no conflict for clean buffer")
+    } else {
+        expect(false, "E2E: Ext.md indexed")
+    }
+    // Restore the open note to Plan.md so subsequent steps behave as before.
+    if let plan = appState.files.first(where: { $0.name == "Plan.md" }) { appState.open(plan) }
+
     // 5. ⌘O quick-switcher logic finds it by fuzzy name.
     let hit = FuzzyFilter.filter("plan", appState.files, key: { $0.name }).first
     expectEqual(hit?.name, "Plan.md", "E2E: fuzzy switcher finds the note")

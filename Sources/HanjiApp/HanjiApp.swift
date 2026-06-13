@@ -20,6 +20,7 @@ struct HanjiApp: App {
     // so without a strong reference here the Host would deallocate after activation and
     // every command would become a silent no-op.
     @State private var host: AppCore.Host?
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -28,6 +29,9 @@ struct HanjiApp: App {
                 .environmentObject(pluginManager)
                 .environmentObject(uiState)
                 .frame(minWidth: 900, minHeight: 560)
+                .onChange(of: scenePhase) { _, phase in
+                    if phase != .active { appState.flushPendingSave() }
+                }
                 .onAppear {
                     NSApp.setActivationPolicy(.regular)
                     NSApp.activate(ignoringOtherApps: true)
