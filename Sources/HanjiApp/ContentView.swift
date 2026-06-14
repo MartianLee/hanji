@@ -452,7 +452,7 @@ struct ContentView: View {
             }
             .padding()
         }
-        .frame(minWidth: 220)
+        .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 320)
     }
 
     @ViewBuilder private var paletteOverlay: some View {

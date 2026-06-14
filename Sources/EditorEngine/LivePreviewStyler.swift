@@ -134,10 +134,9 @@ public enum LivePreviewStyler {
             let p = bodyParagraph()
             p.lineHeightMultiple = 1.2   // code reads better a touch tighter
             p.paragraphSpacing = 0
-            p.firstLineHeadIndent = 12   // text floats inside the slab
-            p.headIndent = 12
-            // Background comes from CodeBlockFragment (full-width slab), not
-            // per-glyph backgroundColor — that left gaps between lines/fences.
+            // No head indent: code aligns with body text (an indent here read as
+            // an unwanted leading space). Background comes from CodeBlockFragment
+            // (full-width slab), not per-glyph backgroundColor.
             return [.font: NSFont.monospacedSystemFont(ofSize: baseFontSize - 1, weight: .regular),
                     .paragraphStyle: p]
         case .callout:
