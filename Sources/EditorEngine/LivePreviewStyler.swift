@@ -154,4 +154,36 @@ public enum LivePreviewStyler {
         let hi = max(lo, min(r.upperBound, length))
         return NSRange(location: lo, length: hi - lo)
     }
+
+    /// Syntax-highlight palette (system colors adapt to light/dark).
+    static func codeColor(_ kind: CodeHighlighter.TokenKind) -> NSColor {
+        switch kind {
+        case .keyword: return .systemPink
+        case .type:    return .systemTeal
+        case .string:  return .systemGreen
+        case .number:  return .systemOrange
+        case .comment: return .secondaryLabelColor
+        }
+    }
+
+    /// Add foreground colors to syntax tokens inside each code block's body.
+    /// Runs after `apply` (which resets colors), leaving the mono font + slab
+    /// background untouched. `regions` come from `CodeBlockParser.regions`.
+    public static func highlightCode(_ regions: [CodeBlockRegion], in storage: NSTextStorage) {
+        let ns = storage.string as NSString
+        storage.beginEditing()
+        for region in regions where region.body.upperBound > region.body.lowerBound {
+            let loc = region.body.lowerBound
+            let len = region.body.upperBound - region.body.lowerBound
+            guard loc >= 0, loc + len <= ns.length else { continue }
+            let body = ns.substring(with: NSRange(location: loc, length: len))
+            for token in CodeHighlighter.tokens(in: body, language: region.language) {
+                let r = NSRange(location: loc + token.range.lowerBound,
+                                length: token.range.upperBound - token.range.lowerBound)
+                guard r.location >= 0, r.location + r.length <= ns.length else { continue }
+                storage.addAttribute(.foregroundColor, value: codeColor(token.kind), range: r)
+            }
+        }
+        storage.endEditing()
+    }
 }

@@ -18,6 +18,7 @@ runChecks([
     ("ListTaskStyler", listTaskStylerChecks),
     ("CodeBlockTokenizer", codeBlockTokenizerChecks),
     ("CodeBlockStyler", codeBlockStylerChecks),
+    ("CodeHighlightStyler", codeHighlightStylerChecks),
     ("CodeBlockRegion", codeBlockRegionChecks),
     ("RendererRegistry", rendererRegistryChecks),
     ("TaskToggle", taskToggleChecks),

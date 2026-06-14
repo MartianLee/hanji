@@ -179,12 +179,14 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// Inline styling + caret-aware marker hiding (Live Preview).
         func restyle() {
             guard let textView, let storage = textView.textStorage else { return }
-            codeRegions = CodeBlockParser.regions(in: storage.string).map(\.full)
+            let regions = CodeBlockParser.regions(in: storage.string)
+            codeRegions = regions.map(\.full)
             let spans = InlineTokenizer.spans(in: storage.string)
             let sel = textView.selectedRange()
             let selection = sel.location..<(sel.location + sel.length)
             let deco = Decorator.decorations(spans: spans, selection: selection)
             LivePreviewStyler.apply(deco, to: storage)
+            LivePreviewStyler.highlightCode(regions, in: storage)
         }
 
         /// Toggle a task checkbox if the click landed on one. Returns true if handled.

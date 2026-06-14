@@ -40,6 +40,9 @@ with a Swift extension SDK. Design: [`docs/2026-06-06-native-markdown-editor-des
 - **Global search (⇧⌘F)** — sidebar search panel over a persistent FTS5 index
   (Korean-friendly trigram matching); results jump the caret to the match. The
   index lives in Application Support and updates incrementally as you edit
+- **Code highlighting** — fenced blocks are syntax-colored (keywords, strings,
+  comments, numbers) for Swift, JS/TS, Python, JSON, and shell, with a C-like
+  fallback for other languages
 
 ## Build & run
 
