@@ -21,15 +21,28 @@ final class CodeBlockFragment: NSTextLayoutFragment {
     /// First/last paragraph of the block → rounded top/bottom corners.
     var roundsTop = false
     var roundsBottom = false
+    /// Text-container width, set by the layout delegate so the slab fills the
+    /// whole code column (not just the glyph extent).
+    var fillWidth: CGFloat = 0
+
+    /// TextKit 2 clips fragment drawing to this rect, so expand it to the full
+    /// code column — otherwise the slab is cut to each line's glyph width.
+    override var renderingSurfaceBounds: CGRect {
+        let base = super.renderingSurfaceBounds
+        guard fillWidth > 0 else { return base }
+        let originX = layoutFragmentFrame.origin.x
+        return CGRect(x: -originX, y: 0, width: fillWidth, height: layoutFragmentFrame.height)
+            .union(base)
+    }
 
     override func draw(at point: CGPoint, in context: CGContext) {
         context.saveGState()
         context.translateBy(x: point.x, y: point.y)
-        // Fill the whole paragraph frame (not the glyph surface): empty lines
-        // and line leading then read as one continuous slab.
-        let width = textLayoutManager?.textContainer?.size.width ?? renderingSurfaceBounds.width
-        let rect = CGRect(x: 0, y: 0, width: max(width, renderingSurfaceBounds.width),
-                          height: layoutFragmentFrame.height)
+        // Span the full container width: `point` is in container coordinates, so
+        // container x=0 sits at local x = -point.x; the slab then runs the whole
+        // code column (empty lines and line leading included, top/bottom rounded).
+        let width = fillWidth > 0 ? fillWidth : renderingSurfaceBounds.width
+        let rect = CGRect(x: -point.x, y: 0, width: width, height: layoutFragmentFrame.height)
         let radius: CGFloat = 8
         let path = CGMutablePath()
         let tl: CGFloat = roundsTop ? radius : 0
@@ -51,7 +64,10 @@ final class CodeBlockFragment: NSTextLayoutFragment {
                                 tangent2End: CGPoint(x: rect.minX + tl, y: rect.minY), radius: tl) }
         path.closeSubpath()
         context.addPath(path)
-        context.setFillColor(NSColor.quaternaryLabelColor.withAlphaComponent(0.5).cgColor)
+        // Solid, appearance-aware code background: a dark slab so light text
+        // reads in dark mode, a light slab so dark text reads in light mode.
+        let isDark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        context.setFillColor(isDark ? CGColor(gray: 0.17, alpha: 1.0) : CGColor(gray: 0.95, alpha: 1.0))
         context.fillPath()
         context.restoreGState()
         super.draw(at: point, in: context)
@@ -350,6 +366,12 @@ public struct MarkdownEditorView: NSViewRepresentable {
                     let fragment = CodeBlockFragment(textElement: textElement, range: textElement.elementRange)
                     fragment.roundsTop = start <= region.lowerBound
                     fragment.roundsBottom = end >= region.upperBound
+                    // Container width from the view bounds (reliable post-layout;
+                    // the TLM's container can report 0 during the delegate call).
+                    if let tv = textView {
+                        let cw = textLayoutManager.textContainer?.size.width ?? 0
+                        fragment.fillWidth = cw > 0 ? cw : tv.bounds.width - tv.textContainerInset.width * 2
+                    }
                     return fragment
                 }
             }
