@@ -129,7 +129,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         context.coordinator.vaultRoot = vaultRoot
         textView.textLayoutManager?.delegate = context.coordinator
         textView.onClick = { [weak coordinator = context.coordinator] idx in
-            coordinator?.toggleCheckbox(at: idx) ?? false
+            coordinator?.handleClick(at: idx) ?? false
         }
         context.coordinator.refresh()
         return scroll
@@ -169,6 +169,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// Full UTF-16 ranges (incl. fences) of fenced code blocks, kept fresh by
         /// restyle() for the layout-fragment background fill.
         private var codeRegions: [Range<Int>] = []
+        /// UTF-16 ranges currently shown as rendered widgets (code renderers,
+        /// images, HR), kept fresh by updateWidgets() so a click on one snaps the
+        /// caret to the block start instead of a hit-test guess on collapsed text.
+        private var widgetRegions: [Range<Int>] = []
 
         init(_ parent: MarkdownEditorView) {
             self.parent = parent
@@ -215,6 +219,22 @@ public struct MarkdownEditorView: NSViewRepresentable {
             return true
         }
 
+        /// Handle a mouse click before NSTextView's default caret placement.
+        /// Checkbox toggles win first; a click on a rendered widget snaps the
+        /// caret to the block's first line (so revealing the source is
+        /// predictable, not a hit-test guess against the collapsed text behind
+        /// the overlay). Returns true when handled (skip the default placement).
+        func handleClick(at index: Int) -> Bool {
+            if toggleCheckbox(at: index) { return true }
+            if let region = widgetRegions.first(where: { $0.lowerBound <= index && index < $0.upperBound }),
+               let textView {
+                textView.window?.makeFirstResponder(textView)
+                textView.setSelectedRange(NSRange(location: region.lowerBound, length: 0))
+                return true
+            }
+            return false
+        }
+
         /// Render block widgets (code-block renderers + images) as inline overlays,
         /// reserving the height each needs and hiding the raw source behind them.
         func updateWidgets() {
@@ -240,6 +260,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
             }
             specs.append(contentsOf: imageWidgets(caret: caret, nstext: nstext))
             specs.append(contentsOf: hrWidgets(caret: caret, nstext: nstext))
+            widgetRegions = specs.map(\.region)   // for click-to-reveal caret snapping
 
             let inset = textView.textContainerInset.width
             let width = max(50, textView.bounds.width - inset * 2)
