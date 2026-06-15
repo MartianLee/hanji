@@ -82,6 +82,12 @@ struct HanjiApp: App {
                     .keyboardShortcut("z", modifiers: [.command, .option])
                     .disabled(!appState.canUndoFileOperation)
             }
+            CommandGroup(after: .saveItem) {
+                Button("Close Tab") {
+                    if let id = appState.activeTabID { appState.closeTab(id) }
+                }
+                .keyboardShortcut("w", modifiers: .command)
+            }
             CommandGroup(after: .sidebar) {
                 Button("Toggle Right Sidebar") { uiState.rightSidebarVisible.toggle() }
                     .keyboardShortcut("b", modifiers: [.command, .option])

@@ -392,6 +392,7 @@ struct ContentView: View {
 
     @ViewBuilder private var editorPane: some View {
         VStack(spacing: 0) {
+            TabBarView()
             if let selected = appState.selectedFile {
                 // Obsidian-style inline title: editable; committing renames the file.
                 InlineTitleView(fileURL: selected.url, rename: { newName in
