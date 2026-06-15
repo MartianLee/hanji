@@ -4,6 +4,7 @@ runChecks([
     ("MetadataIndex", metadataIndexChecks),
     ("AppState", appStateChecks),
     ("Tabs", tabChecks),
+    ("TabReload", tabReloadChecks),
     ("Autosave", autosaveChecks),
     ("Conflict", conflictChecks),
     ("PluginLoop", pluginLoopChecks),

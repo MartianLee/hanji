@@ -86,35 +86,50 @@ public final class AppState: ObservableObject {
     }
 
     /// Rebuild tree/files/index from disk (our ops and the FS watcher both call
-    /// this; it is idempotent). Clears the editor if the open note disappeared.
+    /// this; it is idempotent). Reconciles every open tab against disk.
     public func reloadTree() {
         guard let v = vault else { return }
         tree = (try? v.tree(sort: treeSort)) ?? []
         files = (try? v.markdownFiles()) ?? files
-        // NOTE: the in-memory MetadataIndex is no longer read at runtime (Dataview
-        // uses the SQLite searchIndex). Rebuilding it here read EVERY file's
-        // content on every change — a main-thread freeze on iCloud vaults — so it
-        // is intentionally not rebuilt in this hot path.
-        if let sel = selectedFile, !FileManager.default.fileExists(atPath: sel.url.path) {
-            selectedFile = nil
-            activeText = ""
+        reconcileTabs()
+        scheduleReindex()
+    }
+
+    /// Reconcile every open tab against disk after an FS change: close tabs whose
+    /// file vanished; for surviving tabs detect external edits (the active tab
+    /// uses the live working fields, others their snapshot).
+    private func reconcileTabs() {
+        guard let vault else { return }
+        let fm = FileManager.default
+        for gone in tabs.filter({ !fm.fileExists(atPath: $0.file.url.path) }) {
+            removeTabSilently(gone.id)
         }
-        // Detect external edits to the open note (content-based, so our own
-        // writes — where diskText == savedText — never raise a conflict). Skip
-        // while a conflict is already on screen so a second watcher fire can't
-        // swap the banner's version out from under the user mid-resolution.
-        if externalConflict == nil,
-           let file = selectedFile, FileManager.default.fileExists(atPath: file.url.path),
-           let diskText = try? vault?.read(file), diskText != savedText {
-            if isDirty {
-                conflictPaused = true
-                externalConflict = diskText        // banner; autosave paused
+        for idx in tabs.indices {
+            let isActive = tabs[idx].id == activeTabID
+            let baseline = isActive ? savedText : tabs[idx].savedText
+            guard let disk = try? vault.read(tabs[idx].file), disk != baseline else { continue }
+            let alreadyConflicting = isActive ? (externalConflict != nil) : (tabs[idx].externalConflict != nil)
+            if alreadyConflicting { continue }
+            let dirty = isActive ? isDirty : tabs[idx].isDirty
+            if dirty {
+                if isActive { conflictPaused = true; externalConflict = disk }
+                else { tabs[idx].externalConflict = disk }
             } else {
-                activeText = diskText               // clean buffer → silent reload
-                savedText = diskText
+                if isActive { activeText = disk; savedText = disk }
+                else { tabs[idx].text = disk; tabs[idx].savedText = disk }
             }
         }
-        scheduleReindex()
+    }
+
+    /// Remove a tab without saving (its file is gone); reactivate a neighbor.
+    private func removeTabSilently(_ id: UUID) {
+        guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let wasActive = id == activeTabID
+        tabs.remove(at: idx)
+        if wasActive {
+            if let next = tabs[safe: idx] ?? tabs.last { activeTabID = next.id; hydrate(from: next) }
+            else { clearActive() }
+        }
     }
 
     /// Open the note a wiki/markdown link targets (filename base or vault-relative

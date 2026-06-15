@@ -60,3 +60,31 @@ func tabChecks() {
     expectEqual(s.selectedFile?.name, "Renamed.md", "active file renamed in place")
     expectEqual(s.tabs.first?.file.name, "Renamed.md", "tab file renamed in place")
 }
+
+func tabReloadChecks() {
+    let vault = tabVault()
+    defer { tabCleanup(vault) }
+    let s = tabState(vault)
+    guard let a = s.files.first(where: { $0.name == "A.md" }),
+          let b = s.files.first(where: { $0.name == "B.md" }) else { expect(false, "files"); return }
+    s.open(a); s.open(b)   // A inactive (clean, flushed), B active
+
+    // External edit to an inactive, clean tab → silent reload into its snapshot.
+    try? "alpha external".write(to: vault.appendingPathComponent("A.md"), atomically: true, encoding: .utf8)
+    s.reloadTree()
+    let aTab = s.tabs.first { $0.file.name == "A.md" }
+    expectEqual(aTab?.text, "alpha external", "inactive clean tab reloaded from disk")
+    expect(aTab?.externalConflict == nil, "no conflict for clean inactive tab")
+    expect(s.externalConflict == nil, "active B unaffected")
+
+    // External edit conflicting with the ACTIVE tab's unsaved buffer → banner.
+    s.activeText = "beta unsaved"
+    try? "beta external".write(to: vault.appendingPathComponent("B.md"), atomically: true, encoding: .utf8)
+    s.reloadTree()
+    expectEqual(s.externalConflict, "beta external", "active dirty tab raises a conflict")
+
+    // A vanished file closes its tab.
+    try? FileManager.default.removeItem(at: vault.appendingPathComponent("A.md"))
+    s.reloadTree()
+    expect(!s.tabs.contains { $0.file.name == "A.md" }, "vanished file's tab closed")
+}

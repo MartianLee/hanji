@@ -121,9 +121,11 @@ func e2eChecks() {
     _ = try? appState.move(root.appendingPathComponent("Welcome.md"), into: projects)
     expect(fm.fileExists(atPath: root.appendingPathComponent("Projects/Welcome.md").path), "E2E: note moved into folder")
 
-    // 6. Delete the open note → editor cleared, tree updated.
+    // 6. Delete the open note → its tab is closed (neighbor activated or editor
+    // cleared when no tabs remain), tree updated.
     appState.delete(note!.deletingLastPathComponent().appendingPathComponent("Plan.md"))
-    expect(appState.selectedFile == nil, "E2E: deleting open note clears editor")
+    expect(!appState.tabs.contains { $0.file.name == "Plan.md" }, "E2E: deleting open note closes its tab")
+    expect(appState.selectedFile?.name != "Plan.md", "E2E: Plan.md no longer selected after delete")
     expect(!fm.fileExists(atPath: root.appendingPathComponent("Projects/Plan.md").path), "E2E: note gone from vault")
 
     // 6b. Duplicate a note, then undo the duplication (⌥⌘Z path).
