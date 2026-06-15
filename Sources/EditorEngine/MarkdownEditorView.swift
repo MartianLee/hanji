@@ -92,14 +92,18 @@ public struct MarkdownEditorView: NSViewRepresentable {
     public var vaultRoot: URL?
     @Binding public var cursorOffset: Int?
     public var fontSize: CGFloat
+    /// Called when a wiki/markdown link is clicked, with the raw link target.
+    public var onOpenLink: ((String) -> Void)?
 
     public init(text: Binding<String>, renderers: RendererRegistry? = nil, vaultRoot: URL? = nil,
-                cursorOffset: Binding<Int?> = .constant(nil), fontSize: CGFloat = 15) {
+                cursorOffset: Binding<Int?> = .constant(nil), fontSize: CGFloat = 15,
+                onOpenLink: ((String) -> Void)? = nil) {
         self._text = text
         self.renderers = renderers
         self.vaultRoot = vaultRoot
         self._cursorOffset = cursorOffset
         self.fontSize = fontSize
+        self.onOpenLink = onOpenLink
     }
 
     public func makeNSView(context: Context) -> NSScrollView {
@@ -127,6 +131,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         context.coordinator.textView = textView
         context.coordinator.renderers = renderers
         context.coordinator.vaultRoot = vaultRoot
+        context.coordinator.onOpenLink = onOpenLink
         textView.textLayoutManager?.delegate = context.coordinator
         textView.onClick = { [weak coordinator = context.coordinator] idx in
             coordinator?.handleClick(at: idx) ?? false
@@ -139,6 +144,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         guard let textView = nsView.documentView as? NSTextView else { return }
         context.coordinator.renderers = renderers
         context.coordinator.vaultRoot = vaultRoot
+        context.coordinator.onOpenLink = onOpenLink
         if LivePreviewStyler.baseFontSize != fontSize {
             LivePreviewStyler.baseFontSize = fontSize
             textView.font = LivePreviewStyler.baseFont
@@ -165,6 +171,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         weak var textView: NSTextView?
         var renderers: RendererRegistry?
         var vaultRoot: URL?
+        var onOpenLink: ((String) -> Void)?
         private var overlays: [String: NSHostingView<AnyView>] = [:]
         /// Full UTF-16 ranges (incl. fences) of fenced code blocks, kept fresh by
         /// restyle() for the layout-fragment background fill.
@@ -240,6 +247,12 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// the overlay). Returns true when handled (skip the default placement).
         func handleClick(at index: Int) -> Bool {
             if toggleCheckbox(at: index) { return true }
+            // Clicking a wiki/markdown link follows it (Obsidian-style).
+            if let onOpenLink, let text = textView?.string,
+               let ref = LinkParser.links(in: text).first(where: { $0.range.lowerBound <= index && index < $0.range.upperBound }) {
+                onOpenLink(ref.target)
+                return true
+            }
             if let region = widgetRegions.first(where: { $0.lowerBound <= index && index < $0.upperBound }),
                let textView {
                 textView.window?.makeFirstResponder(textView)

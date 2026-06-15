@@ -113,6 +113,28 @@ public final class AppState: ObservableObject {
         scheduleReindex()
     }
 
+    /// Open the note a wiki/markdown link targets (filename base or vault-relative
+    /// path, Obsidian-style, case-insensitive). No-op if nothing matches.
+    public func openLink(_ target: String) {
+        guard let root = vaultRoot else { return }
+        var t = target.trimmingCharacters(in: .whitespaces)
+        if let hash = t.firstIndex(of: "#") { t = String(t[..<hash]) }   // drop heading anchor
+        if t.lowercased().hasSuffix(".md") { t = String(t.dropLast(3)) }
+        let wanted = t.lowercased()
+        guard !wanted.isEmpty else { return }
+        let prefix = root.standardizedFileURL.path + "/"
+        func relBase(_ u: URL) -> String {
+            let p = u.standardizedFileURL.path
+            var r = p.hasPrefix(prefix) ? String(p.dropFirst(prefix.count)) : u.lastPathComponent
+            if r.lowercased().hasSuffix(".md") { r = String(r.dropLast(3)) }
+            return r.lowercased()
+        }
+        if let match = files.first(where: { relBase($0.url) == wanted
+            || $0.url.deletingPathExtension().lastPathComponent.lowercased() == wanted }) {
+            open(match)
+        }
+    }
+
     public func open(_ file: MarkdownFile) {
         flushPendingSave()                       // don't lose edits on the previous note
         selectedFile = file

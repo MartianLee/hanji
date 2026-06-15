@@ -392,7 +392,16 @@ struct ContentView: View {
 
     @ViewBuilder private var editorPane: some View {
         VStack(spacing: 0) {
-            if appState.selectedFile != nil {
+            if let selected = appState.selectedFile {
+                // Obsidian-style inline title: the file name as a large heading.
+                Text(selected.url.deletingPathExtension().lastPathComponent)
+                    .font(.system(size: 28, weight: .bold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 18)
+                    .padding(.bottom, 2)
                 if appState.externalConflict != nil {
                     HStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
@@ -404,7 +413,7 @@ struct ContentView: View {
                     .padding(8)
                     .background(Color.orange.opacity(0.15))
                 }
-                MarkdownEditorView(text: $appState.activeText, renderers: appState.rendererRegistry, vaultRoot: appState.vaultRoot, cursorOffset: $appState.pendingCursorOffset, fontSize: CGFloat(appState.fontSize))
+                MarkdownEditorView(text: $appState.activeText, renderers: appState.rendererRegistry, vaultRoot: appState.vaultRoot, cursorOffset: $appState.pendingCursorOffset, fontSize: CGFloat(appState.fontSize), onOpenLink: { appState.openLink($0) })
             } else {
                 Text("Open a vault, then select a note")
                     .foregroundStyle(.secondary)
