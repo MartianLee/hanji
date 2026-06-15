@@ -393,15 +393,10 @@ struct ContentView: View {
     @ViewBuilder private var editorPane: some View {
         VStack(spacing: 0) {
             if let selected = appState.selectedFile {
-                // Obsidian-style inline title: the file name as a large heading.
-                Text(selected.url.deletingPathExtension().lastPathComponent)
-                    .font(.system(size: 28, weight: .bold))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 18)
-                    .padding(.bottom, 2)
+                // Obsidian-style inline title: editable; committing renames the file.
+                InlineTitleView(fileURL: selected.url) { newName in
+                    _ = try? appState.rename(selected.url, to: newName)
+                }
                 if appState.externalConflict != nil {
                     HStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
@@ -533,5 +528,39 @@ struct ContentView: View {
         if panel.runModal() == .OK, let url = panel.url {
             appState.openVault(at: url)
         }
+    }
+}
+
+/// Editable Obsidian-style inline title. Shows the file's name (no extension);
+/// committing (Enter or blur) renames the file via `rename`. Resyncs whenever
+/// the open file changes.
+private struct InlineTitleView: View {
+    let fileURL: URL
+    let rename: (String) -> Void
+    @State private var title: String = ""
+    @FocusState private var focused: Bool
+
+    private var base: String { fileURL.deletingPathExtension().lastPathComponent }
+
+    var body: some View {
+        TextField("Untitled", text: $title)
+            .textFieldStyle(.plain)
+            .font(.system(size: 28, weight: .bold))
+            .lineLimit(1)
+            .focused($focused)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 24)
+            .padding(.top, 18)
+            .padding(.bottom, 2)
+            .onAppear { title = base }
+            .onChange(of: fileURL) { _, _ in title = base }   // switched notes → resync
+            .onSubmit { commit() }
+            .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
+    }
+
+    private func commit() {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != base else { title = base; return }
+        rename(trimmed)
     }
 }

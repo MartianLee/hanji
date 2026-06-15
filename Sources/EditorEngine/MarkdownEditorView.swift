@@ -42,7 +42,11 @@ final class CodeBlockFragment: NSTextLayoutFragment {
         // container x=0 sits at local x = -point.x; the slab then runs the whole
         // code column (empty lines and line leading included, top/bottom rounded).
         let width = fillWidth > 0 ? fillWidth : renderingSurfaceBounds.width
-        let rect = CGRect(x: -point.x, y: 0, width: width, height: layoutFragmentFrame.height)
+        // Overdraw 1pt into the next line so adjacent bands overlap — fractional
+        // line heights otherwise leave a hairline antialiased seam at the join.
+        // The block's last line keeps its exact height (rounded bottom corner).
+        let extra: CGFloat = roundsBottom ? 0 : 1
+        let rect = CGRect(x: -point.x, y: 0, width: width, height: layoutFragmentFrame.height + extra)
         let radius: CGFloat = 8
         let path = CGMutablePath()
         let tl: CGFloat = roundsTop ? radius : 0
