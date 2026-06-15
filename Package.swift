@@ -5,7 +5,13 @@ let package = Package(
     name: "hanji",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "hanji", targets: ["HanjiApp"])
+        .executable(name: "hanji", targets: ["HanjiApp"]),
+        // The extension SDK + pure libraries, exported so plugin/tooling authors
+        // can build against them. (First-party plugins are compile-time — see
+        // CONTRIBUTING.md — but exposing these makes the SDK a real dependency.)
+        .library(name: "ExtensionSDK", targets: ["ExtensionSDK"]),
+        .library(name: "MarkdownCore", targets: ["MarkdownCore"]),
+        .library(name: "TemplateKit", targets: ["TemplateKit"])
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0")

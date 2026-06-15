@@ -1,75 +1,103 @@
 # hanji
 
-A native macOS (SwiftUI + TextKit 2) markdown editor that opens markdown vaults,
-with a Swift extension SDK. Design: [`docs/2026-06-06-native-markdown-editor-design.md`](docs/2026-06-06-native-markdown-editor-design.md).
+A native macOS markdown editor that opens your **markdown vaults** — built with
+SwiftUI + TextKit 2, with a Swift extension SDK. Local-first, fast, no account.
 
-## Status: Live Preview + first-party plugins (Periodic Notes, Templater)
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+![Platform: macOS 14+](https://img.shields.io/badge/Platform-macOS%2014%2B-lightgrey.svg)
+![Swift 5.10](https://img.shields.io/badge/Swift-5.10-orange.svg)
 
-- **Onboarding** — a Welcome screen (prominent **Open Vault…** + recent vaults),
-  recent-vault memory, automatic re-open of the last vault on launch, and a
-  **Settings** window (⌘,) to manage recents
-- **Command palette (⌘P)** to run plugin commands and a **quick switcher (⌘O)**
-  for fuzzy file-name jump
-- First-party **Periodic Notes** (default-on) — *Open today's daily / this week's /
-  this month's note*; reads your existing Obsidian `periodic-notes` config (folder,
-  date format, template) and creates the note from its template if missing
-- First-party **Templater** — *New note from template…*; renders Obsidian
-  `<% tp.* %>` syntax (core date/file functions: `tp.date.now/tomorrow/yesterday`,
-  `tp.file.title/creation_date/cursor`) with the caret placed at `tp.file.cursor`
-- **Live Preview** for headings, bold, italic, inline code, links & wikilinks,
-  blockquotes, callouts, frontmatter, lists & tasks (with clickable checkboxes),
-  and fenced code blocks: inline styling with caret-aware marker hiding
-  (markers reveal on the line you're editing)
-- Edit + atomic save in a TextKit 2 editor
-- In-memory metadata index (titles, tags)
-- Compile-time plugin SDK: ① code-block renderers, ③ commands (⌘P) + sidebar,
-  and a workspace note create/open capability. Bundled Word Count plugin proves
-  the host↔plugin loop
-- **Extensible code-block renderers** (`CodeBlockRenderer` SDK surface): fenced blocks
-  render as inline widgets that reserve their own height (raw source revealed while
-  editing). Built-in: **mermaid** diagrams (WKWebView), **Dataview** (`LIST`/`TABLE` with `FROM #tag`/`"folder"`, `WHERE`, `SORT`, frontmatter fields + `file.name`/`file.mtime`),
-  and a `card` renderer
-- **Inline images** — `![[file]]` / `![alt](path)` rendered from the vault
-- **Backlinks panel** — right sidebar lists notes linking to the active note
-  (wikilinks + markdown links) with context snippets, live-updating; built as a
-  first-party plugin on the SDK’s `MetadataQuerying` surface
-- **Calendar panel** — right-sidebar month view; days with a daily note are
-  dotted, clicking any day opens-or-creates it from your template
-- **Plugin toggles** — Settings ▸ Plugins switches any first-party plugin on or
-  off live, Obsidian-style (persisted per plugin)
-- **Global search (⇧⌘F)** — sidebar search panel over a persistent FTS5 index
-  (Korean-friendly trigram matching); results jump the caret to the match. The
-  index lives in Application Support and updates incrementally as you edit
-- **Code highlighting** — fenced blocks are syntax-colored (keywords, strings,
-  comments, numbers) for Swift, JS/TS, Python, JSON, and shell, with a C-like
-  fallback for other languages
+![hanji editor — Live Preview with syntax-highlighted code, backlinks and calendar panels](docs/images/editor.png)
+
+## Why
+
+the markdown vault format is a great, portable plain-markdown store, but the app is
+Electron and its plugins are JavaScript. hanji is a **native** editor for the
+same vaults: a TextKit 2 engine with incremental Live Preview, and an extension
+model written in **Swift** rather than JS. It reads your existing vault config
+(periodic notes, templates) and aims for Obsidian parity on the editing surface.
+
+## Features
+
+**Editing (Live Preview)**
+- Caret-aware Live Preview: headings, bold, italic, inline code, links &
+  wikilinks, blockquotes, callouts, frontmatter — markers reveal on the line
+  you're editing.
+- Rendered bullets (`•`) and clickable task checkboxes (☐ / ☑).
+- Fenced code blocks render as a full-width slab with **syntax highlighting**
+  (Swift, JS/TS, Python, JSON, shell + a C-like fallback).
+- Inline images, **mermaid** diagrams, and horizontal rules render in place.
+- Editable inline file title; clicking a `[[wikilink]]` or `[text](note.md)`
+  opens the target note.
+- **Autosave** (debounced, off the main thread) with external-edit **conflict
+  detection** and a non-modal reload / keep-mine banner.
+
+**Workspace**
+- Full file tree: sort, multi-select, drag-and-drop, rename, trash, undo, import.
+- **Command palette (⌘P)**, **quick switcher (⌘O)**, **global search (⇧⌘F)** over
+  a persistent SQLite FTS5 index (Korean-friendly trigram tokenizer).
+- **Backlinks** and **Calendar** side panels (collapsible, ⌥⌘B).
+- Settings: editor font size, recent vaults, and **live plugin toggles**.
+
+**Plugins / SDK (compile-time, Swift)**
+- First-party: **Periodic Notes**, **Templater**, **Backlinks**, **Calendar**,
+  Word Count — all built on the same `ExtensionSDK` third parties would use.
+- **Dataview-lite**: `LIST` / `TABLE` with `FROM #tag` / `"folder"`, `WHERE`,
+  `SORT`, frontmatter fields, and `file.name` / `file.mtime` built-ins.
+- SDK surfaces: ① code-block renderers, ② metadata queries (backlinks / index
+  updates), ③ commands + sidebar, and workspace note actions.
+
+**Obsidian compatibility** — opens existing vaults; reads the `periodic-notes`
+config (folder, date format, template); renders `<% tp.* %>` Templater syntax
+(core date/file functions).
+
+![Tasks, bullets, and the editable inline title](docs/images/tasks.png)
 
 ## Build & run
 
 ```sh
-swift run Checks     # run unit checks (zero-dependency test runner)
-swift run hanji  # run from SPM
-./Scripts/bundle-app.sh && open hanji.app   # build & launch a .app bundle
+swift run hanji                              # run from SPM
+./Scripts/bundle-app.sh && open hanji.app    # build & launch a .app bundle
+swift run Checks                                  # run the test suite
 ```
 
-Requires the Swift toolchain. **Command Line Tools is sufficient** to build and run
-(full Xcode is optional, and only needed for XCTest, Instruments, and code-signing).
+**Command Line Tools is sufficient** to build and run — full Xcode is only needed
+for XCTest, Instruments, and code-signing. Minimum target: **macOS 14**.
 
-## Architecture (modules)
+### Installing the app
+
+There is no signed/notarized release yet, so the supported path is **building
+from source** (above). A `.app` you build locally runs fine; a `.app` copied to
+another Mac would be blocked by Gatekeeper until the project ships notarized
+builds (planned). The only external dependency is
+[GRDB](https://github.com/groue/GRDB.swift) for the search index.
+
+## Architecture
 
 ```
-HanjiApp (exe) → AppCore → { VaultKit, ExtensionSDK, EditorEngine, MarkdownCore }
-VaultKit → MarkdownCore
-TemplateKit (pure: moment format, template engine, periodic/templater config)
-WordCountPlugin · CoreRenderers → ExtensionSDK
-PeriodicNotesPlugin · TemplaterPlugin → { ExtensionSDK, TemplateKit }
+HanjiApp (exe) → AppCore → { VaultKit, ExtensionSDK, EditorEngine, MarkdownCore, MKSearchKit }
+MKSearchKit → GRDB          (the only module that imports GRDB)
+Plugins     → ExtensionSDK  (+ pure libs like TemplateKit) — never AppCore/the app
 ```
 
-`MKSearchKit → GRDB` is the only external dependency (FTS5 search index).
-Plugins depend only on `ExtensionSDK` (plus pure libs like `TemplateKit`) — never on
-`AppCore`/the app. First-party features are built on the same SDK. The template/periodic
-logic lives in the pure, dependency-free `TemplateKit`, fully covered by `swift run Checks`.
+Pure, dependency-free logic lives in `MarkdownCore` / `TemplateKit` and is fully
+covered by `swift run Checks` (a zero-dependency runner — Command Line Tools ship
+no XCTest). See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the design records in
+[`docs/`](docs/).
+
+## Status & known gaps
+
+Pre-1.0 and under active development. Working toward an open-source v0.1.
+
+- **Tabs / split panes** are not implemented yet.
+- A few interactions (link-click navigation, checkbox toggle) are verified by
+  logic/tests but were hard to exercise with synthetic input during development
+  — please report anything off.
+- Performance/correctness debt being tracked: async search for very large
+  vaults; a `field(path)` / `tag(path)` index for big Dataview sets; a one-time
+  full-vault read on vault open for iCloud vaults; `Tags.extract` should skip
+  fenced code blocks. Contributions welcome — see CONTRIBUTING.
 
 ## License
 
-MIT
+[MIT](LICENSE) © 2026 MartianLee
