@@ -3,6 +3,7 @@ runChecks([
     ("Vault", vaultChecks),
     ("MetadataIndex", metadataIndexChecks),
     ("AppState", appStateChecks),
+    ("Tabs", tabChecks),
     ("Autosave", autosaveChecks),
     ("Conflict", conflictChecks),
     ("PluginLoop", pluginLoopChecks),

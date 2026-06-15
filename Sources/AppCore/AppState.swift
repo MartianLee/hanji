@@ -29,6 +29,8 @@ public final class AppState: ObservableObject {
     @Published public var fontSize: Double = 15 {
         didSet { defaults.set(fontSize, forKey: Self.fontSizeKey) }
     }
+    @Published public private(set) var tabs: [OpenTab] = []
+    @Published public private(set) var activeTabID: UUID?
     public let rendererRegistry = DefaultRendererRegistry()
 
     private var vault: Vault?
@@ -74,6 +76,8 @@ public final class AppState: ObservableObject {
         savedText = ""
         externalConflict = nil
         conflictPaused = false
+        tabs = []
+        activeTabID = nil
         addRecent(root)
         watcher?.stop()
         watcher = VaultWatcher(root: root) { [weak self] in self?.reloadTree() }
@@ -135,14 +139,85 @@ public final class AppState: ObservableObject {
         }
     }
 
-    public func open(_ file: MarkdownFile) {
-        flushPendingSave()                       // don't lose edits on the previous note
-        selectedFile = file
-        let text = (try? vault?.read(file)) ?? ""
-        activeText = text
-        savedText = text
+    /// Compare two file URLs that may have different symlink representations (macOS /var ↔ /private/var).
+    /// Compares inodes when the file exists; falls back to path comparison otherwise.
+    private func urlSameFile(_ a: URL, _ b: URL) -> Bool {
+        var sa = stat(), sb = stat()
+        if stat(a.path, &sa) == 0, stat(b.path, &sb) == 0 {
+            return sa.st_ino == sb.st_ino && sa.st_dev == sb.st_dev
+        }
+        // File doesn't exist yet or path is wrong — fall back to standardized comparison.
+        return a.standardizedFileURL == b.standardizedFileURL
+    }
+
+    /// Copy the live working state into the active tab's snapshot.
+    private func writeBackActive() {
+        guard let id = activeTabID, let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
+        tabs[idx].text = activeText
+        tabs[idx].savedText = savedText
+        tabs[idx].externalConflict = externalConflict
+    }
+    /// Load the working state from a tab snapshot.
+    private func hydrate(from tab: OpenTab) {
+        selectedFile = tab.file
+        activeText = tab.text
+        savedText = tab.savedText
+        externalConflict = tab.externalConflict
+        conflictPaused = (tab.externalConflict != nil)
+        pendingCursorOffset = 0
+    }
+    private func clearActive() {
+        activeTabID = nil
+        selectedFile = nil
+        activeText = ""
+        savedText = ""
         externalConflict = nil
         conflictPaused = false
+    }
+    /// Synchronous write of a non-active tab's snapshot if dirty.
+    private func flush(_ tab: OpenTab) {
+        guard tab.isDirty, let vault else { return }
+        try? vault.write(tab.text, to: tab.file)
+        scheduleReindex()
+    }
+
+    public func open(_ file: MarkdownFile) {
+        if let existing = tabs.first(where: { $0.file.url.standardizedFileURL == file.url.standardizedFileURL }) {
+            switchTab(existing.id); return
+        }
+        flushPendingSave()
+        writeBackActive()
+        let text = (try? vault?.read(file)) ?? ""
+        let tab = OpenTab(file: file, text: text)
+        tabs.append(tab)
+        activeTabID = tab.id
+        hydrate(from: tab)
+    }
+
+    /// Make an already-open tab active.
+    public func switchTab(_ id: UUID) {
+        guard id != activeTabID, let tab = tabs.first(where: { $0.id == id }) else { return }
+        flushPendingSave()
+        writeBackActive()
+        activeTabID = id
+        hydrate(from: tab)
+    }
+
+    /// Close a tab (saving it if dirty); a neighbor becomes active, or the
+    /// editor clears if it was the last tab.
+    public func closeTab(_ id: UUID) {
+        guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let wasActive = id == activeTabID
+        if wasActive { flushPendingSave() } else { flush(tabs[idx]) }
+        tabs.remove(at: idx)
+        if wasActive {
+            if let next = tabs[safe: idx] ?? tabs.last {
+                activeTabID = next.id
+                hydrate(from: next)
+            } else {
+                clearActive()
+            }
+        }
     }
 
     /// Toolbar/menu "Save" — writes only if there are unsaved changes.
@@ -258,13 +333,18 @@ public final class AppState: ObservableObject {
     @discardableResult
     public func rename(_ url: URL, to newName: String) throws -> URL {
         guard let v = vault else { throw VaultError.invalidName }
-        let wasOpen = selectedFile?.url.standardizedFileURL == url.standardizedFileURL
+        // Resolve which tab/selectedFile corresponds to `url` BEFORE the rename,
+        // while the file still exists and stat(2) can compare inodes reliably.
+        let tabIdx = tabs.firstIndex(where: { urlSameFile($0.file.url, url) })
+        let wasOpen = selectedFile.map { urlSameFile($0.url, url) } ?? false
         let newURL = try v.rename(url, to: newName)
         if newURL.standardizedFileURL != url.standardizedFileURL {
             fileOperations.append(.renamed(from: url, to: newURL))
+            let newFile = MarkdownFile(url: newURL)
+            if let idx = tabIdx { tabs[idx].file = newFile }
+            if wasOpen { selectedFile = newFile }
         }
         reloadTree()
-        if wasOpen, let f = files.first(where: { $0.url.standardizedFileURL == newURL.standardizedFileURL }) { open(f) }
         return newURL
     }
 
