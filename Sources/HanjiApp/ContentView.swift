@@ -394,9 +394,11 @@ struct ContentView: View {
         VStack(spacing: 0) {
             if let selected = appState.selectedFile {
                 // Obsidian-style inline title: editable; committing renames the file.
-                InlineTitleView(fileURL: selected.url) { newName in
+                InlineTitleView(fileURL: selected.url, rename: { newName in
                     _ = try? appState.rename(selected.url, to: newName)
-                }
+                }, enterBody: {
+                    appState.pendingCursorOffset = 0   // focus the editor body
+                })
                 if appState.externalConflict != nil {
                     HStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
@@ -537,6 +539,7 @@ struct ContentView: View {
 private struct InlineTitleView: View {
     let fileURL: URL
     let rename: (String) -> Void
+    let enterBody: () -> Void
     @State private var title: String = ""
     @FocusState private var focused: Bool
 
@@ -551,11 +554,14 @@ private struct InlineTitleView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 24)
             .padding(.top, 18)
-            .padding(.bottom, 2)
+            .padding(.bottom, 6)
+            .background(Color(nsColor: .textBackgroundColor))   // match the editor body
             .onAppear { title = base }
-            .onChange(of: fileURL) { _, _ in title = base }   // switched notes → resync
-            .onSubmit { commit() }
+            .onChange(of: fileURL) { _, _ in title = base }     // switched notes → resync
             .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
+            // Enter or Space from the title drops into the editor body.
+            .onKeyPress(.return) { commit(); enterBody(); return .handled }
+            .onKeyPress(.space) { commit(); enterBody(); return .handled }
     }
 
     private func commit() {

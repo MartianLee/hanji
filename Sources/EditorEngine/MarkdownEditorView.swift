@@ -173,7 +173,11 @@ public struct MarkdownEditorView: NSViewRepresentable {
         let scroll = NSScrollView()
         scroll.documentView = textView
         scroll.hasVerticalScroller = true
-        scroll.drawsBackground = false
+        // Solid editor background so the inline title strip and the body read as
+        // one continuous region (and the area below the text matches too).
+        scroll.drawsBackground = true
+        scroll.backgroundColor = .textBackgroundColor
+        textView.backgroundColor = .textBackgroundColor
 
         context.coordinator.textView = textView
         context.coordinator.renderers = renderers
