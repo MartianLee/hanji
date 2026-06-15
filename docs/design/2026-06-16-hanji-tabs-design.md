@@ -29,107 +29,118 @@ single-document model (`selectedFile` + `activeText` + …).
 
 ## 2. Architecture
 
-### 2.1 `Document` (AppCore) — one open buffer
+**Key idea (low-churn):** keep AppState's existing single-doc `@Published`
+fields (`selectedFile`, `activeText`, `savedText`, `externalConflict`,
+`pendingCursorOffset`, `conflictPaused`) as the **active tab's live working
+state**. Tabs are lightweight **saved snapshots**; switching a tab writes the
+working state back into the outgoing tab and hydrates the working state from the
+incoming tab. The editor binding (`$appState.activeText`), the autosave debounce
+(on `$activeText`), and every SDK publisher (`$selectedFile`, `$activeText`)
+stay exactly as they are — only `open`, tab-switch, close, and the tab bar are new.
+
+### 2.1 `OpenTab` (AppCore) — a per-tab snapshot
 
 ```swift
-public final class Document: ObservableObject, Identifiable {
+public struct OpenTab: Identifiable, Equatable {
     public let id = UUID()
-    public let file: MarkdownFile
-    @Published public var text: String
-    @Published public var savedText: String
-    @Published public var externalConflict: String? = nil
-    @Published public var pendingCursorOffset: Int? = nil
-    var conflictPaused = false
+    public var file: MarkdownFile
+    public var text: String
+    public var savedText: String
+    public var externalConflict: String?
+    public var cursorOffset: Int?
     public var isDirty: Bool { text != savedText }
-    public init(file: MarkdownFile, text: String) {
-        self.file = file; self.text = text; self.savedText = text
-    }
 }
 ```
 
-### 2.2 `AppState` — open documents + active
+### 2.2 `AppState` — tabs + active id (existing fields unchanged)
 
 ```swift
-@Published public private(set) var documents: [Document] = []
-@Published public var activeDocumentID: Document.ID?
-public var activeDocument: Document? { documents.first { $0.id == activeDocumentID } }
+@Published public private(set) var tabs: [OpenTab] = []
+@Published public private(set) var activeTabID: OpenTab.ID?
+// selectedFile / activeText / savedText / externalConflict / pendingCursorOffset
+// remain the existing @Published fields = the ACTIVE tab's working state.
 ```
 
-Backward-compatible computed proxies (read paths unchanged for consumers):
-
-```swift
-public var selectedFile: MarkdownFile? { activeDocument?.file }
-public var activeText: String {            // editor no longer binds this; SDK/readers do
-    get { activeDocument?.text ?? "" }
-    set { activeDocument?.text = newValue }
-}
-public var externalConflict: String? { activeDocument?.externalConflict }
-public var isDirty: Bool { activeDocument?.isDirty ?? false }
-```
-(`@Published selectedFile` becomes a computed proxy; views that observed it now
-re-render via `activeDocumentID` / the active document's `objectWillChange`
-re-broadcast — AppState subscribes to the active document and forwards
-`objectWillChange`.)
-
-`open(_:)` becomes:
+`open(_:)`:
 ```swift
 public func open(_ file: MarkdownFile) {
-    if let existing = documents.first(where: { $0.file.url.standardizedFileURL == file.url.standardizedFileURL }) {
-        activate(existing); return
+    if let existing = tabs.first(where: { $0.file.url.standardizedFileURL == file.url.standardizedFileURL }) {
+        switchTab(existing.id); return
     }
+    writeBackActive()                          // persist current working state to its tab
     let text = (try? vault?.read(file)) ?? ""
-    let doc = Document(file: file, text: text)
-    documents.append(doc)
-    activate(doc)
-    observeAutosave(doc)
+    var tab = OpenTab(file: file, text: text, savedText: text, externalConflict: nil, cursorOffset: 0)
+    tabs.append(tab)
+    activeTabID = tab.id
+    hydrate(from: tab)                          // load working state from the new tab
 }
-private func activate(_ doc: Document) {
-    activeDocumentID = doc.id
-    rebroadcast(doc)        // forward doc.objectWillChange so proxy readers update
+
+public func switchTab(_ id: OpenTab.ID) {
+    guard id != activeTabID, let tab = tabs.first(where: { $0.id == id }) else { return }
+    writeBackActive()
+    activeTabID = id
+    hydrate(from: tab)
 }
-public func closeTab(_ id: Document.ID) {
-    guard let doc = documents.first(where: { $0.id == id }) else { return }
-    flush(doc)              // save if dirty
-    documents.removeAll { $0.id == id }
-    if activeDocumentID == id { activeDocumentID = documents.last?.id }
+
+public func closeTab(_ id: OpenTab.ID) {
+    if id == activeTabID { writeBackActive() }
+    if let tab = tabs.first(where: { $0.id == id }) { flush(tab) }   // save if dirty
+    let wasActive = id == activeTabID
+    let idx = tabs.firstIndex { $0.id == id }
+    tabs.removeAll { $0.id == id }
+    if wasActive {
+        let next = tabs[safe: idx ?? 0] ?? tabs.last
+        if let next { activeTabID = next.id; hydrate(from: next) } else { clearActive() }
+    }
 }
 ```
+- `writeBackActive()`: copy `selectedFile/activeText/savedText/externalConflict/
+  pendingCursorOffset` into `tabs[active]`.
+- `hydrate(from:)`: set those working fields from the tab; set `pendingCursorOffset
+  = tab.cursorOffset` so the editor restores the caret; clear `conflictPaused`
+  consistent with the tab's conflict.
+- `clearActive()`: `activeTabID = nil`, `selectedFile = nil`, `activeText = ""`,
+  `savedText = ""`, `externalConflict = nil` (empty state).
 
-### 2.3 Autosave & conflict (per document)
+### 2.3 Autosave & conflict (multi-tab)
 
-- `observeAutosave(doc)`: subscribe to `doc.$text.debounce(0.8s)` → background
-  write of *that* document; stored in a `[Document.ID: AnyCancellable]` map,
-  removed on close.
-- `flush(_ doc)` / `flushPendingSave()`: synchronous write of a dirty doc
-  (active doc for the menu/quit path; specific doc for tab close).
-- `reloadTree`: after the tree rebuild, iterate **all** open documents — for each,
-  if it vanished, close its tab; else content-compare against disk and set that
-  document's `externalConflict` (dirty) or silently reload (clean), exactly like
-  today but per-document.
-- Conflict resolution methods take the active document (banner acts on it).
+- Autosave stays on `$activeText` → writes the active tab's file (unchanged).
+  `flush(_ tab:)` writes a specific dirty tab synchronously (used on tab close).
+- `reloadTree`: after the tree rebuild, reconcile **every** open tab against disk:
+  - vanished file → remove that tab (if active, switch to a neighbor / clear);
+  - the **active** tab → existing content-compare logic on the working fields
+    (sets `externalConflict` / silent reload);
+  - **inactive** tabs → content-compare against disk and update the tab's stored
+    `savedText`/`text`/`externalConflict` snapshot (its banner shows when
+    switched to). Keep it simple: clean inactive tab silently re-reads; dirty
+    inactive tab stores `externalConflict` in its snapshot.
+- Conflict-resolution methods act on the active working state (unchanged).
 
 ### 2.4 UI (HanjiApp/ContentView)
 
-- New `TabBarView` above the editor in `editorPane`: a horizontal row of tabs
-  (`documents`), each showing the file's base name, a dirty dot, and a close (×)
-  button; clicking a tab activates it. The active tab is highlighted.
-- The editor binds to the **active document**: `MarkdownEditorView(text:
-  Binding(get/set on activeDocument.text), …)`. Inline title + conflict banner
-  read the active document.
-- `⌘W` (CommandGroup) closes the active tab; tree/⌘O/search/link/backlink opens
-  route through `AppState.open` (unchanged call sites — they already call `open`).
+- New `TabBarView` above the editor in `editorPane`: a horizontal row over
+  `appState.tabs`, each tab = base name + dirty dot + close (×); clicking calls
+  `switchTab`. Active tab highlighted. The bar is shown only when ≥1 tab is open
+  (a single tab still shows, for the close affordance + consistency).
+- Editor, inline title, and conflict banner are **unchanged** (they read the
+  active working fields). Opens from tree/⌘O/search/link/backlink already call
+  `AppState.open` — now tab-aware automatically.
+- `⌘W` (CommandGroup, Go/File menu) → `closeTab(activeTabID)`.
+- A small `Array.subscript(safe:)` helper (AppCore) for bounds-safe neighbor pick.
 
 ## 3. Testing
 
 Headless (real AppState + temp vault):
 - open A → 1 tab, active; open B → 2 tabs, B active; open A again → still 2 tabs,
   A re-activated (no duplicate).
-- edit A (dirty), switch to B, `flushPendingSave()`/close → A saved to disk.
-- close active tab → previous tab active; close last → no active document,
-  `selectedFile == nil`.
-- per-document conflict: two open docs, edit one externally → only that
-  document's `externalConflict` set after `reloadTree`.
-- proxy correctness: `selectedFile`/`activeText` follow `activeDocumentID`.
+- working state follows tabs: after `open(B)` then `switchTab(A)`,
+  `selectedFile == A` and `activeText` == A's content.
+- edit A (dirty), `switchTab(B)`, `switchTab(A)` → A's edit preserved in its tab
+  (no loss across switches); the edit is on disk after `flushPendingSave`/close.
+- close active tab → a neighbor tab becomes active; close last tab → `tabs`
+  empty, `activeTabID == nil`, `selectedFile == nil`, `activeText == ""`.
+- per-tab conflict: open A and B, edit B's file on disk, `reloadTree` → B's tab
+  carries the conflict; A unaffected.
 
 UI: screenshot the tab bar with two tabs (one dirty).
 
