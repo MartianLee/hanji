@@ -74,6 +74,49 @@ final class CodeBlockFragment: NSTextLayoutFragment {
     }
 }
 
+/// What a list/task line's marker should render as (the raw `-`/`[ ]` glyphs are
+/// hidden but keep their width, so clicks/toggles still map to them).
+enum MarkerKind: Equatable { case bullet; case task(Bool) }
+
+/// Draws a bullet • or a checkbox over a list/task line's (hidden) marker.
+final class MarkerFragment: NSTextLayoutFragment {
+    var kind: MarkerKind = .bullet
+
+    override func draw(at point: CGPoint, in context: CGContext) {
+        super.draw(at: point, in: context)   // glyphs first (the marker glyphs are clear)
+        context.saveGState()
+        context.translateBy(x: point.x, y: point.y)
+        let b = renderingSurfaceBounds
+        let midY = b.midY
+        let x = b.minX
+        switch kind {
+        case .bullet:
+            let r: CGFloat = 2.4
+            context.setFillColor(NSColor.secondaryLabelColor.cgColor)
+            context.fillEllipse(in: CGRect(x: x + 3, y: midY - r, width: r * 2, height: r * 2))
+        case .task(let done):
+            let side: CGFloat = 13
+            let rect = CGRect(x: x + 1, y: midY - side / 2, width: side, height: side)
+            let box = CGPath(roundedRect: rect, cornerWidth: 3, cornerHeight: 3, transform: nil)
+            if done {
+                context.setFillColor(NSColor.controlAccentColor.cgColor)
+                context.addPath(box); context.fillPath()
+                context.setStrokeColor(NSColor.white.cgColor)
+                context.setLineWidth(1.7); context.setLineCap(.round); context.setLineJoin(.round)
+                context.move(to: CGPoint(x: rect.minX + 3, y: midY + 0.5))
+                context.addLine(to: CGPoint(x: rect.minX + 5.4, y: midY + 3.2))
+                context.addLine(to: CGPoint(x: rect.maxX - 2.8, y: midY - 3.2))
+                context.strokePath()
+            } else {
+                context.setStrokeColor(NSColor.secondaryLabelColor.cgColor)
+                context.setLineWidth(1.3)
+                context.addPath(box); context.strokePath()
+            }
+        }
+        context.restoreGState()
+    }
+}
+
 /// Hosting view for inline widgets that is transparent to hit-testing, so clicks and
 /// scroll fall through to the text view beneath: clicking a rendered block places the
 /// caret in it (revealing the source, like arrow keys do) and scrolling over it scrolls
@@ -180,6 +223,8 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// images, HR), kept fresh by updateWidgets() so a click on one snaps the
         /// caret to the block start instead of a hit-test guess on collapsed text.
         private var widgetRegions: [Range<Int>] = []
+        /// Paragraph-start offset → marker to draw (bullet/checkbox), caret-aware.
+        private var markerLines: [Int: MarkerKind] = [:]
 
         init(_ parent: MarkdownEditorView) {
             self.parent = parent
@@ -228,6 +273,53 @@ public struct MarkdownEditorView: NSViewRepresentable {
             let deco = Decorator.decorations(spans: spans, selection: selection)
             LivePreviewStyler.apply(deco, to: storage)
             LivePreviewStyler.highlightCode(regions, in: storage)
+            applyMarkers(spans: spans, sel: sel, storage: storage)
+        }
+
+        /// Hide list/task marker glyphs (keeping width so clicks/toggles still map)
+        /// and record which lines should draw a bullet/checkbox. Caret-aware: the
+        /// line being edited shows its raw `- [ ]` text.
+        private func applyMarkers(spans: [MarkSpan], sel: NSRange, storage: NSTextStorage) {
+            let ns = storage.string as NSString
+            let caretLine = ns.paragraphRange(for: sel)
+            var marks: [Int: MarkerKind] = [:]
+            func onCaret(_ line: Range<Int>) -> Bool {
+                let r = NSRange(location: line.lowerBound, length: line.upperBound - line.lowerBound)
+                return NSLocationInRange(line.lowerBound, caretLine) || NSIntersectionRange(r, caretLine).length > 0
+            }
+            func firstNonSpace(_ from: Int, _ upTo: Int) -> Int {
+                var i = from
+                while i < upTo, ns.character(at: i) == 0x20 || ns.character(at: i) == 0x09 { i += 1 }
+                return i
+            }
+            func collapse(_ loc: Int, _ len: Int) {
+                guard len > 0, loc >= 0, loc + len <= ns.length else { return }
+                storage.addAttributes([.font: NSFont.systemFont(ofSize: 0.01), .foregroundColor: NSColor.clear],
+                                      range: NSRange(location: loc, length: len))
+            }
+            func clearGlyph(_ loc: Int, _ len: Int) {
+                guard len > 0, loc >= 0, loc + len <= ns.length else { return }
+                storage.addAttribute(.foregroundColor, value: NSColor.clear, range: NSRange(location: loc, length: len))
+            }
+            for span in spans {
+                switch span.style {
+                case .listItem:
+                    guard !onCaret(span.line) else { continue }
+                    let m = firstNonSpace(span.line.lowerBound, span.line.upperBound)
+                    clearGlyph(m, 2)              // `- ` invisible (width kept); • drawn over it
+                    marks[span.line.lowerBound] = .bullet
+                case .task(let done):
+                    guard !onCaret(span.line) else { continue }
+                    let m = firstNonSpace(span.line.lowerBound, span.line.upperBound)
+                    collapse(m, 2)               // `- `
+                    clearGlyph(m + 2, 2)         // `[x` kept width = click target; box drawn over
+                    collapse(m + 4, 1)           // `]` (trailing space stays as the gap)
+                    marks[span.line.lowerBound] = .task(done)
+                default:
+                    break
+                }
+            }
+            markerLines = marks
         }
 
         /// Toggle a task checkbox if the click landed on one. Returns true if handled.
@@ -410,6 +502,11 @@ public struct MarkdownEditorView: NSViewRepresentable {
                let range = textElement.elementRange {
                 let start = tcs.offset(from: tcs.documentRange.location, to: range.location)
                 let end = tcs.offset(from: tcs.documentRange.location, to: range.endLocation)
+                if let kind = markerLines[start] {
+                    let f = MarkerFragment(textElement: textElement, range: textElement.elementRange)
+                    f.kind = kind
+                    return f
+                }
                 if let region = codeRegions.first(where: { $0.contains(start) }) {
                     let fragment = CodeBlockFragment(textElement: textElement, range: textElement.elementRange)
                     fragment.roundsTop = start <= region.lowerBound

@@ -8,6 +8,10 @@ import MarkdownCore
 /// pollute the vault or wake the vault's FSEvents watcher.
 public final class SearchIndex {
     private let dbQueue: DatabaseQueue
+    /// Serializes whole-vault reindex passes: a background pass (AppState's
+    /// searchQueue) and a direct call must not interleave their mtime-skip
+    /// reads/writes, or a just-saved note can be left unindexed.
+    private let reindexLock = NSLock()
 
     public init(vaultRoot: URL) throws {
         let url = Self.indexFileURL(forVault: vaultRoot)
@@ -77,6 +81,8 @@ public final class SearchIndex {
     /// unchanged. Returns the number of files (re)indexed.
     @discardableResult
     public func reindexAll(vault root: URL) throws -> Int {
+        reindexLock.lock()
+        defer { reindexLock.unlock() }
         let fm = FileManager.default
         var seen: Set<String> = []
         var changed = 0

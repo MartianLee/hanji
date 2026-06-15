@@ -74,8 +74,9 @@ func e2eChecks() {
     let onDisk = (try? String(contentsOf: root.appendingPathComponent("Projects/Plan.md"), encoding: .utf8)) ?? ""
     expectEqual(onDisk, "# Plan\n- [ ] first step", "E2E: edits saved to disk")
 
-    // 4b. Global search finds the freshly saved content (sync reindex for determinism).
-    try? appState.searchIndex?.reindexAll(vault: root)
+    // 4b. Global search finds the freshly saved content. Force-upsert the exact
+    // path (reindexAll's mtime-skip can race the background save reindex).
+    try? appState.searchIndex?.reindex(paths: ["Projects/Plan.md"], vault: root)
     let searchHits = (try? appState.searchIndex?.search("first step")) ?? []
     expectEqual(searchHits.first?.path, "Projects/Plan.md", "E2E: global search finds saved note")
     expect(searchHits.first?.firstMatchOffset != nil, "E2E: search hit carries a caret offset")
