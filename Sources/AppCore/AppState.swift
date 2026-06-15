@@ -151,6 +151,8 @@ public final class AppState: ObservableObject {
     }
 
     /// Copy the live working state into the active tab's snapshot.
+    /// (`conflictPaused` is intentionally not stored — `hydrate` derives it from
+    /// `externalConflict != nil`.)
     private func writeBackActive() {
         guard let id = activeTabID, let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
         tabs[idx].text = activeText
@@ -182,7 +184,9 @@ public final class AppState: ObservableObject {
     }
 
     public func open(_ file: MarkdownFile) {
-        if let existing = tabs.first(where: { $0.file.url.standardizedFileURL == file.url.standardizedFileURL }) {
+        // Dedup by file identity (urlSameFile, not standardizedFileURL) so the
+        // /var↔/private/var symlink case can't open a second tab on one file.
+        if let existing = tabs.first(where: { urlSameFile($0.file.url, file.url) }) {
             switchTab(existing.id); return
         }
         flushPendingSave()
@@ -348,17 +352,21 @@ public final class AppState: ObservableObject {
         return newURL
     }
 
-    /// Move a note or folder into another folder; if the open note moved, keep it open.
+    /// Move a note or folder into another folder; if the moved note is open in a
+    /// tab, update that tab in place (no duplicate/stale tab).
     @discardableResult
     public func move(_ url: URL, into folder: URL) throws -> URL {
         guard let v = vault else { throw VaultError.invalidName }
-        let wasOpen = selectedFile?.url.standardizedFileURL == url.standardizedFileURL
+        let tabIdx = tabs.firstIndex { urlSameFile($0.file.url, url) }     // captured pre-move
+        let wasActiveFile = selectedFile.map { urlSameFile($0.url, url) } ?? false
         let newURL = try v.move(url, into: folder)
         if newURL.standardizedFileURL != url.standardizedFileURL {
             fileOperations.append(.moved(from: url, to: newURL))
+            let newFile = MarkdownFile(url: newURL)
+            if let tabIdx { tabs[tabIdx].file = newFile }
+            if wasActiveFile { selectedFile = newFile }
         }
         reloadTree()
-        if wasOpen, let f = files.first(where: { $0.url.standardizedFileURL == newURL.standardizedFileURL }) { open(f) }
         return newURL
     }
 
