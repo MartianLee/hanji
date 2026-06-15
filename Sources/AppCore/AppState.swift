@@ -40,6 +40,7 @@ public final class AppState: ObservableObject {
     /// Bumps whenever a background reindex completes (search panel refresh hook).
     @Published public private(set) var searchIndexUpdatedAt = Date()
     private let searchQueue = DispatchQueue(label: "io.hanji.searchindex", qos: .utility)
+    private let saveQueue = DispatchQueue(label: "io.hanji.save", qos: .utility)
     private let defaults: UserDefaults
     private static let recentsKey = "io.hanji.recentVaults"
     private static let treeSortKey = "io.hanji.treeSort"
@@ -57,7 +58,7 @@ public final class AppState: ObservableObject {
         if storedSize >= 10 && storedSize <= 30 { fontSize = storedSize }
         autosaveCancellable = $activeText
             .debounce(for: .seconds(autosaveInterval), scheduler: RunLoop.main)
-            .sink { [weak self] _ in self?.flushPendingSave() }
+            .sink { [weak self] _ in self?.autosave() }
     }
 
     public func openVault(at root: URL) {
@@ -86,7 +87,10 @@ public final class AppState: ObservableObject {
         guard let v = vault else { return }
         tree = (try? v.tree(sort: treeSort)) ?? []
         files = (try? v.markdownFiles()) ?? files
-        index = (try? MetadataIndex.build(from: v)) ?? index
+        // NOTE: the in-memory MetadataIndex is no longer read at runtime (Dataview
+        // uses the SQLite searchIndex). Rebuilding it here read EVERY file's
+        // content on every change — a main-thread freeze on iCloud vaults — so it
+        // is intentionally not rebuilt in this hot path.
         if let sel = selectedFile, !FileManager.default.fileExists(atPath: sel.url.path) {
             selectedFile = nil
             activeText = ""
@@ -122,13 +126,26 @@ public final class AppState: ObservableObject {
     /// Toolbar/menu "Save" — writes only if there are unsaved changes.
     public func save() { flushPendingSave() }
 
-    /// Write the buffer if dirty and not paused for a conflict. Safe to call
-    /// directly (tests, note switch, quit); idempotent when clean.
+    /// Synchronous write — used for note switch, quit, and tests where the bytes
+    /// must hit disk before the next step. Idempotent when clean.
     public func flushPendingSave() {
         guard !conflictPaused, isDirty, let file = selectedFile, let vault else { return }
         try? vault.write(activeText, to: file)
         savedText = activeText
         scheduleReindex()
+    }
+
+    /// Debounced autosave: write OFF the main thread so a save never blocks
+    /// typing (iCloud writes can stall on file coordination). The baseline is
+    /// marked clean immediately so a follow-up watcher fire sees no conflict.
+    private func autosave() {
+        guard !conflictPaused, isDirty, let file = selectedFile, let vault else { return }
+        let text = activeText
+        savedText = text
+        saveQueue.async { [weak self] in
+            try? vault.write(text, to: file)
+            DispatchQueue.main.async { self?.scheduleReindex() }
+        }
     }
 
     /// Background reindex. A full pass with mtime-skip is cheap and

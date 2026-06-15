@@ -191,9 +191,23 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
         struct WidgetSpec { let key: String; let region: Range<Int>; let view: AnyView }
 
+        private var widgetUpdateScheduled = false
+
         func refresh() {
             restyle()
-            DispatchQueue.main.async { [weak self] in self?.updateWidgets() }
+            scheduleWidgetUpdate()
+        }
+
+        /// Coalesce widget rebuilds: `updateWidgets` forces a full-document layout,
+        /// so running it once per keystroke stutters typing. Collapse bursts into
+        /// one pass on the next runloop tick.
+        private func scheduleWidgetUpdate() {
+            guard !widgetUpdateScheduled else { return }
+            widgetUpdateScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                self?.widgetUpdateScheduled = false
+                self?.updateWidgets()
+            }
         }
 
         /// Inline styling + caret-aware marker hiding (Live Preview).
