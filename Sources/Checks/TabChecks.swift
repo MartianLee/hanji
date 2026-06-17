@@ -101,3 +101,41 @@ func tabReloadChecks() {
     s.reloadTree()
     expect(!s.tabs.contains { $0.file.name == "A.md" }, "vanished file's tab closed")
 }
+
+func paneSplitChecks() {
+    let vault = tabVault()
+    defer { tabCleanup(vault) }
+    try? "gamma".write(to: vault.appendingPathComponent("C.md"), atomically: true, encoding: .utf8)
+    let s = tabState(vault)
+    guard let a = s.files.first(where: { $0.name == "A.md" }),
+          let c = s.files.first(where: { $0.name == "C.md" }) else { expect(false, "files"); return }
+
+    s.open(a)
+    s.splitRight()
+    expectEqual(s.panes.count, 2, "split creates a second pane")
+    expect(s.isSplit, "isSplit true")
+    expectEqual(s.selectedFile?.name, "A.md", "right pane shows the same doc")
+    s.splitRight()
+    expectEqual(s.panes.count, 2, "second splitRight is a no-op")
+
+    // Open targets the active (right) pane.
+    s.open(c)
+    expectEqual(s.panes.last?.tabs.count, 2, "C opened in the right pane")
+    expectEqual(s.panes.first?.tabs.count, 1, "left pane unchanged")
+
+    // Focus + edit preserved across panes.
+    let leftID = s.panes.first!.id
+    s.activeText = "right edit"          // edit the right pane's active doc (C)
+    s.focusPane(leftID)
+    expectEqual(s.selectedFile?.name, "A.md", "focused left pane")
+    s.activeText = "left edit"
+    s.focusPane(s.panes.last!.id)
+    expectEqual(s.activeText, "right edit", "right pane's edit preserved")
+    s.focusPane(leftID)
+    expectEqual(s.activeText, "left edit", "left pane's edit preserved")
+
+    // Closing the left pane's last tab collapses the split.
+    s.closeTab(s.activeTabID!)
+    expectEqual(s.panes.count, 1, "closing a pane's last tab removes the pane")
+    expect(s.selectedFile?.name == "A.md" || s.selectedFile?.name == "C.md", "remaining pane active")
+}

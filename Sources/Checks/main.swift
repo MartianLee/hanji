@@ -5,6 +5,7 @@ runChecks([
     ("AppState", appStateChecks),
     ("Tabs", tabChecks),
     ("PaneProxy", paneProxyChecks),
+    ("PaneSplit", paneSplitChecks),
     ("TabReload", tabReloadChecks),
     ("Autosave", autosaveChecks),
     ("Conflict", conflictChecks),

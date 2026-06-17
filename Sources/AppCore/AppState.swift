@@ -281,6 +281,29 @@ public final class AppState: ObservableObject {
         }
     }
 
+    /// Focus another pane: persist the live working state into the current pane's
+    /// active tab, then hydrate from the target pane's active tab.
+    public func focusPane(_ id: UUID) {
+        guard id != activePaneID, let target = panes.first(where: { $0.id == id }) else { return }
+        flushPendingSave()
+        writeBackActive()
+        activePaneID = id
+        if let tab = target.tabs.first(where: { $0.id == target.activeTabID }) { hydrate(from: tab) }
+        else { clearActive() }
+    }
+
+    /// Open the active document in a new right pane (no-op if already split or empty).
+    public func splitRight() {
+        guard panes.count == 1, let cur = activePane, let id = cur.activeTabID else { return }
+        flushPendingSave()
+        writeBackActive()
+        guard let snapshot = cur.tabs.first(where: { $0.id == id }) else { return }
+        let right = Pane(tabs: [snapshot], activeTabID: snapshot.id)
+        panes.append(right)
+        activePaneID = right.id
+        hydrate(from: snapshot)
+    }
+
     /// Toolbar/menu "Save" — writes only if there are unsaved changes.
     public func save() { flushPendingSave() }
 
