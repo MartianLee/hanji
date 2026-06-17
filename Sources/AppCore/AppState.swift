@@ -29,8 +29,13 @@ public final class AppState: ObservableObject {
     @Published public var fontSize: Double = 15 {
         didSet { defaults.set(fontSize, forKey: Self.fontSizeKey) }
     }
-    @Published public private(set) var tabs: [OpenTab] = []
-    @Published public private(set) var activeTabID: UUID?
+    @Published public private(set) var panes: [Pane] = [Pane()]
+    @Published public var activePaneID: UUID?
+    public var activePane: Pane? { panes.first { $0.id == activePaneID } ?? panes.first }
+    public var isSplit: Bool { panes.count > 1 }
+    /// Active pane's tabs / active tab (proxies; views re-render via objectWillChange).
+    public var tabs: [OpenTab] { activePane?.tabs ?? [] }
+    public var activeTabID: UUID? { activePane?.activeTabID }
     public let rendererRegistry = DefaultRendererRegistry()
 
     private var vault: Vault?
@@ -58,6 +63,7 @@ public final class AppState: ObservableObject {
         }
         let storedSize = defaults.double(forKey: Self.fontSizeKey)
         if storedSize >= 10 && storedSize <= 30 { fontSize = storedSize }
+        activePaneID = panes.first?.id
         autosaveCancellable = $activeText
             .debounce(for: .seconds(autosaveInterval), scheduler: RunLoop.main)
             .sink { [weak self] _ in self?.autosave() }
@@ -76,8 +82,8 @@ public final class AppState: ObservableObject {
         savedText = ""
         externalConflict = nil
         conflictPaused = false
-        tabs = []
-        activeTabID = nil
+        panes = [Pane()]
+        activePaneID = panes[0].id
         addRecent(root)
         watcher?.stop()
         watcher = VaultWatcher(root: root) { [weak self] in self?.reloadTree() }
@@ -101,34 +107,48 @@ public final class AppState: ObservableObject {
     private func reconcileTabs() {
         guard let vault else { return }
         let fm = FileManager.default
-        for gone in tabs.filter({ !fm.fileExists(atPath: $0.file.url.path) }) {
-            removeTabSilently(gone.id)
-        }
-        for idx in tabs.indices {
-            let isActive = tabs[idx].id == activeTabID
-            let baseline = isActive ? savedText : tabs[idx].savedText
-            guard let disk = try? vault.read(tabs[idx].file), disk != baseline else { continue }
-            let alreadyConflicting = isActive ? (externalConflict != nil) : (tabs[idx].externalConflict != nil)
-            if alreadyConflicting { continue }
-            let dirty = isActive ? isDirty : tabs[idx].isDirty
-            if dirty {
-                if isActive { conflictPaused = true; externalConflict = disk }
-                else { tabs[idx].externalConflict = disk }
-            } else {
-                if isActive { activeText = disk; savedText = disk }
-                else { tabs[idx].text = disk; tabs[idx].savedText = disk }
+        for pane in panes {
+            for gone in pane.tabs.filter({ !fm.fileExists(atPath: $0.file.url.path) }) {
+                removeTab(gone.id, in: pane)
             }
         }
+        for pane in panes {
+            let isActivePane = pane.id == activePaneID
+            for idx in pane.tabs.indices {
+                let isActiveTab = isActivePane && pane.tabs[idx].id == pane.activeTabID
+                let baseline = isActiveTab ? savedText : pane.tabs[idx].savedText
+                guard let disk = try? vault.read(pane.tabs[idx].file), disk != baseline else { continue }
+                let conflicting = isActiveTab ? (externalConflict != nil) : (pane.tabs[idx].externalConflict != nil)
+                if conflicting { continue }
+                let dirty = isActiveTab ? isDirty : pane.tabs[idx].isDirty
+                if dirty {
+                    if isActiveTab { conflictPaused = true; externalConflict = disk }
+                    else { pane.tabs[idx].externalConflict = disk }
+                } else {
+                    if isActiveTab { activeText = disk; savedText = disk }
+                    else { pane.tabs[idx].text = disk; pane.tabs[idx].savedText = disk }
+                }
+            }
+        }
+        for pane in Array(panes) { closePaneIfEmpty(pane) }
     }
 
-    /// Remove a tab without saving (its file is gone); reactivate a neighbor.
-    private func removeTabSilently(_ id: UUID) {
-        guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
-        let wasActive = id == activeTabID
-        tabs.remove(at: idx)
-        if wasActive {
-            if let next = tabs[safe: idx] ?? tabs.last { activeTabID = next.id; hydrate(from: next) }
-            else { clearActive() }
+    /// Remove a tab (no save — file gone) from a specific pane.
+    private func removeTab(_ id: UUID, in pane: Pane) {
+        guard let idx = pane.tabs.firstIndex(where: { $0.id == id }) else { return }
+        let wasActiveTab = pane.id == activePaneID && id == pane.activeTabID
+        objectWillChange.send()
+        pane.tabs.remove(at: idx)
+        if wasActiveTab {
+            if let next = pane.tabs[safe: idx] ?? pane.tabs.last {
+                pane.activeTabID = next.id
+                hydrate(from: next)
+            } else {
+                pane.activeTabID = nil
+                if panes.count == 1 { clearActive() }
+            }
+        } else if id == pane.activeTabID {
+            pane.activeTabID = pane.tabs[safe: idx]?.id ?? pane.tabs.last?.id
         }
     }
 
@@ -169,11 +189,13 @@ public final class AppState: ObservableObject {
     /// (`conflictPaused` is intentionally not stored — `hydrate` derives it from
     /// `externalConflict != nil`.)
     private func writeBackActive() {
-        guard let id = activeTabID, let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
-        tabs[idx].text = activeText
-        tabs[idx].savedText = savedText
-        tabs[idx].externalConflict = externalConflict
+        guard let pane = activePane, let id = pane.activeTabID,
+              let idx = pane.tabs.firstIndex(where: { $0.id == id }) else { return }
+        pane.tabs[idx].text = activeText
+        pane.tabs[idx].savedText = savedText
+        pane.tabs[idx].externalConflict = externalConflict
     }
+
     /// Load the working state from a tab snapshot.
     private func hydrate(from tab: OpenTab) {
         selectedFile = tab.file
@@ -183,14 +205,16 @@ public final class AppState: ObservableObject {
         conflictPaused = (tab.externalConflict != nil)
         pendingCursorOffset = 0
     }
+
     private func clearActive() {
-        activeTabID = nil
+        activePane?.activeTabID = nil
         selectedFile = nil
         activeText = ""
         savedText = ""
         externalConflict = nil
         conflictPaused = false
     }
+
     /// Synchronous write of a non-active tab's snapshot if dirty.
     private func flush(_ tab: OpenTab) {
         guard tab.isDirty, let vault else { return }
@@ -199,43 +223,61 @@ public final class AppState: ObservableObject {
     }
 
     public func open(_ file: MarkdownFile) {
-        // Dedup by file identity (urlSameFile, not standardizedFileURL) so the
-        // /var↔/private/var symlink case can't open a second tab on one file.
-        if let existing = tabs.first(where: { urlSameFile($0.file.url, file.url) }) {
+        guard let pane = activePane else { return }
+        if let existing = pane.tabs.first(where: { urlSameFile($0.file.url, file.url) }) {
             switchTab(existing.id); return
         }
         flushPendingSave()
         writeBackActive()
         let text = (try? vault?.read(file)) ?? ""
         let tab = OpenTab(file: file, text: text)
-        tabs.append(tab)
-        activeTabID = tab.id
+        objectWillChange.send()
+        pane.tabs.append(tab)
+        pane.activeTabID = tab.id
         hydrate(from: tab)
     }
 
     /// Make an already-open tab active.
     public func switchTab(_ id: UUID) {
-        guard id != activeTabID, let tab = tabs.first(where: { $0.id == id }) else { return }
+        guard let pane = activePane, id != pane.activeTabID,
+              let tab = pane.tabs.first(where: { $0.id == id }) else { return }
         flushPendingSave()
         writeBackActive()
-        activeTabID = id
+        objectWillChange.send()
+        pane.activeTabID = id
         hydrate(from: tab)
     }
 
     /// Close a tab (saving it if dirty); a neighbor becomes active, or the
     /// editor clears if it was the last tab.
     public func closeTab(_ id: UUID) {
-        guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
-        let wasActive = id == activeTabID
-        if wasActive { flushPendingSave() } else { flush(tabs[idx]) }
-        tabs.remove(at: idx)
+        guard let pane = activePane, let idx = pane.tabs.firstIndex(where: { $0.id == id }) else { return }
+        let wasActive = id == pane.activeTabID
+        if wasActive { flushPendingSave() } else { flush(pane.tabs[idx]) }
+        objectWillChange.send()
+        pane.tabs.remove(at: idx)
         if wasActive {
-            if let next = tabs[safe: idx] ?? tabs.last {
-                activeTabID = next.id
+            if let next = pane.tabs[safe: idx] ?? pane.tabs.last {
+                pane.activeTabID = next.id
                 hydrate(from: next)
             } else {
-                clearActive()
+                pane.activeTabID = nil
+                closePaneIfEmpty(pane)
             }
+        }
+    }
+
+    /// Remove an emptied pane and re-activate another; for the lone pane, clear.
+    private func closePaneIfEmpty(_ pane: Pane) {
+        guard pane.tabs.isEmpty else { return }
+        if panes.count > 1 {
+            panes.removeAll { $0.id == pane.id }
+            let first = panes[0]
+            activePaneID = first.id
+            if let t = first.tabs.first(where: { $0.id == first.activeTabID }) { hydrate(from: t) }
+            else { clearActive() }
+        } else {
+            clearActive()
         }
     }
 
@@ -354,13 +396,19 @@ public final class AppState: ObservableObject {
         guard let v = vault else { throw VaultError.invalidName }
         // Resolve which tab/selectedFile corresponds to `url` BEFORE the rename,
         // while the file still exists and stat(2) can compare inodes reliably.
-        let tabIdx = tabs.firstIndex(where: { urlSameFile($0.file.url, url) })
         let wasOpen = selectedFile.map { urlSameFile($0.url, url) } ?? false
+        // Capture which pane/tab indices match before the rename (inodes valid now).
+        var paneTabMatches: [(Int, Int)] = []
+        for (pi, pane) in panes.enumerated() {
+            if let ti = pane.tabs.firstIndex(where: { urlSameFile($0.file.url, url) }) {
+                paneTabMatches.append((pi, ti))
+            }
+        }
         let newURL = try v.rename(url, to: newName)
         if newURL.standardizedFileURL != url.standardizedFileURL {
             fileOperations.append(.renamed(from: url, to: newURL))
             let newFile = MarkdownFile(url: newURL)
-            if let idx = tabIdx { tabs[idx].file = newFile }
+            for (pi, ti) in paneTabMatches { panes[pi].tabs[ti].file = newFile }
             if wasOpen { selectedFile = newFile }
         }
         reloadTree()
@@ -372,13 +420,19 @@ public final class AppState: ObservableObject {
     @discardableResult
     public func move(_ url: URL, into folder: URL) throws -> URL {
         guard let v = vault else { throw VaultError.invalidName }
-        let tabIdx = tabs.firstIndex { urlSameFile($0.file.url, url) }     // captured pre-move
         let wasActiveFile = selectedFile.map { urlSameFile($0.url, url) } ?? false
+        // Capture which pane/tab indices match before the move (inodes valid now).
+        var paneTabMatches: [(Int, Int)] = []
+        for (pi, pane) in panes.enumerated() {
+            if let ti = pane.tabs.firstIndex(where: { urlSameFile($0.file.url, url) }) {
+                paneTabMatches.append((pi, ti))
+            }
+        }
         let newURL = try v.move(url, into: folder)
         if newURL.standardizedFileURL != url.standardizedFileURL {
             fileOperations.append(.moved(from: url, to: newURL))
             let newFile = MarkdownFile(url: newURL)
-            if let tabIdx { tabs[tabIdx].file = newFile }
+            for (pi, ti) in paneTabMatches { panes[pi].tabs[ti].file = newFile }
             if wasActiveFile { selectedFile = newFile }
         }
         reloadTree()

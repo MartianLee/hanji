@@ -61,6 +61,19 @@ func tabChecks() {
     expectEqual(s.tabs.first?.file.name, "Renamed.md", "tab file renamed in place")
 }
 
+func paneProxyChecks() {
+    let vault = tabVault()
+    defer { tabCleanup(vault) }
+    let s = tabState(vault)
+    guard let a = s.files.first(where: { $0.name == "A.md" }) else { expect(false, "files"); return }
+    expectEqual(s.panes.count, 1, "starts with one pane")
+    expect(s.activePaneID != nil, "active pane set")
+    s.open(a)
+    expectEqual(s.tabs.count, 1, "tabs proxy reflects active pane")
+    expectEqual(s.panes.first?.tabs.count, 1, "active pane holds the tab")
+    expectEqual(s.activeTabID, s.panes.first?.activeTabID, "activeTabID proxy matches pane")
+}
+
 func tabReloadChecks() {
     let vault = tabVault()
     defer { tabCleanup(vault) }
