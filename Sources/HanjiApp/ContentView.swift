@@ -392,30 +392,12 @@ struct ContentView: View {
 
     @ViewBuilder private var editorPane: some View {
         VStack(spacing: 0) {
-            TabBarView()
-            if let selected = appState.selectedFile {
-                // Obsidian-style inline title: editable; committing renames the file.
-                InlineTitleView(fileURL: selected.url, rename: { newName in
-                    _ = try? appState.rename(selected.url, to: newName)
-                }, enterBody: {
-                    appState.pendingCursorOffset = 0   // focus the editor body
-                })
-                if appState.externalConflict != nil {
-                    HStack(spacing: 12) {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                        Text("This note changed on disk.")
-                        Spacer()
-                        Button("Reload from disk") { appState.resolveConflictReloadingDisk() }
-                        Button("Keep my edits") { appState.resolveConflictKeepingMine() }
-                    }
-                    .padding(8)
-                    .background(Color.orange.opacity(0.15))
+            if appState.panes.count > 1 {
+                HSplitView {
+                    ForEach(appState.panes) { pane in paneView(pane) }
                 }
-                MarkdownEditorView(text: $appState.activeText, renderers: appState.rendererRegistry, vaultRoot: appState.vaultRoot, cursorOffset: $appState.pendingCursorOffset, fontSize: CGFloat(appState.fontSize), onOpenLink: { appState.openLink($0) })
-            } else {
-                Text("Open a vault, then select a note")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let pane = appState.panes.first {
+                paneView(pane)
             }
             statusBar
         }
@@ -427,6 +409,45 @@ struct ContentView: View {
                 }
                 .help("Toggle right sidebar (⌥⌘B)")
                 .disabled(pluginManager.sidebar.isEmpty)
+            }
+        }
+    }
+
+    @ViewBuilder private func paneView(_ pane: Pane) -> some View {
+        let isActivePane = pane.id == appState.activePaneID
+        VStack(spacing: 0) {
+            TabBarView(pane: pane)
+            if let tab = pane.tabs.first(where: { $0.id == pane.activeTabID }) {
+                let fileURL = isActivePane ? (appState.selectedFile?.url ?? tab.file.url) : tab.file.url
+                InlineTitleView(fileURL: fileURL, rename: { newName in
+                    _ = try? appState.rename(fileURL, to: newName)
+                }, enterBody: { appState.pendingCursorOffset = 0 })
+                if isActivePane, appState.externalConflict != nil {
+                    HStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        Text("This note changed on disk.")
+                        Spacer()
+                        Button("Reload from disk") { appState.resolveConflictReloadingDisk() }
+                        Button("Keep my edits") { appState.resolveConflictKeepingMine() }
+                    }
+                    .padding(8).background(Color.orange.opacity(0.15))
+                }
+                MarkdownEditorView(
+                    text: isActivePane ? $appState.activeText : .constant(tab.text),
+                    renderers: appState.rendererRegistry, vaultRoot: appState.vaultRoot,
+                    cursorOffset: $appState.pendingCursorOffset, fontSize: CGFloat(appState.fontSize),
+                    onOpenLink: { appState.openLink($0) },
+                    onFocus: { appState.focusPane(pane.id) })
+                .opacity(isActivePane ? 1 : 0.92)
+            } else {
+                Text("Open a vault, then select a note")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .overlay(alignment: .top) {
+            if appState.isSplit && isActivePane {
+                Rectangle().fill(Color.accentColor).frame(height: 2)
             }
         }
     }

@@ -6,11 +6,17 @@ import ExtensionSDK
 /// NSTextView that lets a callback handle a click (used for task checkboxes).
 final class ClickableTextView: NSTextView {
     var onClick: ((Int) -> Bool)?
+    var onBecameFirstResponder: (() -> Void)?
     override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         let idx = characterIndexForInsertion(at: p)
         if onClick?(idx) == true { return }
         super.mouseDown(with: event)
+    }
+    override func becomeFirstResponder() -> Bool {
+        let ok = super.becomeFirstResponder()
+        if ok { onBecameFirstResponder?() }
+        return ok
     }
 }
 
@@ -141,16 +147,20 @@ public struct MarkdownEditorView: NSViewRepresentable {
     public var fontSize: CGFloat
     /// Called when a wiki/markdown link is clicked, with the raw link target.
     public var onOpenLink: ((String) -> Void)?
+    /// Called when the editor text view becomes first responder (user clicks or tabs into it).
+    public var onFocus: (() -> Void)?
 
     public init(text: Binding<String>, renderers: RendererRegistry? = nil, vaultRoot: URL? = nil,
                 cursorOffset: Binding<Int?> = .constant(nil), fontSize: CGFloat = 15,
-                onOpenLink: ((String) -> Void)? = nil) {
+                onOpenLink: ((String) -> Void)? = nil,
+                onFocus: (() -> Void)? = nil) {
         self._text = text
         self.renderers = renderers
         self.vaultRoot = vaultRoot
         self._cursorOffset = cursorOffset
         self.fontSize = fontSize
         self.onOpenLink = onOpenLink
+        self.onFocus = onFocus
     }
 
     public func makeNSView(context: Context) -> NSScrollView {
@@ -183,10 +193,12 @@ public struct MarkdownEditorView: NSViewRepresentable {
         context.coordinator.renderers = renderers
         context.coordinator.vaultRoot = vaultRoot
         context.coordinator.onOpenLink = onOpenLink
+        context.coordinator.onFocus = onFocus
         textView.textLayoutManager?.delegate = context.coordinator
         textView.onClick = { [weak coordinator = context.coordinator] idx in
             coordinator?.handleClick(at: idx) ?? false
         }
+        textView.onBecameFirstResponder = { [weak coordinator = context.coordinator] in coordinator?.onFocus?() }
         context.coordinator.refresh()
         return scroll
     }
@@ -196,6 +208,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         context.coordinator.renderers = renderers
         context.coordinator.vaultRoot = vaultRoot
         context.coordinator.onOpenLink = onOpenLink
+        context.coordinator.onFocus = onFocus
         if LivePreviewStyler.baseFontSize != fontSize {
             LivePreviewStyler.baseFontSize = fontSize
             textView.font = LivePreviewStyler.baseFont
@@ -223,6 +236,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         var renderers: RendererRegistry?
         var vaultRoot: URL?
         var onOpenLink: ((String) -> Void)?
+        var onFocus: (() -> Void)?
         private var overlays: [String: NSHostingView<AnyView>] = [:]
         /// Full UTF-16 ranges (incl. fences) of fenced code blocks, kept fresh by
         /// restyle() for the layout-fragment background fill.
