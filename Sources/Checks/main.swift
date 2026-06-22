@@ -8,6 +8,7 @@ runChecks([
     ("PaneSplit", paneSplitChecks),
     ("TabReorder", tabReorderChecks),
     ("PaneMoveTab", paneMoveTabChecks),
+    ("PaneMoveBuffer", paneMoveBufferChecks),
     ("TabReload", tabReloadChecks),
     ("Autosave", autosaveChecks),
     ("Conflict", conflictChecks),

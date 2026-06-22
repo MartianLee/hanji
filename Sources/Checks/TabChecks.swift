@@ -102,6 +102,33 @@ func tabReloadChecks() {
     expect(!s.tabs.contains { $0.file.name == "A.md" }, "vanished file's tab closed")
 }
 
+/// Mirrors the live "open A, open B, edit B, Move Tab Right" sequence and asserts
+/// the moved tab carries its own (edited) buffer while the source pane keeps its
+/// own — i.e. the two panes' buffers are not cross-contaminated.
+func paneMoveBufferChecks() {
+    let vault = tabVault()
+    defer { tabCleanup(vault) }
+    let s = tabState(vault)
+    guard let a = s.files.first(where: { $0.name == "A.md" }),
+          let b = s.files.first(where: { $0.name == "B.md" }) else { expect(false, "files"); return }
+    s.open(a)                       // tab A active, text "alpha"
+    s.open(b)                       // tab B active, text "beta"
+    s.activeText = "beta EDITED"    // simulate typing into the live (active) B
+    let bID = s.activeTabID!
+    s.moveTabToSide(bID, .right)
+
+    expectEqual(s.panes.count, 2, "move creates a second pane")
+    let left = s.panes.first!, right = s.panes.last!
+    expectEqual(left.tabs.map { $0.file.name }, ["A.md"], "left pane holds only A")
+    expectEqual(right.tabs.map { $0.file.name }, ["B.md"], "right pane holds only B")
+    expectEqual(left.activeTabID, left.tabs.first?.id, "left active tab = A")
+    expectEqual(left.tabs.first?.text, "alpha", "left A buffer intact (not contaminated by B's edit)")
+    expectEqual(right.tabs.first?.text, "beta EDITED", "right B buffer carries the live edit")
+    expectEqual(s.activePaneID, right.id, "right pane is active")
+    expectEqual(s.selectedFile?.name, "B.md", "active doc = B")
+    expectEqual(s.activeText, "beta EDITED", "live buffer = B's edit")
+}
+
 func tabReorderChecks() {
     let vault = tabVault()
     defer { tabCleanup(vault) }
