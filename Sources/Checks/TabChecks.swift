@@ -170,3 +170,42 @@ func paneSplitChecks() {
     expectEqual(s.panes.count, 1, "closing a pane's last tab removes the pane")
     expect(s.selectedFile?.name == "A.md" || s.selectedFile?.name == "C.md", "remaining pane active")
 }
+
+func paneMoveTabChecks() {
+    let vault = tabVault()
+    defer { tabCleanup(vault) }
+    let s = tabState(vault)
+    guard let a = s.files.first(where: { $0.name == "A.md" }),
+          let b = s.files.first(where: { $0.name == "B.md" }) else { expect(false, "files"); return }
+
+    // Two tabs in one pane; move B to the right → new right pane with B.
+    s.open(a); s.open(b)
+    let bID = s.tabs.first(where: { $0.file.name == "B.md" })!.id
+    s.moveTabToSide(bID, .right)
+    expectEqual(s.panes.count, 2, "moving a tab right creates a second pane")
+    expectEqual(s.panes.last?.tabs.count, 1, "right pane holds the moved tab")
+    expectEqual(s.panes.first?.tabs.count, 1, "left pane keeps the other tab")
+    expectEqual(s.selectedFile?.name, "B.md", "moved tab is focused")
+    expectEqual(s.activePaneID, s.panes.last?.id, "right pane is active")
+
+    // Dead-end: B already rightmost → move right again is a no-op.
+    s.moveTabToSide(bID, .right)
+    expectEqual(s.panes.count, 2, "moving the rightmost tab further right is a no-op")
+
+    // Merge into existing neighbour: move B left → right pane emptied → collapse.
+    s.moveTabToSide(bID, .left)
+    expectEqual(s.panes.count, 1, "moving the lone right tab left collapses the split")
+    expectEqual(s.tabs.count, 2, "both tabs back in one pane")
+    expect(s.tabs.contains { $0.file.name == "B.md" }, "B merged back into the left pane")
+
+    // Lone tab cannot split into a new pane.
+    let vault2 = tabVault()
+    defer { tabCleanup(vault2) }
+    let s2 = tabState(vault2)
+    let a2 = s2.files.first(where: { $0.name == "A.md" })!
+    s2.open(a2)
+    expect(!s2.canMoveTab(s2.activeTabID!, .right), "canMoveTab false for a lone tab (right)")
+    expect(!s2.canMoveTab(s2.activeTabID!, .left), "canMoveTab false for a lone tab (left)")
+    s2.moveTabToSide(s2.activeTabID!, .right)
+    expectEqual(s2.panes.count, 1, "a lone tab does not split into a new pane")
+}

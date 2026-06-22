@@ -320,6 +320,58 @@ public final class AppState: ObservableObject {
         }
     }
 
+    /// Which side a tab is sent to. Left = `panes[0]`, right = `panes[1]`.
+    public enum PaneSide { case left, right }
+
+    /// Whether `moveTabToSide(tabID, side)` would change anything: a neighbour
+    /// pane on that side exists (merge), or there's room for a new pane
+    /// (`panes.count < 2`) and the source keeps at least one tab.
+    public func canMoveTab(_ tabID: UUID, _ side: PaneSide) -> Bool {
+        guard let srcIndex = panes.firstIndex(where: { p in p.tabs.contains(where: { $0.id == tabID }) })
+        else { return false }
+        let neighbour = side == .right ? srcIndex + 1 : srcIndex - 1
+        if neighbour >= 0 && neighbour < panes.count { return true }
+        return panes.count < 2 && panes[srcIndex].tabs.count >= 2
+    }
+
+    /// Move the tab into the pane on `side`: merge into an existing neighbour, or
+    /// create a new pane there (only when there's room and the source keeps a
+    /// tab). The moved tab becomes that pane's active tab and the pane is focused;
+    /// an emptied source pane collapses. No-op when the move is impossible.
+    public func moveTabToSide(_ tabID: UUID, _ side: PaneSide) {
+        guard let srcIndex = panes.firstIndex(where: { p in p.tabs.contains(where: { $0.id == tabID }) }),
+              let tabIdx = panes[srcIndex].tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        let src = panes[srcIndex]
+        let neighbourIndex = side == .right ? srcIndex + 1 : srcIndex - 1
+        let hasNeighbour = neighbourIndex >= 0 && neighbourIndex < panes.count
+        guard hasNeighbour || (panes.count < 2 && src.tabs.count >= 2) else { return }
+
+        // Persist the live buffer first when the moved tab is the active live tab,
+        // so the carried-over snapshot is current.
+        let isLiveTab = src.id == activePaneID && tabID == src.activeTabID
+        if isLiveTab { flushPendingSave(); writeBackActive() }
+
+        objectWillChange.send()
+        let snapshot = src.tabs[tabIdx]
+        let movedActive = tabID == src.activeTabID
+        src.tabs.remove(at: tabIdx)
+        if movedActive { src.activeTabID = src.tabs[safe: tabIdx]?.id ?? src.tabs.last?.id }
+
+        let target: Pane
+        if hasNeighbour {
+            target = panes[neighbourIndex]
+            target.tabs.append(snapshot)
+        } else {
+            let newPane = Pane(tabs: [snapshot], activeTabID: snapshot.id)
+            panes.insert(newPane, at: side == .right ? srcIndex + 1 : srcIndex)
+            target = newPane
+        }
+        target.activeTabID = snapshot.id
+        activePaneID = target.id
+        hydrate(from: snapshot)
+        closePaneIfEmpty(src)
+    }
+
     /// Toolbar/menu "Save" — writes only if there are unsaved changes.
     public func save() { flushPendingSave() }
 
