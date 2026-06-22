@@ -392,6 +392,12 @@ struct ContentView: View {
 
     @ViewBuilder private var editorPane: some View {
         VStack(spacing: 0) {
+            // A fresh HSplitView is built when going to 2 panes so the split lays
+            // out 50/50 (adding a child to an existing HSplitView would leave the
+            // new pane ~0 wide). That rebuild tears the previous editor's NSTextView
+            // out of the window — safe only because the structural ops resign the
+            // editor's first responder first (AppState.resignEditorFocus); a
+            // first-responder text view removed mid-update hangs the app.
             if appState.panes.count > 1 {
                 HSplitView {
                     ForEach(appState.panes) { pane in paneView(pane) }

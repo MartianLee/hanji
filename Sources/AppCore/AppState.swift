@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AppKit
 import VaultKit
 import MKSearchKit
 
@@ -71,6 +72,7 @@ public final class AppState: ObservableObject {
 
     public func openVault(at root: URL) {
         flushPendingSave()                       // don't lose edits when switching vaults
+        resignEditorFocus()                      // editors are torn down as panes reset (avoid teardown-time hang)
         let v = Vault(root: root)
         vault = v
         vaultRoot = root
@@ -268,9 +270,20 @@ public final class AppState: ObservableObject {
     }
 
     /// Remove an emptied pane and re-activate another; for the lone pane, clear.
+    /// Resign the editor's first responder *now* (on the main thread, outside any
+    /// SwiftUI view-graph update) before a structural change tears its NSTextView
+    /// out of the window. If the text view is still first responder when SwiftUI
+    /// removes it, AppKit deactivates its input context synchronously, pumping a
+    /// nested runloop (IMK XPC) that re-enters SwiftUI's update → unbounded
+    /// recursion that pins a core at 100% and hangs the app.
+    private func resignEditorFocus() {
+        NSApp?.keyWindow?.makeFirstResponder(nil)
+    }
+
     private func closePaneIfEmpty(_ pane: Pane) {
         guard pane.tabs.isEmpty else { return }
         if panes.count > 1 {
+            resignEditorFocus()   // the collapsing pane's editor view is about to be torn down
             panes.removeAll { $0.id == pane.id }
             let first = panes[0]
             activePaneID = first.id
@@ -295,6 +308,7 @@ public final class AppState: ObservableObject {
     /// Open the active document in a new right pane (no-op if already split or empty).
     public func splitRight() {
         guard panes.count == 1, let cur = activePane, let id = cur.activeTabID else { return }
+        resignEditorFocus()   // the single-pane editor is rebuilt into a fresh HSplitView; resign FR first
         flushPendingSave()
         writeBackActive()
         guard let snapshot = cur.tabs.first(where: { $0.id == id }) else { return }
@@ -345,6 +359,7 @@ public final class AppState: ObservableObject {
         let neighbourIndex = side == .right ? srcIndex + 1 : srcIndex - 1
         let hasNeighbour = neighbourIndex >= 0 && neighbourIndex < panes.count
         guard hasNeighbour || (panes.count < 2 && src.tabs.count >= 2) else { return }
+        resignEditorFocus()   // panes change rebuilds editor views (incl. 1→2 fresh HSplitView); resign FR first
 
         // Persist the live buffer first when the moved tab is the active live tab,
         // so the carried-over snapshot is current.
