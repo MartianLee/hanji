@@ -18,6 +18,20 @@ final class ClickableTextView: NSTextView {
         if ok { onBecameFirstResponder?() }
         return ok
     }
+    /// Removing a first-responder NSTextView while SwiftUI is updating its view
+    /// graph (panes split/collapse, tabs open/close) makes AppKit deactivate the
+    /// text input context synchronously during `_setWindow:`. That deactivation
+    /// pumps a nested runloop (IMK XPC wait), which re-runs SwiftUI's runloop
+    /// observer → another view-graph update that removes another editor → an
+    /// unbounded re-entrant recursion that pins a core at 100% (the app hangs).
+    /// Hand first responder back to the window *before* we detach, so the input
+    /// context is already inactive when the view leaves the window.
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil, let win = window, win.firstResponder === self {
+            win.makeFirstResponder(win)
+        }
+        super.viewWillMove(toWindow: newWindow)
+    }
 }
 
 /// Layout fragment that paints a full-width background behind code-block
