@@ -89,6 +89,14 @@ struct HanjiApp: App {
                 .keyboardShortcut("w", modifiers: .command)
                 Button("Split Right") { appState.splitRight() }
                     .keyboardShortcut("\\", modifiers: .command)
+                Button("Move Tab Right") {
+                    if let id = appState.activeTabID { appState.moveTabToSide(id, .right) }
+                }
+                .keyboardShortcut(.rightArrow, modifiers: [.control, .command])
+                Button("Move Tab Left") {
+                    if let id = appState.activeTabID { appState.moveTabToSide(id, .left) }
+                }
+                .keyboardShortcut(.leftArrow, modifiers: [.control, .command])
             }
             CommandGroup(after: .sidebar) {
                 Button("Toggle Right Sidebar") { uiState.rightSidebarVisible.toggle() }

@@ -54,6 +54,12 @@ struct TabBarView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { appState.focusPane(pane.id); appState.switchTab(tab.id) }
+        .contextMenu {
+            Button("Move to Left Pane") { appState.moveTabToSide(tab.id, .left) }
+                .disabled(!appState.canMoveTab(tab.id, .left))
+            Button("Move to Right Pane") { appState.moveTabToSide(tab.id, .right) }
+                .disabled(!appState.canMoveTab(tab.id, .right))
+        }
         .draggable(tab.id.uuidString)
         .dropDestination(for: String.self) { items, _ in
             guard let s = items.first, let dropped = UUID(uuidString: s) else { return false }
