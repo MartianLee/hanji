@@ -1,10 +1,12 @@
 import SwiftUI
 import AppCore
 
-/// Horizontal strip of one pane's open-note tabs.
+/// Horizontal strip of one pane's open-note tabs. Tabs can be dragged to
+/// reorder within the pane (insert-style); a trailing zone drops to the end.
 struct TabBarView: View {
     @EnvironmentObject var appState: AppState
     let pane: Pane
+    @State private var dropTarget: UUID?
 
     var body: some View {
         if !pane.tabs.isEmpty {
@@ -14,6 +16,14 @@ struct TabBarView: View {
                         tabItem(tab)
                         Divider().frame(height: 16)
                     }
+                    // Trailing drop zone → move to the end.
+                    Color.clear
+                        .frame(width: 40, height: 32)
+                        .dropDestination(for: String.self) { items, _ in
+                            guard let s = items.first, let dropped = UUID(uuidString: s) else { return false }
+                            appState.moveTab(dropped, before: nil, in: pane)
+                            return true
+                        }
                 }
             }
             .frame(height: 32)
@@ -37,7 +47,21 @@ struct TabBarView: View {
         }
         .padding(.horizontal, 12).frame(height: 32)
         .background(isActive ? Color(nsColor: .textBackgroundColor) : Color.clear)
+        .overlay(alignment: .leading) {
+            if dropTarget == tab.id {
+                Rectangle().fill(Color.accentColor).frame(width: 2)
+            }
+        }
         .contentShape(Rectangle())
         .onTapGesture { appState.focusPane(pane.id); appState.switchTab(tab.id) }
+        .draggable(tab.id.uuidString)
+        .dropDestination(for: String.self) { items, _ in
+            guard let s = items.first, let dropped = UUID(uuidString: s) else { return false }
+            appState.moveTab(dropped, before: tab.id, in: pane)
+            return true
+        } isTargeted: { hovering in
+            if hovering { dropTarget = tab.id }
+            else if dropTarget == tab.id { dropTarget = nil }
+        }
     }
 }
