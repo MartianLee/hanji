@@ -96,7 +96,13 @@ final class MarkerFragment: NSTextLayoutFragment {
         super.draw(at: point, in: context)   // glyphs first (the marker glyphs are clear)
         context.saveGState()
         context.translateBy(x: point.x, y: point.y)
-        let b = renderingSurfaceBounds
+        // Anchor the marker to the FIRST text line's box, not the whole rendering
+        // surface. Right after Return splits this paragraph, the surface can
+        // transiently span the empty line below, dropping `renderingSurfaceBounds.midY`
+        // into the inter-line gap — the bullet/checkbox then appears to fall onto the
+        // line below until the next relayout. The first line fragment's typographic
+        // bounds stay on this line regardless of the surface height.
+        let b = textLineFragments.first?.typographicBounds ?? renderingSurfaceBounds
         let midY = b.midY
         let x = b.minX
         switch kind {
