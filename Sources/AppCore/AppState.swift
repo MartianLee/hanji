@@ -304,6 +304,22 @@ public final class AppState: ObservableObject {
         hydrate(from: snapshot)
     }
 
+    /// Move `sourceID` to just before `targetID` within `pane` (insert-style);
+    /// `targetID == nil` moves it to the end. Pure positional change — the active
+    /// tab and the live working fields are untouched. No-op if source == target
+    /// or either id is absent.
+    public func moveTab(_ sourceID: UUID, before targetID: UUID?, in pane: Pane) {
+        guard sourceID != targetID,
+              let from = pane.tabs.firstIndex(where: { $0.id == sourceID }) else { return }
+        objectWillChange.send()
+        let moved = pane.tabs.remove(at: from)
+        if let targetID, let to = pane.tabs.firstIndex(where: { $0.id == targetID }) {
+            pane.tabs.insert(moved, at: to)
+        } else {
+            pane.tabs.append(moved)
+        }
+    }
+
     /// Toolbar/menu "Save" — writes only if there are unsaved changes.
     public func save() { flushPendingSave() }
 

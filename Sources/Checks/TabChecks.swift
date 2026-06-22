@@ -102,6 +102,37 @@ func tabReloadChecks() {
     expect(!s.tabs.contains { $0.file.name == "A.md" }, "vanished file's tab closed")
 }
 
+func tabReorderChecks() {
+    let vault = tabVault()
+    defer { tabCleanup(vault) }
+    try? "gamma".write(to: vault.appendingPathComponent("C.md"), atomically: true, encoding: .utf8)
+    let s = tabState(vault)
+    guard let a = s.files.first(where: { $0.name == "A.md" }),
+          let b = s.files.first(where: { $0.name == "B.md" }),
+          let c = s.files.first(where: { $0.name == "C.md" }) else { expect(false, "files"); return }
+    s.open(a); s.open(b); s.open(c)   // order [A,B,C], C active
+    let pane = s.panes.first!
+    let aID = s.tabs.first(where: { $0.file.name == "A.md" })!.id
+    let bID = s.tabs.first(where: { $0.file.name == "B.md" })!.id
+
+    // Move A to the end → [B,C,A].
+    s.moveTab(aID, before: nil, in: pane)
+    expectEqual(pane.tabs.map { $0.file.name }, ["B.md", "C.md", "A.md"], "A moved to the end")
+
+    // Move A before B → [A,B,C].
+    s.moveTab(aID, before: bID, in: pane)
+    expectEqual(pane.tabs.map { $0.file.name }, ["A.md", "B.md", "C.md"], "A moved before B")
+
+    // No-op cases leave order unchanged.
+    s.moveTab(aID, before: aID, in: pane)
+    s.moveTab(UUID(), before: bID, in: pane)
+    expectEqual(pane.tabs.map { $0.file.name }, ["A.md", "B.md", "C.md"], "no-op reorders unchanged")
+
+    // Reorder never disturbs the active tab or its live buffer.
+    expectEqual(s.selectedFile?.name, "C.md", "C still active after reorders")
+    expectEqual(s.activeTabID, s.tabs.first(where: { $0.file.name == "C.md" })!.id, "activeTabID unchanged")
+}
+
 func paneSplitChecks() {
     let vault = tabVault()
     defer { tabCleanup(vault) }

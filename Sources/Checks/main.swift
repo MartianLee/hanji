@@ -6,6 +6,7 @@ runChecks([
     ("Tabs", tabChecks),
     ("PaneProxy", paneProxyChecks),
     ("PaneSplit", paneSplitChecks),
+    ("TabReorder", tabReorderChecks),
     ("TabReload", tabReloadChecks),
     ("Autosave", autosaveChecks),
     ("Conflict", conflictChecks),
