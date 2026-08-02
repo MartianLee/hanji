@@ -663,6 +663,13 @@ public struct MarkdownEditorView: NSViewRepresentable {
             guard let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
             lastCaretParagraph = (textView.string as NSString).paragraphRange(for: textView.selectedRange())
+            // Never while an input method is still composing. refresh() rewrites the
+            // storage's attributes across the whole document — marked text included —
+            // which pulls the composition out from under the IME: typing Hangul, every
+            // jamo gets re-styled mid-composition and the text jumps and flickers.
+            // Committing the composition sends another textDidChange, and that one
+            // styles the finished text.
+            guard !textView.hasMarkedText() else { return }
             refresh()
         }
 
