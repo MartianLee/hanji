@@ -31,3 +31,24 @@ func listContinuationChecks() {
     expectEqual(act("# Heading"), .none, "heading")
     expectEqual(act("1.no space"), .none, "digit-dot without a space")
 }
+
+func listIndentChecks() {
+    // Tab nests the item, whatever kind of list it is — including the empty item
+    // Return just created, which is exactly where you reach for Tab.
+    expectEqual(ListIndent.indent(for: "- item"), "\t", "bullet indents")
+    expectEqual(ListIndent.indent(for: "1. item"), "\t", "numbered item indents")
+    expectEqual(ListIndent.indent(for: "- [ ] todo"), "\t", "task indents")
+    expectEqual(ListIndent.indent(for: "- "), "\t", "the empty item Return leaves behind indents")
+    expectEqual(ListIndent.indent(for: "\t- deep"), "\t", "an already nested item indents further")
+    expectEqual(ListIndent.indent(for: "plain text"), nil, "plain line gets a plain Tab")
+    expectEqual(ListIndent.indent(for: ""), nil, "empty line gets a plain Tab")
+
+    // Shift-Tab removes exactly one level, tabs or spaces.
+    expectEqual(ListIndent.outdent(for: "\t- item"), 1, "one tab is one level")
+    expectEqual(ListIndent.outdent(for: "\t\t- item"), 1, "only the outermost level goes")
+    expectEqual(ListIndent.outdent(for: "    - item"), 4, "four spaces are one level")
+    expectEqual(ListIndent.outdent(for: "  - item"), 2, "a short space indent goes entirely")
+    expectEqual(ListIndent.outdent(for: "      - item"), 4, "six spaces drop one level, not all")
+    expectEqual(ListIndent.outdent(for: "- item"), nil, "a top-level item has nothing to outdent")
+    expectEqual(ListIndent.outdent(for: "\tplain"), nil, "indented plain text is not a list")
+}

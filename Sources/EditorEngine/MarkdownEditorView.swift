@@ -24,29 +24,61 @@ final class ClickableTextView: NSTextView {
     /// adding another one, which is how you leave a list. Everything goes through
     /// insertText, so each step stays a normal undoable edit.
     override func insertNewline(_ sender: Any?) {
-        guard let storage = textStorage else { return super.insertNewline(sender) }
-        let sel = selectedRange()
-        guard sel.length == 0 else { return super.insertNewline(sender) }
-        let ns = storage.string as NSString
-        let para = ns.lineRange(for: NSRange(location: sel.location, length: 0))
-        var lineLength = para.length
-        while lineLength > 0 {
-            let c = ns.character(at: para.location + lineLength - 1)
-            guard c == 0x0A || c == 0x0D else { break }
-            lineLength -= 1
-        }
-        // Only continue from the end of the item's own text; mid-line Return splits
-        // the line as usual.
-        guard sel.location == para.location + lineLength else { return super.insertNewline(sender) }
-        let line = ns.substring(with: NSRange(location: para.location, length: lineLength))
-        switch ListContinuation.action(for: line) {
+        guard let line = caretLine(),
+              // Only continue from the end of the item's own text; a mid-line
+              // Return splits the line as usual.
+              selectedRange().location == line.range.location + line.range.length
+        else { return super.insertNewline(sender) }
+        switch ListContinuation.action(for: line.text) {
         case .none:
             super.insertNewline(sender)
         case .continue(let marker):
-            insertText("\n" + marker, replacementRange: sel)
+            insertText("\n" + marker, replacementRange: selectedRange())
         case .end(let markerLength):
-            insertText("", replacementRange: NSRange(location: para.location, length: markerLength))
+            insertText("", replacementRange: NSRange(location: line.range.location, length: markerLength))
         }
+    }
+
+    /// Tab nests the list item the caret is in one level deeper — including the
+    /// empty item Return just made, which is where you reach for Tab. Outside a
+    /// list it stays an ordinary Tab. The caret keeps its place in the text, so
+    /// indenting from mid-word doesn't move you.
+    override func insertTab(_ sender: Any?) {
+        guard let line = caretLine(), let unit = ListIndent.indent(for: line.text) else {
+            return super.insertTab(sender)
+        }
+        let caret = selectedRange().location
+        insertText(unit, replacementRange: NSRange(location: line.range.location, length: 0))
+        setSelectedRange(NSRange(location: caret + (unit as NSString).length, length: 0))
+    }
+
+    /// Shift-Tab pulls the item back out one level.
+    override func insertBacktab(_ sender: Any?) {
+        guard let line = caretLine(), let drop = ListIndent.outdent(for: line.text) else {
+            return super.insertBacktab(sender)
+        }
+        let caret = selectedRange().location
+        insertText("", replacementRange: NSRange(location: line.range.location, length: drop))
+        setSelectedRange(NSRange(location: max(line.range.location, caret - drop), length: 0))
+    }
+
+    /// The caret's line: its range in the storage (trailing newline excluded) and
+    /// its text. nil when something is selected rather than a plain caret sitting
+    /// in the text — list editing keys then fall back to their default behaviour.
+    private func caretLine() -> (range: NSRange, text: String)? {
+        guard let storage = textStorage else { return nil }
+        let sel = selectedRange()
+        guard sel.length == 0 else { return nil }
+        let ns = storage.string as NSString
+        let para = ns.lineRange(for: NSRange(location: sel.location, length: 0))
+        var length = para.length
+        while length > 0 {
+            let c = ns.character(at: para.location + length - 1)
+            guard c == 0x0A || c == 0x0D else { break }
+            length -= 1
+        }
+        let range = NSRange(location: para.location, length: length)
+        return (range, ns.substring(with: range))
     }
 }
 

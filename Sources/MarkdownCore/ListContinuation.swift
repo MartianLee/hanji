@@ -70,3 +70,34 @@ public enum ListContinuation {
         return .continue(indent + "\(value + 1)" + ns.substring(with: NSRange(location: j, length: 2)))
     }
 }
+
+/// What Tab / Shift-Tab do to a list line: nest it one level deeper, or pull it
+/// back out. Nesting in markdown is just leading whitespace, so the whole job is
+/// deciding how much of it to add or remove.
+public enum ListIndent {
+    /// One nesting level. A tab is what most markdown editors insert, and both the
+    /// tokenizer and `ListContinuation` already read tabs and spaces alike.
+    public static let unit = "\t"
+    /// How many spaces make one level, for lists that were indented with spaces.
+    public static let spacesPerUnit = 4
+
+    /// Tab: what to insert at the start of `line`, or nil when the line isn't a
+    /// list item and Tab should do its ordinary thing.
+    public static func indent(for line: String) -> String? {
+        guard ListContinuation.action(for: line) != .none else { return nil }
+        return unit
+    }
+
+    /// Shift-Tab: how many leading UTF-16 units to drop, or nil when the line
+    /// isn't a list item or is already at the outermost level.
+    public static func outdent(for line: String) -> Int? {
+        guard ListContinuation.action(for: line) != .none else { return nil }
+        let ns = line as NSString
+        guard ns.length > 0 else { return nil }
+        if ns.character(at: 0) == UInt16(0x09) { return 1 }
+        var spaces = 0
+        while spaces < ns.length, spaces < spacesPerUnit,
+              ns.character(at: spaces) == UInt16(0x20) { spaces += 1 }
+        return spaces > 0 ? spaces : nil
+    }
+}
