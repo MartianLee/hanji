@@ -9,6 +9,13 @@ public enum LivePreviewStyler {
     public static var baseFontSize: CGFloat = 15
     public static var baseFont: NSFont { .systemFont(ofSize: baseFontSize) }
 
+    /// Hanging indent for an ordered item, measured rather than hard-coded so a
+    /// wrapped line still lines up under the text at whatever font size the user
+    /// picked. `10. ` is the widest marker a list normally reaches.
+    static var orderedIndent: CGFloat {
+        ("10. " as NSString).size(withAttributes: [.font: baseFont]).width.rounded()
+    }
+
     /// Reading rhythm shared by all paragraph styles (body, lists, quotes, …):
     /// a roomier line height plus a visible gap between paragraphs, instead of
     /// AppKit's tight single-spaced default.
@@ -122,7 +129,7 @@ public enum LivePreviewStyler {
             return [.paragraphStyle: p]
         case .orderedItem:
             let p = bodyParagraph()
-            p.headIndent = 26          // wrapped lines clear the widest common "10. "
+            p.headIndent = orderedIndent
             p.paragraphSpacing = 2
             return [.paragraphStyle: p]
         case .task(let done):
