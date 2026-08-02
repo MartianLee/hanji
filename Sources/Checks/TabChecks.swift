@@ -158,6 +158,17 @@ func tabReorderChecks() {
     // Reorder never disturbs the active tab or its live buffer.
     expectEqual(s.selectedFile?.name, "C.md", "C still active after reorders")
     expectEqual(s.activeTabID, s.tabs.first(where: { $0.file.name == "C.md" })!.id, "activeTabID unchanged")
+
+    // A non-active pane reorders just as well, and doing so leaves the focused
+    // pane (its active tab and live buffer) completely alone.
+    s.activeText = "gamma EDITED"
+    s.moveTabToSide(s.activeTabID!, .right)     // C → new right pane; left keeps [A,B]
+    let leftPane = s.panes.first!
+    s.moveTab(leftPane.tabs[0].id, before: nil, in: leftPane)
+    expectEqual(leftPane.tabs.map { $0.file.name }, ["B.md", "A.md"], "non-active pane reorders")
+    expectEqual(s.activePaneID, s.panes.last?.id, "focus stays in the right pane")
+    expectEqual(s.selectedFile?.name, "C.md", "right pane's active tab untouched")
+    expectEqual(s.activeText, "gamma EDITED", "live buffer untouched by a non-active reorder")
 }
 
 /// A move always re-hydrates the live working state from the moved tab's snapshot,
@@ -278,4 +289,29 @@ func paneMoveTabChecks() {
     expect(!s2.canMoveTab(s2.activeTabID!, .left), "canMoveTab false for a lone tab (left)")
     s2.moveTabToSide(s2.activeTabID!, .right)
     expectEqual(s2.panes.count, 1, "a lone tab does not split into a new pane")
+
+    // Creating a new pane on the *left*: it is inserted before the source pane.
+    let vault3 = tabVault()
+    defer { tabCleanup(vault3) }
+    try? "gamma".write(to: vault3.appendingPathComponent("C.md"), atomically: true, encoding: .utf8)
+    let s3 = tabState(vault3)
+    guard let a3 = s3.files.first(where: { $0.name == "A.md" }),
+          let b3 = s3.files.first(where: { $0.name == "B.md" }),
+          let c3 = s3.files.first(where: { $0.name == "C.md" }) else { expect(false, "files"); return }
+    s3.open(a3); s3.open(b3)                    // pane0 [A,B], B active
+    s3.moveTabToSide(s3.activeTabID!, .left)
+    expectEqual(s3.panes.count, 2, "moving a tab left creates a second pane")
+    expectEqual(s3.panes.first?.tabs.map { $0.file.name }, ["B.md"], "the new pane is the left one")
+    expectEqual(s3.panes.last?.tabs.map { $0.file.name }, ["A.md"], "the source pane stays on the right")
+    expectEqual(s3.activePaneID, s3.panes.first?.id, "the new left pane is focused")
+
+    // Merge into an existing neighbour while the source pane survives.
+    s3.open(c3)                                 // opens in the active (left) pane → [B,C]
+    s3.moveTabToSide(s3.activeTabID!, .right)   // C → right pane, left keeps B
+    expectEqual(s3.panes.count, 2, "merging into a neighbour keeps two panes")
+    expectEqual(s3.panes.first?.tabs.map { $0.file.name }, ["B.md"], "source pane survives with its other tab")
+    expectEqual(s3.panes.last?.tabs.map { $0.file.name }, ["A.md", "C.md"], "moved tab appended to the neighbour")
+    expectEqual(s3.panes.first?.activeTabID, s3.panes.first?.tabs.first?.id, "source repoints its active tab to B")
+    expectEqual(s3.activePaneID, s3.panes.last?.id, "focus follows the moved tab")
+    expectEqual(s3.selectedFile?.name, "C.md", "moved tab is the active doc")
 }
