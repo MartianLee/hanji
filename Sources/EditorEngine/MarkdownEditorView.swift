@@ -381,6 +381,26 @@ public struct MarkdownEditorView: NSViewRepresentable {
             LivePreviewStyler.apply(deco, to: storage)
             LivePreviewStyler.highlightCode(regions, in: storage)
             applyMarkers(spans: spans, sel: sel, storage: storage)
+            reapplyReservations(in: storage, caret: selection)
+        }
+
+        /// Heights the widget pass is holding open, so a restyle can put them back.
+        /// LivePreviewStyler.apply resets attributes across the whole document, which
+        /// wipes them — the document collapses by however much the widgets were
+        /// holding open, and the next widget pass re-opens it. Every caret move
+        /// bounced the layout that way, throwing whatever sits below a widget (the
+        /// caret included) around the viewport.
+        private var reservations: [(region: Range<Int>, height: CGFloat)] = []
+        /// Length the reservations were measured against; after an edit their offsets
+        /// are stale and the widget pass re-measures them anyway.
+        private var reservationsLength = -1
+
+        private func reapplyReservations(in storage: NSTextStorage, caret: Range<Int>) {
+            guard storage.length == reservationsLength else { return }
+            // A block the caret is inside shows its source instead of its widget.
+            for r in reservations where !intersects(r.region, caret) {
+                reserve(region: r.region, height: r.height, in: storage)
+            }
         }
 
         /// Hide list/task marker glyphs (keeping width so clicks/toggles still map)
@@ -507,7 +527,13 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 placements.append((spec.region, host, h))
             }
 
-            // Phase 2: re-layout (heights changed), then position each overlay.
+            reservations = placements.map { (region: $0.region, height: $0.h) }
+            reservationsLength = storage.length
+
+            // Phase 2: re-layout (heights changed), then position each overlay. The
+            // full-document ensureLayout also settles the caret's own line, so don't
+            // skip it when there is nothing to place — without it the insertion point
+            // is left unpainted after a restyle.
             tlm.ensureLayout(for: tcs.documentRange)
             let origin = textView.textContainerOrigin
             for pl in placements {
