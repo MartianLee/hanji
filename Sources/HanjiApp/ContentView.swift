@@ -587,9 +587,9 @@ private struct InlineTitleView: View {
             .onAppear { title = base }
             .onChange(of: fileURL) { _, _ in title = base }     // switched notes → resync
             .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
-            // Enter or Space from the title drops into the editor body.
+            // Enter drops into the editor body. Space must NOT: titles have spaces
+            // in them, and stealing the first one made multi-word titles unwritable.
             .onKeyPress(.return) { commit(); enterBody(); return .handled }
-            .onKeyPress(.space) { commit(); enterBody(); return .handled }
     }
 
     private func commit() {
