@@ -81,17 +81,25 @@ public enum ListIndent {
     /// How many spaces make one level, for lists that were indented with spaces.
     public static let spacesPerUnit = 4
 
+    /// Whether Tab/Shift-Tab belong to the list on this line at all. Callers need
+    /// this apart from `outdent`, which also returns nil for a list item that is
+    /// already at the outermost level — a case where the key should be swallowed
+    /// rather than handed back to the text view.
+    public static func isListItem(_ line: String) -> Bool {
+        ListContinuation.action(for: line) != .none
+    }
+
     /// Tab: what to insert at the start of `line`, or nil when the line isn't a
     /// list item and Tab should do its ordinary thing.
     public static func indent(for line: String) -> String? {
-        guard ListContinuation.action(for: line) != .none else { return nil }
+        guard isListItem(line) else { return nil }
         return unit
     }
 
     /// Shift-Tab: how many leading UTF-16 units to drop, or nil when the line
     /// isn't a list item or is already at the outermost level.
     public static func outdent(for line: String) -> Int? {
-        guard ListContinuation.action(for: line) != .none else { return nil }
+        guard isListItem(line) else { return nil }
         let ns = line as NSString
         guard ns.length > 0 else { return nil }
         if ns.character(at: 0) == UInt16(0x09) { return 1 }

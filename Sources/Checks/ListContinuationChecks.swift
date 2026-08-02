@@ -33,6 +33,16 @@ func listContinuationChecks() {
 }
 
 func listIndentChecks() {
+    // "is this a list line at all" is what decides whether Tab/Shift-Tab belong to
+    // the list at all, so it is worth naming rather than inferring from indent().
+    expect(ListIndent.isListItem("- item"), "bullet is a list item")
+    expect(ListIndent.isListItem("1. item"), "numbered line is a list item")
+    expect(ListIndent.isListItem("- [x] done"), "task is a list item")
+    expect(ListIndent.isListItem("\t- nested"), "nested bullet is a list item")
+    expect(ListIndent.isListItem("- "), "an empty item still counts")
+    expect(!ListIndent.isListItem("plain text"), "prose is not a list item")
+    expect(!ListIndent.isListItem(""), "an empty line is not a list item")
+
     // Tab nests the item, whatever kind of list it is — including the empty item
     // Return just created, which is exactly where you reach for Tab.
     expectEqual(ListIndent.indent(for: "- item"), "\t", "bullet indents")

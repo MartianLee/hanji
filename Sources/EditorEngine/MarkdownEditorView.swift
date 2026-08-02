@@ -7,6 +7,10 @@ import ExtensionSDK
 final class ClickableTextView: NSTextView {
     var onClick: ((Int) -> Bool)?
     var onBecameFirstResponder: (() -> Void)?
+    /// Whether an offset sits inside a fenced code block, answered by the coordinator
+    /// (which keeps the regions fresh). Inside a fence a line like `- name: foo` is
+    /// code, not a list, so Return and Tab must behave as they do in any editor.
+    var isInsideCodeBlock: ((Int) -> Bool)?
     override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         let idx = characterIndexForInsertion(at: p)
@@ -24,7 +28,7 @@ final class ClickableTextView: NSTextView {
     /// adding another one, which is how you leave a list. Everything goes through
     /// insertText, so each step stays a normal undoable edit.
     override func insertNewline(_ sender: Any?) {
-        guard let line = caretLine(),
+        guard let line = listLine(),
               // Only continue from the end of the item's own text; a mid-line
               // Return splits the line as usual.
               selectedRange().location == line.range.location + line.range.length
@@ -44,7 +48,7 @@ final class ClickableTextView: NSTextView {
     /// list it stays an ordinary Tab. The caret keeps its place in the text, so
     /// indenting from mid-word doesn't move you.
     override func insertTab(_ sender: Any?) {
-        guard let line = caretLine(), let unit = ListIndent.indent(for: line.text) else {
+        guard let line = listLine(), let unit = ListIndent.indent(for: line.text) else {
             return super.insertTab(sender)
         }
         let caret = selectedRange().location
@@ -54,12 +58,22 @@ final class ClickableTextView: NSTextView {
 
     /// Shift-Tab pulls the item back out one level.
     override func insertBacktab(_ sender: Any?) {
-        guard let line = caretLine(), let drop = ListIndent.outdent(for: line.text) else {
-            return super.insertBacktab(sender)
-        }
+        guard let line = listLine() else { return super.insertBacktab(sender) }
+        // Already outermost: swallow it. Handing Shift-Tab back to NSTextView would
+        // move focus to the previous key view, i.e. out of the editor entirely —
+        // a surprising exit from a key the user now presses to outdent.
+        guard let drop = ListIndent.outdent(for: line.text) else { return }
         let caret = selectedRange().location
         insertText("", replacementRange: NSRange(location: line.range.location, length: drop))
         setSelectedRange(NSRange(location: max(line.range.location, caret - drop), length: 0))
+    }
+
+    /// The caret's line when it is a list item that list editing owns — nil inside a
+    /// fenced code block, where `- ` and `1. ` are just code.
+    private func listLine() -> (range: NSRange, text: String)? {
+        guard let line = caretLine(), ListIndent.isListItem(line.text),
+              isInsideCodeBlock?(line.range.location) != true else { return nil }
+        return line
     }
 
     /// The caret's line: its range in the storage (trailing newline excluded) and
@@ -279,6 +293,9 @@ public struct MarkdownEditorView: NSViewRepresentable {
         textView.textLayoutManager?.delegate = context.coordinator
         textView.onClick = { [weak coordinator = context.coordinator] idx in
             coordinator?.handleClick(at: idx) ?? false
+        }
+        textView.isInsideCodeBlock = { [weak coordinator = context.coordinator] offset in
+            coordinator?.isInCodeRegion(offset) ?? false
         }
         textView.onBecameFirstResponder = { [weak coordinator = context.coordinator] in coordinator?.onFocus?() }
         context.coordinator.refresh()
@@ -622,6 +639,12 @@ public struct MarkdownEditorView: NSViewRepresentable {
             guard let start = tcs.location(tcs.documentRange.location, offsetBy: r.lowerBound),
                   let end = tcs.location(start, offsetBy: r.upperBound - r.lowerBound) else { return nil }
             return NSTextRange(location: start, end: end)
+        }
+
+        /// Whether an offset falls inside a fenced code block (fences included).
+        /// `codeRegions` is kept fresh by restyle().
+        func isInCodeRegion(_ offset: Int) -> Bool {
+            codeRegions.contains { $0.contains(offset) }
         }
 
         private func intersects(_ a: Range<Int>, _ b: Range<Int>) -> Bool {
