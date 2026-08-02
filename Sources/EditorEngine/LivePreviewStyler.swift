@@ -120,6 +120,11 @@ public enum LivePreviewStyler {
             p.headIndent = 20
             p.paragraphSpacing = 2     // list items sit closer than paragraphs
             return [.paragraphStyle: p]
+        case .orderedItem:
+            let p = bodyParagraph()
+            p.headIndent = 26          // wrapped lines clear the widest common "10. "
+            p.paragraphSpacing = 2
+            return [.paragraphStyle: p]
         case .task(let done):
             let p = bodyParagraph()
             p.headIndent = 20

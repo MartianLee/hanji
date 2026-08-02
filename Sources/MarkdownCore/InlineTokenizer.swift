@@ -65,6 +65,9 @@ public enum InlineTokenizer {
     private static let plus = UInt16(UnicodeScalar("+").value)
     private static let xLower = UInt16(UnicodeScalar("x").value)
     private static let xUpper = UInt16(UnicodeScalar("X").value)
+    private static let dot = UInt16(UnicodeScalar(".").value)
+    private static let zero = UInt16(UnicodeScalar("0").value)
+    private static let nine = UInt16(UnicodeScalar("9").value)
 
     private static func parseLine(_ ns: NSString, lineStart: Int, lineRange: Range<Int>,
                                   into result: inout [MarkSpan]) {
@@ -87,6 +90,11 @@ public enum InlineTokenizer {
         }
         if let (list, contentOffset) = listSpan(ns, lineStart: lineStart, lineRange: lineRange) {
             result.append(list)
+            scanInline(ns, from: contentOffset, lineStart: lineStart, lineRange: lineRange, into: &result)
+            return
+        }
+        if let (ordered, contentOffset) = orderedSpan(ns, lineStart: lineStart, lineRange: lineRange) {
+            result.append(ordered)
             scanInline(ns, from: contentOffset, lineStart: lineStart, lineRange: lineRange, into: &result)
             return
         }
@@ -170,6 +178,21 @@ public enum InlineTokenizer {
         guard c0 == dash || c0 == star || c0 == plus else { return nil }
         let content = (lineStart + base + 2)..<(lineStart + n)
         return (MarkSpan(style: .listItem, content: content, markers: [], line: lineRange), base + 2)
+    }
+
+    /// `1. ` / `2) ` — no marker range: the number is what the reader is meant to
+    /// see, so it is never hidden (unlike a bullet's `- `, which a • replaces).
+    private static func orderedSpan(_ ns: NSString, lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {
+        let n = ns.length
+        let base = leadingIndent(ns)
+        var j = base
+        while j < n, ns.character(at: j) >= zero, ns.character(at: j) <= nine { j += 1 }
+        guard j > base, j - base <= 9, j + 1 < n else { return nil }
+        let delim = ns.character(at: j)
+        guard delim == dot || delim == closeParen, ns.character(at: j + 1) == space else { return nil }
+        let markerEnd = j + 2
+        let content = (lineStart + markerEnd)..<(lineStart + n)
+        return (MarkSpan(style: .orderedItem, content: content, markers: [], line: lineRange), markerEnd)
     }
 
     private static func codeSpan(_ ns: NSString, from start: Int, lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {

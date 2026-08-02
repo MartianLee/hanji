@@ -18,6 +18,36 @@ final class ClickableTextView: NSTextView {
         if ok { onBecameFirstResponder?() }
         return ok
     }
+
+    /// Return inside a list continues it: the next line opens with the same marker,
+    /// numbers incremented. Return on an *empty* item drops the marker instead of
+    /// adding another one, which is how you leave a list. Everything goes through
+    /// insertText, so each step stays a normal undoable edit.
+    override func insertNewline(_ sender: Any?) {
+        guard let storage = textStorage else { return super.insertNewline(sender) }
+        let sel = selectedRange()
+        guard sel.length == 0 else { return super.insertNewline(sender) }
+        let ns = storage.string as NSString
+        let para = ns.lineRange(for: NSRange(location: sel.location, length: 0))
+        var lineLength = para.length
+        while lineLength > 0 {
+            let c = ns.character(at: para.location + lineLength - 1)
+            guard c == 0x0A || c == 0x0D else { break }
+            lineLength -= 1
+        }
+        // Only continue from the end of the item's own text; mid-line Return splits
+        // the line as usual.
+        guard sel.location == para.location + lineLength else { return super.insertNewline(sender) }
+        let line = ns.substring(with: NSRange(location: para.location, length: lineLength))
+        switch ListContinuation.action(for: line) {
+        case .none:
+            super.insertNewline(sender)
+        case .continue(let marker):
+            insertText("\n" + marker, replacementRange: sel)
+        case .end(let markerLength):
+            insertText("", replacementRange: NSRange(location: para.location, length: markerLength))
+        }
+    }
 }
 
 /// Layout fragment that paints a full-width background behind code-block

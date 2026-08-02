@@ -9,6 +9,7 @@ public enum SpanStyle: Equatable {
     case blockquote
     case frontmatter
     case listItem
+    case orderedItem  // `1. ` / `2) ` — the number stays visible, it *is* the marker
     case task(Bool)   // done?
     case codeBlock
     case callout
