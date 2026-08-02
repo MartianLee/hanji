@@ -153,6 +153,10 @@ enum MarkerKind: Equatable { case bullet; case task(Bool) }
 /// Draws a bullet • or a checkbox over a list/task line's (hidden) marker.
 final class MarkerFragment: NSTextLayoutFragment {
     var kind: MarkerKind = .bullet
+    /// Character offset of the raw marker within the line — non-zero for a nested
+    /// item, whose `- ` sits after the indent. The glyph is drawn there, so a
+    /// nested bullet steps right with its text instead of hugging the margin.
+    var markerCharIndex: Int = 0
 
     override func draw(at point: CGPoint, in context: CGContext) {
         super.draw(at: point, in: context)   // glyphs first (the marker glyphs are clear)
@@ -174,7 +178,7 @@ final class MarkerFragment: NSTextLayoutFragment {
         // for the checkbox (it stands as tall as the letters).
         let font = LivePreviewStyler.baseFont
         let baseline = b.minY + (lineFragment?.glyphOrigin.y ?? b.height * 0.8)
-        let x = b.minX
+        let x = b.minX + (lineFragment?.locationForCharacter(at: markerCharIndex).x ?? 0)
         switch kind {
         case .bullet:
             let r: CGFloat = 2.4
@@ -323,8 +327,11 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// images, HR), kept fresh by updateWidgets() so a click on one snaps the
         /// caret to the block start instead of a hit-test guess on collapsed text.
         private var widgetRegions: [Range<Int>] = []
+        /// Where a line's marker goes: what to draw, and how far into the line the
+        /// raw marker sits (past any indent, so nested items draw in the right place).
+        struct MarkerPlacement { let kind: MarkerKind; let charIndex: Int }
         /// Paragraph-start offset → marker to draw (bullet/checkbox), caret-aware.
-        private var markerLines: [Int: MarkerKind] = [:]
+        private var markerLines: [Int: MarkerPlacement] = [:]
 
         init(_ parent: MarkdownEditorView) {
             self.parent = parent
@@ -382,7 +389,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         private func applyMarkers(spans: [MarkSpan], sel: NSRange, storage: NSTextStorage) {
             let ns = storage.string as NSString
             let caretLine = ns.paragraphRange(for: sel)
-            var marks: [Int: MarkerKind] = [:]
+            var marks: [Int: MarkerPlacement] = [:]
             func onCaret(_ line: Range<Int>) -> Bool {
                 let r = NSRange(location: line.lowerBound, length: line.upperBound - line.lowerBound)
                 return NSLocationInRange(line.lowerBound, caretLine) || NSIntersectionRange(r, caretLine).length > 0
@@ -407,14 +414,16 @@ public struct MarkdownEditorView: NSViewRepresentable {
                     guard !onCaret(span.line) else { continue }
                     let m = firstNonSpace(span.line.lowerBound, span.line.upperBound)
                     clearGlyph(m, 2)              // `- ` invisible (width kept); • drawn over it
-                    marks[span.line.lowerBound] = .bullet
+                    marks[span.line.lowerBound] = MarkerPlacement(kind: .bullet,
+                                                                  charIndex: m - span.line.lowerBound)
                 case .task(let done):
                     guard !onCaret(span.line) else { continue }
                     let m = firstNonSpace(span.line.lowerBound, span.line.upperBound)
                     collapse(m, 2)               // `- `
                     clearGlyph(m + 2, 2)         // `[x` kept width = click target; box drawn over
                     collapse(m + 4, 1)           // `]` (trailing space stays as the gap)
-                    marks[span.line.lowerBound] = .task(done)
+                    marks[span.line.lowerBound] = MarkerPlacement(kind: .task(done),
+                                                                  charIndex: m - span.line.lowerBound)
                 default:
                     break
                 }
@@ -602,9 +611,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
                let range = textElement.elementRange {
                 let start = tcs.offset(from: tcs.documentRange.location, to: range.location)
                 let end = tcs.offset(from: tcs.documentRange.location, to: range.endLocation)
-                if let kind = markerLines[start] {
+                if let placement = markerLines[start] {
                     let f = MarkerFragment(textElement: textElement, range: textElement.elementRange)
-                    f.kind = kind
+                    f.kind = placement.kind
+                    f.markerCharIndex = placement.charIndex
                     return f
                 }
                 if let region = codeRegions.first(where: { $0.contains(start) }) {
