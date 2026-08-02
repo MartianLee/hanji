@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an idea or an Obsidian-parity feature
+about: Suggest an idea or a missing editing feature
 title: ""
 labels: enhancement
 ---
@@ -9,7 +9,7 @@ labels: enhancement
 What are you trying to do?
 
 **Proposed solution**
-What would you like to happen? If it mirrors an Obsidian feature, link/describe it.
+What would you like to happen? If another editor already does it well, link/describe it.
 
 **Alternatives considered**
 
