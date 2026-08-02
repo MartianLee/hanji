@@ -407,15 +407,23 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// holding open, and the next widget pass re-opens it. Every caret move
         /// bounced the layout that way, throwing whatever sits below a widget (the
         /// caret included) around the viewport.
-        private var reservations: [(region: Range<Int>, height: CGFloat)] = []
-        /// Length the reservations were measured against; after an edit their offsets
-        /// are stale and the widget pass re-measures them anyway.
-        private var reservationsLength = -1
+        /// Each entry carries the source it was measured from, so a reservation is
+        /// only put back while that exact text is still sitting at that offset. A
+        /// document-length check is not enough: replacing `---` with `abc` keeps the
+        /// length and would hold a rule's height open over ordinary prose until the
+        /// widget pass caught up.
+        private var reservations: [(region: Range<Int>, height: CGFloat, source: String)] = []
 
         private func reapplyReservations(in storage: NSTextStorage, caret: Range<Int>) {
-            guard storage.length == reservationsLength else { return }
-            // A block the caret is inside shows its source instead of its widget.
-            for r in reservations where !intersects(r.region, caret) {
+            guard !reservations.isEmpty else { return }
+            let ns = storage.string as NSString
+            for r in reservations {
+                // A block the caret is inside shows its source instead of its widget.
+                guard !intersects(r.region, caret) else { continue }
+                let length = r.region.upperBound - r.region.lowerBound
+                guard r.region.lowerBound >= 0, r.region.lowerBound + length <= ns.length,
+                      ns.substring(with: NSRange(location: r.region.lowerBound, length: length)) == r.source
+                else { continue }   // edited since: the widget pass re-measures it
                 reserve(region: r.region, height: r.height, in: storage)
             }
         }
@@ -547,8 +555,12 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 placements.append((spec.region, host, h))
             }
 
-            reservations = placements.map { (region: $0.region, height: $0.h) }
-            reservationsLength = storage.length
+            reservations = placements.compactMap { pl in
+                let length = pl.region.upperBound - pl.region.lowerBound
+                guard pl.region.lowerBound >= 0, pl.region.lowerBound + length <= nstext.length else { return nil }
+                let source = nstext.substring(with: NSRange(location: pl.region.lowerBound, length: length))
+                return (region: pl.region, height: pl.h, source: source)
+            }
 
             // Phase 2: re-layout (heights changed), then position each overlay. The
             // full-document ensureLayout also settles the caret's own line, so don't
