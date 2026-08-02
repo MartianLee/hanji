@@ -7,6 +7,7 @@ struct TabBarView: View {
     @EnvironmentObject var appState: AppState
     let pane: Pane
     @State private var dropTarget: UUID?
+    @State private var endTargeted = false
 
     var body: some View {
         if !pane.tabs.isEmpty {
@@ -14,16 +15,20 @@ struct TabBarView: View {
                 HStack(spacing: 0) {
                     ForEach(pane.tabs) { tab in
                         tabItem(tab)
-                        Divider().frame(height: 16)
+                        if tab.id != pane.tabs.last?.id { Divider().frame(height: 16) }
                     }
                     // Trailing drop zone → move to the end.
                     Color.clear
                         .frame(width: 40, height: 32)
+                        .overlay(alignment: .leading) {
+                            if endTargeted { Rectangle().fill(Color.accentColor).frame(width: 2) }
+                        }
                         .dropDestination(for: String.self) { items, _ in
+                            endTargeted = false
                             guard let s = items.first, let dropped = UUID(uuidString: s) else { return false }
                             appState.moveTab(dropped, before: nil, in: pane)
                             return true
-                        }
+                        } isTargeted: { endTargeted = $0 }
                 }
             }
             .frame(height: 32)
