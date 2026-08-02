@@ -37,4 +37,4 @@ First public-ready feature set:
 
 ### Compatibility
 - Opens existing markdown vaults; reads `periodic-notes` config; renders
-  Obsidian `<% tp.* %>` template syntax (core date/file functions).
+  `<% tp.* %>` Templater syntax (core date/file functions).

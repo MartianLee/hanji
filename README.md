@@ -11,11 +11,12 @@ SwiftUI + TextKit 2, with a Swift extension SDK. Local-first, fast, no account.
 
 ## Why
 
-the markdown vault format is a great, portable plain-markdown store, but the app is
-Electron and its plugins are JavaScript. hanji is a **native** editor for the
-same vaults: a TextKit 2 engine with incremental Live Preview, and an extension
-model written in **Swift** rather than JS. It reads your existing vault config
-(periodic notes, templates) and aims for Obsidian parity on the editing surface.
+A folder of plain `.md` files is a great, portable store for notes — no database,
+no lock-in, the files are the source of truth. hanji is a **native** editor
+for that kind of vault: a TextKit 2 engine with incremental Live Preview, and an
+extension model written in **Swift** rather than JS. It reads the vault config
+already sitting in your folder (periodic notes, templates) instead of asking you
+to set everything up again.
 
 ## Features
 
@@ -49,9 +50,9 @@ model written in **Swift** rather than JS. It reads your existing vault config
 - SDK surfaces: ① code-block renderers, ② metadata queries (backlinks / index
   updates), ③ commands + sidebar, and workspace note actions.
 
-**Obsidian compatibility** — opens existing vaults; reads the `periodic-notes`
-config (folder, date format, template); renders `<% tp.* %>` Templater syntax
-(core date/file functions).
+**Vault compatibility** — opens existing markdown vaults; reads the
+`periodic-notes` config (folder, date format, template); renders `<% tp.* %>`
+Templater syntax (core date/file functions).
 
 ![Tasks, bullets, and the editable inline title](docs/images/tasks.png)
 
