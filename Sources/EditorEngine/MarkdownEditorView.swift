@@ -650,7 +650,15 @@ public struct MarkdownEditorView: NSViewRepresentable {
             let paragraph = (textView.string as NSString).paragraphRange(for: textView.selectedRange())
             if paragraph == lastCaretParagraph { return }
             lastCaretParagraph = paragraph
-            refresh()
+            // Off this callback rather than inside it. refresh() rewrites the text
+            // storage's attributes, and mutating the storage while AppKit is still
+            // settling the new selection leaves the insertion point erased and never
+            // repainted: arrowing up through a note made the caret vanish for good
+            // (it stayed gone until some other edit brought it back, while arrowing
+            // down happened to survive). One runloop hop later the storage edit lands
+            // after AppKit has finished with the caret, and the marker reveal still
+            // arrives in the same frame.
+            DispatchQueue.main.async { [weak self] in self?.refresh() }
         }
     }
 }
