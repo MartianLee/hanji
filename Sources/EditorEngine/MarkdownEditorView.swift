@@ -102,15 +102,25 @@ final class MarkerFragment: NSTextLayoutFragment {
         // into the inter-line gap — the bullet/checkbox then appears to fall onto the
         // line below until the next relayout. The first line fragment's typographic
         // bounds stay on this line regardless of the surface height.
-        let b = textLineFragments.first?.typographicBounds ?? renderingSurfaceBounds
-        let midY = b.midY
+        let lineFragment = textLineFragments.first
+        let b = lineFragment?.typographicBounds ?? renderingSurfaceBounds
+        // Not b.midY: `lineHeightMultiple` makes the line box taller than the text
+        // and hangs the extra leading *above* it, so the box centre sits well above
+        // the glyphs and the marker reads as floating. Centre on the font metrics
+        // measured from the first glyph's baseline instead — x-height for the dot
+        // (it should sit in the middle of the lowercase text it labels), cap height
+        // for the checkbox (it stands as tall as the letters).
+        let font = LivePreviewStyler.baseFont
+        let baseline = b.minY + (lineFragment?.glyphOrigin.y ?? b.height * 0.8)
         let x = b.minX
         switch kind {
         case .bullet:
             let r: CGFloat = 2.4
+            let midY = baseline - font.xHeight / 2
             context.setFillColor(NSColor.secondaryLabelColor.cgColor)
             context.fillEllipse(in: CGRect(x: x + 3, y: midY - r, width: r * 2, height: r * 2))
         case .task(let done):
+            let midY = baseline - font.capHeight / 2
             let side: CGFloat = 13
             let rect = CGRect(x: x + 1, y: midY - side / 2, width: side, height: side)
             let box = CGPath(roundedRect: rect, cornerWidth: 3, cornerHeight: 3, transform: nil)
