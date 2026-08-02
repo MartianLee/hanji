@@ -361,10 +361,12 @@ public final class AppState: ObservableObject {
         guard hasNeighbour || (panes.count < 2 && src.tabs.count >= 2) else { return }
         resignEditorFocus()   // panes change rebuilds editor views (incl. 1→2 fresh HSplitView); resign FR first
 
-        // Persist the live buffer first when the moved tab is the active live tab,
-        // so the carried-over snapshot is current.
-        let isLiveTab = src.id == activePaneID && tabID == src.activeTabID
-        if isLiveTab { flushPendingSave(); writeBackActive() }
+        // The move ends in `hydrate(from:)`, so the live working state is always
+        // replaced — persist it first. That matters even when the moved tab isn't
+        // the live one (a background tab, or a tab in the other pane): the live
+        // tab's unsaved buffer would otherwise be dropped. Same order as focusPane.
+        flushPendingSave()
+        writeBackActive()
 
         objectWillChange.send()
         let snapshot = src.tabs[tabIdx]

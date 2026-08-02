@@ -160,6 +160,49 @@ func tabReorderChecks() {
     expectEqual(s.activeTabID, s.tabs.first(where: { $0.file.name == "C.md" })!.id, "activeTabID unchanged")
 }
 
+/// A move always re-hydrates the live working state from the moved tab's snapshot,
+/// so whichever tab *was* live must have its buffer written back first — even when
+/// that isn't the tab being moved. Two ways to hit it: move a background tab out of
+/// the active pane, and move a tab that lives in a non-active pane.
+func paneMoveTabLiveBufferChecks() {
+    // (a) Background tab in the active pane: C is live and edited, A is the one moved.
+    let vault = tabVault()
+    defer { tabCleanup(vault) }
+    try? "gamma".write(to: vault.appendingPathComponent("C.md"), atomically: true, encoding: .utf8)
+    let s = tabState(vault)
+    guard let a = s.files.first(where: { $0.name == "A.md" }),
+          let b = s.files.first(where: { $0.name == "B.md" }),
+          let c = s.files.first(where: { $0.name == "C.md" }) else { expect(false, "files"); return }
+    s.open(a); s.open(b); s.open(c)           // pane0 [A,B,C], C live
+    let aID = s.tabs.first(where: { $0.file.name == "A.md" })!.id
+    s.activeText = "gamma EDITED"             // unsaved edit in the live tab C
+    s.moveTabToSide(aID, .right)
+
+    let left = s.panes.first!
+    expectEqual(left.tabs.first(where: { $0.file.name == "C.md" })?.text, "gamma EDITED",
+                "live tab C keeps its unsaved edit when a background tab is moved out")
+    expectEqual(try? String(contentsOf: vault.appendingPathComponent("C.md"), encoding: .utf8),
+                "gamma EDITED", "moving a tab flushes the live doc to disk")
+    s.focusPane(left.id)
+    expectEqual(s.activeText, "gamma EDITED", "C's edit is still there after focusing back")
+
+    // (b) The moved tab lives in a non-active pane; the live tab is in the other one.
+    let vault2 = tabVault()
+    defer { tabCleanup(vault2) }
+    let s2 = tabState(vault2)
+    guard let a2 = s2.files.first(where: { $0.name == "A.md" }),
+          let b2 = s2.files.first(where: { $0.name == "B.md" }) else { expect(false, "files"); return }
+    s2.open(a2); s2.open(b2)                  // pane0 [A,B], B live
+    s2.moveTabToSide(s2.activeTabID!, .right) // panes [[A],[B]], right pane live with B
+    s2.activeText = "beta EDITED"             // unsaved edit in the live (right) B
+    let a2ID = s2.panes.first!.tabs.first!.id
+    s2.moveTabToSide(a2ID, .right)            // move the left pane's A into the right pane
+
+    expectEqual(s2.panes.count, 1, "emptied left pane collapses")
+    expectEqual(s2.panes[0].tabs.first(where: { $0.file.name == "B.md" })?.text, "beta EDITED",
+                "live tab B keeps its unsaved edit when a tab from another pane is moved in")
+}
+
 func paneSplitChecks() {
     let vault = tabVault()
     defer { tabCleanup(vault) }
