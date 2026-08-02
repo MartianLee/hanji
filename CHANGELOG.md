@@ -11,7 +11,10 @@ First public-ready feature set:
 ### Editor
 - Live Preview with caret-aware marker hiding: headings, bold, italic, inline
   code, links & wikilinks, blockquotes, callouts, frontmatter, lists & tasks.
-- Rendered bullets (`•`) and clickable task checkboxes (☐ / ☑).
+- Rendered bullets (`•`) and clickable task checkboxes (☐ / ☑), centred on the
+  text they label.
+- Numbered lists (`1. ` / `2) `); Return continues the list — same bullet and
+  indent, numbers incrementing — and clears the marker on an empty item.
 - Fenced code blocks: full-width slab background + syntax highlighting
   (Swift, JS/TS, Python, JSON, shell, with a C-like fallback).
 - Inline images (`![[file]]` / `![alt](path)`), mermaid diagrams, horizontal rules.

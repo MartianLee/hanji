@@ -24,6 +24,8 @@ model written in **Swift** rather than JS. It reads your existing vault config
   wikilinks, blockquotes, callouts, frontmatter — markers reveal on the line
   you're editing.
 - Rendered bullets (`•`) and clickable task checkboxes (☐ / ☑).
+- Bullet, task, and **numbered** lists continue on Return (numbers increment);
+  Return on an empty item leaves the list.
 - Fenced code blocks render as a full-width slab with **syntax highlighting**
   (Swift, JS/TS, Python, JSON, shell + a C-like fallback).
 - Inline images, **mermaid** diagrams, and horizontal rules render in place.
