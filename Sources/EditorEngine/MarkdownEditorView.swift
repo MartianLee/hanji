@@ -457,8 +457,11 @@ public struct MarkdownEditorView: NSViewRepresentable {
                     guard !onCaret(span.line) else { continue }
                     let m = firstNonSpace(span.line.lowerBound, span.line.upperBound)
                     collapse(m, 2)               // `- `
-                    clearGlyph(m + 2, 2)         // `[x` kept width = click target; box drawn over
-                    collapse(m + 4, 1)           // `]` (trailing space stays as the gap)
+                    // Keep the width of the whole `[x]`, not just `[x`: the drawn box
+                    // is narrower than those three glyphs, so the leftover — plus the
+                    // trailing space — becomes the gap between the box and the label.
+                    // Collapsing `]` (as before) left the text almost touching it.
+                    clearGlyph(m + 2, 3)         // `[x]` kept width = click target; box drawn over
                     marks[span.line.lowerBound] = MarkerPlacement(kind: .task(done),
                                                                   charIndex: m - span.line.lowerBound)
                 default:
