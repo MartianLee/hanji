@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Happy-path E2E for hanji — run after every feature addition.
+# Happy-path E2E for Hanji — run after every feature addition.
 #
 #   ./Scripts/e2e.sh           # headless scenario + app launch smoke test
 #   ./Scripts/e2e.sh --fast    # headless scenario only (skip bundle/launch)
@@ -23,7 +23,7 @@ VAULT="$(mktemp -d /tmp/hanji-e2e-vault.XXXXXX)"
 trap 'rm -rf "$VAULT"' EXIT
 printf '# Smoke\nhello' > "$VAULT/Smoke.md"
 
-HANJI_OPEN_VAULT="$VAULT" ./hanji.app/Contents/MacOS/hanji &
+HANJI_OPEN_VAULT="$VAULT" ./Hanji.app/Contents/MacOS/hanji &
 APP_PID=$!
 sleep 3
 if ! kill -0 "$APP_PID" 2>/dev/null; then

@@ -30,7 +30,7 @@ to set everything up again.
   you're editing.
 - Rendered bullets (`•`) and clickable task checkboxes (☐ / ☑).
 - Bullet, task, and **numbered** lists continue on Return (numbers increment);
-  Return on an empty item leaves the list.
+  Return on an empty item leaves the list, and Tab / ⇧Tab nests and un-nests it.
 - Fenced code blocks render as a full-width slab with **syntax highlighting**
   (Swift, JS/TS, Python, JSON, shell + a C-like fallback).
 - Inline images, **mermaid** diagrams, and horizontal rules render in place.
@@ -40,6 +40,7 @@ to set everything up again.
   detection** and a non-modal reload / keep-mine banner.
 
 **Workspace**
+- **Tabs and split panes**: drag to reorder, drop a tab on either edge to split.
 - Full file tree: sort, multi-select, drag-and-drop, rename, trash, undo, import.
 - **Command palette (⌘P)**, **quick switcher (⌘O)**, **global search (⇧⌘F)** over
   a persistent SQLite FTS5 index (Korean-friendly trigram tokenizer).
@@ -96,7 +97,6 @@ no XCTest). See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the design records in
 
 Pre-1.0 and under active development. Working toward an open-source v0.1.
 
-- **Tabs / split panes** are not implemented yet.
 - A few interactions (link-click navigation, checkbox toggle) are verified by
   logic/tests but were hard to exercise with synthetic input during development
   — please report anything off.
