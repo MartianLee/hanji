@@ -8,7 +8,7 @@ expect an acknowledgement within a few days.
 
 ## Scope
 
-hanji is a local-first macOS app: it reads and writes markdown files in a
+Hanji is a local-first macOS app: it reads and writes markdown files in a
 vault you choose and stores a per-vault search index under
 `~/Library/Application Support/hanji/`. It makes no network requests except
 when a note renders a `mermaid` code block, which loads `mermaid.js` from a CDN

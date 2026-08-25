@@ -17,7 +17,7 @@ A clear description of the bug.
 
 **Environment**
 - macOS version:
-- hanji version / commit:
+- Hanji version / commit:
 - Vault location (local / iCloud / other sync):
 
 **Screenshots or sample note**

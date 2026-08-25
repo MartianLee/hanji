@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to hanji are documented here. The format is loosely
+All notable changes to Hanji are documented here. The format is loosely
 based on [Keep a Changelog](https://keepachangelog.com/); this project will use
 [Semantic Versioning](https://semver.org/) from its first tagged release.
 

@@ -1,14 +1,14 @@
-# Contributing to hanji
+# Contributing to Hanji
 
-Thanks for your interest! hanji is a native macOS (SwiftUI + TextKit 2)
+Thanks for your interest! Hanji is a native macOS (SwiftUI + TextKit 2)
 markdown editor for local markdown vaults, with a Swift extension SDK.
 
 ## Building
 
 ```sh
 swift build                 # build everything
-swift run hanji         # run from SPM
-./Scripts/bundle-app.sh && open hanji.app   # build & launch a .app bundle
+swift run hanji             # run from SPM
+./Scripts/bundle-app.sh && open Hanji.app   # build & launch a .app bundle
 ```
 
 **Command Line Tools is sufficient** — full Xcode is only needed for XCTest,

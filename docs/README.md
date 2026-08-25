@@ -1,6 +1,6 @@
 # docs/
 
-Working design records for hanji, kept for transparency into how the project
+Working design records for Hanji, kept for transparency into how the project
 was built. Each feature went through a **design** doc (the spec) and an
 **implementation plan** before it was built.
 

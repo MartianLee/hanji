@@ -1,18 +1,22 @@
-# hanji
+# Hanji.md
 
 A native macOS markdown editor that opens your **markdown vaults** — built with
 SwiftUI + TextKit 2, with a Swift extension SDK. Local-first, fast, no account.
+
+> *Hanji* (한지) is Korean mulberry paper — documents written on it last a
+> thousand years. A folder of plain `.md` files is the same bet: the notes
+> outlive whatever app happened to edit them.
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Platform: macOS 14+](https://img.shields.io/badge/Platform-macOS%2014%2B-lightgrey.svg)
 ![Swift 5.10](https://img.shields.io/badge/Swift-5.10-orange.svg)
 
-![hanji editor — Live Preview with syntax-highlighted code, backlinks and calendar panels](docs/images/editor.png)
+![Hanji — Live Preview with syntax-highlighted code, backlinks and calendar panels](docs/images/editor.png)
 
 ## Why
 
 A folder of plain `.md` files is a great, portable store for notes — no database,
-no lock-in, the files are the source of truth. hanji is a **native** editor
+no lock-in, the files are the source of truth. Hanji is a **native** editor
 for that kind of vault: a TextKit 2 engine with incremental Live Preview, and an
 extension model written in **Swift** rather than JS. It reads the vault config
 already sitting in your folder (periodic notes, templates) instead of asking you
@@ -60,8 +64,8 @@ Templater syntax (core date/file functions).
 
 ```sh
 swift run hanji                              # run from SPM
-./Scripts/bundle-app.sh && open hanji.app    # build & launch a .app bundle
-swift run Checks                                  # run the test suite
+./Scripts/bundle-app.sh && open Hanji.app    # build & launch a .app bundle
+swift run Checks                             # run the test suite
 ```
 
 **Command Line Tools is sufficient** to build and run — full Xcode is only needed
