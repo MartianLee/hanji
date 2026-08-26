@@ -21,7 +21,7 @@ let package = Package(
         .target(name: "VaultKit", dependencies: ["MarkdownCore"]),
         .target(name: "ExtensionSDK"),
         .target(name: "MKSearchKit", dependencies: ["MarkdownCore", .product(name: "GRDB", package: "GRDB.swift")]),
-        .target(name: "AppCore", dependencies: ["VaultKit", "ExtensionSDK", "MKSearchKit"]),
+        .target(name: "AppCore", dependencies: ["VaultKit", "ExtensionSDK", "MKSearchKit", "MarkdownCore"]),
         .target(name: "WordCountPlugin", dependencies: ["ExtensionSDK"]),
         .target(name: "CoreRenderers", dependencies: ["ExtensionSDK", "VaultKit", "MarkdownCore"]),
         .target(name: "EditorEngine", dependencies: ["MarkdownCore", "ExtensionSDK"]),

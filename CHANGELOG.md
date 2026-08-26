@@ -19,12 +19,17 @@ First public-ready feature set:
   (Swift, JS/TS, Python, JSON, shell, with a C-like fallback).
 - Inline images (`![[file]]` / `![alt](path)`), mermaid diagrams, horizontal rules.
 - Editable inline file title; clickable wiki/markdown links navigate.
+- Find & replace inside the open note (⌘F, ⌘G / ⇧⌘G, ⌥⌘F) via AppKit's find bar.
+- Save on ⌘S, in addition to autosave.
 - Autosave (debounced, off-main) with external-edit conflict detection and a
   non-modal reload/keep banner.
 
 ### Workspace
 - Full file tree (sort, multi-select, drag-and-drop, rename, trash, undo, import).
 - Command palette (⌘P), quick switcher (⌘O), global FTS5 search (⇧⌘F).
+- Vault-wide find & replace (⌥⇧⌘F): literal match with an optional case
+  toggle, a confirmation showing how many occurrences in how many notes, and a
+  single ⌥⌘Z that reverts the whole batch.
 - Backlinks panel and Calendar panel (right sidebar, collapsible ⌥⌘B).
 - Settings: editor font size, recent vaults, live plugin toggles.
 

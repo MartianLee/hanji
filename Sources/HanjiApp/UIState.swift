@@ -15,6 +15,8 @@ final class UIState: ObservableObject {
     @Published var sidebarMode: SidebarMode = .files
     /// Incremented to ask the search panel to grab keyboard focus (⇧⌘F).
     @Published var searchFocusToken = 0
+    /// Whether the search panel shows its replace row (⌥⇧⌘F, or the toggle).
+    @Published var replaceVisible = false
     /// Right plugin sidebar (Backlinks/Calendar) visibility; persisted, closed by default.
     @Published var rightSidebarVisible: Bool = UserDefaults.standard.object(forKey: "io.hanji.rightSidebar") as? Bool ?? false {
         didSet { UserDefaults.standard.set(rightSidebarVisible, forKey: "io.hanji.rightSidebar") }

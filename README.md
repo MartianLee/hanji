@@ -36,14 +36,18 @@ to set everything up again.
 - Inline images, **mermaid** diagrams, and horizontal rules render in place.
 - Editable inline file title; clicking a `[[wikilink]]` or `[text](note.md)`
   opens the target note.
+- **Find & replace in the note** (⌘F, ⌘G / ⇧⌘G, ⌥⌘F) using AppKit's find bar.
 - **Autosave** (debounced, off the main thread) with external-edit **conflict
-  detection** and a non-modal reload / keep-mine banner.
+  detection** and a non-modal reload / keep-mine banner; ⌘S saves on demand.
 
 **Workspace**
 - **Tabs and split panes**: drag to reorder, drop a tab on either edge to split.
 - Full file tree: sort, multi-select, drag-and-drop, rename, trash, undo, import.
 - **Command palette (⌘P)**, **quick switcher (⌘O)**, **global search (⇧⌘F)** over
   a persistent SQLite FTS5 index (Korean-friendly trigram tokenizer).
+- **Vault-wide find & replace (⌥⇧⌘F)**: literal match with a case toggle, a
+  confirmation that states how many occurrences in how many notes, and one
+  **⌥⌘Z** that reverts the entire batch.
 - **Backlinks** and **Calendar** side panels (collapsible, ⌥⌘B).
 - Settings: editor font size, recent vaults, and **live plugin toggles**.
 
@@ -97,6 +101,13 @@ no XCTest). See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the design records in
 
 Pre-1.0 and under active development. Working toward an open-source v0.1.
 
+- **Not built yet**: export / print, a separate reading (rendered-only) mode,
+  and an outline / table-of-contents panel.
+- **Move Tab Left/Right (⌃⌘←/→) collides with macOS Spaces switching** if you
+  have that enabled in System Settings ▸ Keyboard. Use the Edit menu items, or
+  rebind Spaces.
+- Vault-wide replace is literal only — no regex, and no per-occurrence review;
+  it replaces every match at once (⌥⌘Z reverts the whole batch).
 - A few interactions (link-click navigation, checkbox toggle) are verified by
   logic/tests but were hard to exercise with synthetic input during development
   — please report anything off.

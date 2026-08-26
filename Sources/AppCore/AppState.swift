@@ -3,6 +3,7 @@ import Combine
 import AppKit
 import VaultKit
 import MKSearchKit
+import MarkdownCore
 
 public final class AppState: ObservableObject {
     @Published public var vaultRoot: URL?
@@ -459,6 +460,9 @@ public final class AppState: ObservableObject {
         case moved(from: URL, to: URL)
         case trashed(original: URL, trashed: URL)
         case copied(URL)          // duplicate / import results
+        /// A vault-wide replace, with each rewritten file's previous text. One
+        /// entry covers the whole batch so undo can't leave the vault half-replaced.
+        case replaced([(url: URL, previous: String)])
     }
 
     @Published public private(set) var fileOperations: [FileOperation] = []
@@ -475,8 +479,74 @@ public final class AppState: ObservableObject {
             try? fm.moveItem(at: to, to: from)
         case .trashed(let original, let trashed):
             try? fm.moveItem(at: trashed, to: original)
+        case .replaced(let entries):
+            // Same atomic write path the replace used, so a half-written file
+            // can't survive an undo either.
+            for entry in entries {
+                try? v.write(entry.previous, to: MarkdownFile(url: entry.url))
+            }
         }
         reloadTree()
+    }
+
+    // MARK: - Vault-wide find & replace
+
+    /// One file's share of a pending replace — drives the confirmation list.
+    public struct ReplacePreviewRow: Identifiable {
+        public let file: MarkdownFile
+        public let count: Int
+        public var id: URL { file.url }
+    }
+
+    public struct VaultReplaceSummary: Equatable {
+        public let files: Int
+        public let occurrences: Int
+        public static let none = VaultReplaceSummary(files: 0, occurrences: 0)
+    }
+
+    /// What a replace would touch, without writing anything — the caller shows
+    /// this before asking to go ahead.
+    public func previewReplaceInVault(find: String, caseSensitive: Bool) -> [ReplacePreviewRow] {
+        guard !find.isEmpty, let vault else { return [] }
+        var rows: [ReplacePreviewRow] = []
+        for file in (try? vault.markdownFiles()) ?? [] {
+            guard let text = try? vault.read(file) else { continue }
+            let hits = TextReplace.count(of: find, in: text, caseSensitive: caseSensitive)
+            if hits > 0 { rows.append(ReplacePreviewRow(file: file, count: hits)) }
+        }
+        return rows.sorted { $0.file.name.localizedStandardCompare($1.file.name) == .orderedAscending }
+    }
+
+    /// Replace across every note in the vault.
+    ///
+    /// The open note's unsaved edits are flushed first so they take part rather
+    /// than being clobbered by the rewrite, and `reloadTree()` afterwards lets the
+    /// existing reconcile path refresh open tabs (dirty ones raise the usual
+    /// conflict banner instead of losing work).
+    @discardableResult
+    public func replaceInVault(find: String, with replacement: String,
+                               caseSensitive: Bool) -> VaultReplaceSummary {
+        guard !find.isEmpty, let vault else { return .none }
+        flushPendingSave()
+        var restore: [(url: URL, previous: String)] = []
+        var occurrences = 0
+        for file in (try? vault.markdownFiles()) ?? [] {
+            guard let text = try? vault.read(file) else { continue }
+            let hits = TextReplace.count(of: find, in: text, caseSensitive: caseSensitive)
+            guard hits > 0,
+                  let updated = TextReplace.apply(find, with: replacement, in: text,
+                                                  caseSensitive: caseSensitive),
+                  (try? vault.write(updated, to: file)) != nil
+            else { continue }
+            restore.append((file.url, text))
+            occurrences += hits
+        }
+        // Nothing written: leave the undo stack alone so a later ⌥⌘Z doesn't
+        // revert some unrelated earlier operation.
+        guard !restore.isEmpty else { return .none }
+        fileOperations.append(.replaced(restore))
+        reloadTree()
+        return VaultReplaceSummary(files: restore.count, occurrences: occurrences)
     }
 
     /// Create an empty note (auto-named) in `folder` (vault root when nil) and open it.

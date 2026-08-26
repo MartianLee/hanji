@@ -356,7 +356,7 @@ struct ContentView: View {
     }
 
     /// Move dragged vault items into `folder` (vault root when nil). Items from
-    /// outside the vault are ignored (import is out of scope for now).
+    /// outside the vault are imported when they are `.md`, and ignored otherwise.
     private func handleDrop(_ urls: [URL], into folder: URL?) -> Bool {
         guard let root = appState.vaultRoot, let dest = folder ?? appState.vaultRoot else { return false }
         let rootPrefix = root.standardizedFileURL.path + "/"

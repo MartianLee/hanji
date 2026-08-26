@@ -83,6 +83,9 @@ struct HanjiApp: App {
                     .disabled(!appState.canUndoFileOperation)
             }
             CommandGroup(after: .saveItem) {
+                Button("Save") { appState.save() }
+                    .keyboardShortcut("s", modifiers: .command)
+                    .disabled(!appState.isDirty)
                 Button("Close Tab") {
                     if let id = appState.activeTabID { appState.closeTab(id) }
                 }
@@ -97,6 +100,25 @@ struct HanjiApp: App {
                     if let id = appState.activeTabID { appState.moveTabToSide(id, .left) }
                 }
                 .keyboardShortcut(.leftArrow, modifiers: [.control, .command])
+            }
+            CommandGroup(after: .textEditing) {
+                // Routed to whatever NSTextView is first responder; AppKit reads the
+                // action off the sender's tag, so each item carries its own.
+                Button("Find…") { Self.findAction(.showFindInterface) }
+                    .keyboardShortcut("f", modifiers: .command)
+                Button("Find Next") { Self.findAction(.nextMatch) }
+                    .keyboardShortcut("g", modifiers: .command)
+                Button("Find Previous") { Self.findAction(.previousMatch) }
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
+                Button("Replace…") { Self.findAction(.showReplaceInterface) }
+                    .keyboardShortcut("f", modifiers: [.command, .option])
+                Divider()
+                Button("Find and Replace in Vault…") {
+                    uiState.sidebarMode = .search
+                    uiState.replaceVisible = true
+                    uiState.searchFocusToken += 1
+                }
+                .keyboardShortcut("f", modifiers: [.command, .option, .shift])
             }
             CommandGroup(after: .sidebar) {
                 Button("Toggle Right Sidebar") { uiState.rightSidebarVisible.toggle() }
@@ -121,6 +143,15 @@ struct HanjiApp: App {
                 .environmentObject(appState)
                 .environmentObject(pluginManager)
         }
+    }
+
+    /// Drive AppKit's find bar on whichever text view is first responder.
+    /// `performTextFinderAction(_:)` reads the requested action off the sender's
+    /// `tag`, so we hand it a menu item carrying that tag.
+    private static func findAction(_ action: NSTextFinder.Action) {
+        let item = NSMenuItem()
+        item.tag = action.rawValue
+        NSApp.sendAction(#selector(NSTextView.performTextFinderAction(_:)), to: nil, from: item)
     }
 
     private static func allFolders(in nodes: [FileNode]) -> Set<URL> {

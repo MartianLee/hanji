@@ -270,6 +270,12 @@ public struct MarkdownEditorView: NSViewRepresentable {
         textView.autoresizingMask = [.width]
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
+        // In-note find/replace (⌘F). The find bar is AppKit's own NSTextFinder UI,
+        // hosted by the enclosing scroll view; its match highlight rides on
+        // temporary attributes, so LivePreviewStyler's full-document restyle
+        // doesn't wipe it.
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
         textView.string = text
         if let caretEnv = ProcessInfo.processInfo.environment["HANJI_CARET"], let caret = Int(caretEnv) {
             let len = (text as NSString).length

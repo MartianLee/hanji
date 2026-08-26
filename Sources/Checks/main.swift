@@ -36,6 +36,8 @@ runChecks([
     ("CalloutStyler", calloutStylerChecks),
     ("ImageParser", imageParserChecks),
     ("Tags", tagsChecks),
+    ("TextReplace", textReplaceChecks),
+    ("VaultReplace", vaultReplaceChecks),
     ("DataviewQuery", dataviewQueryChecks),
     ("DataviewParse", dataviewParseChecks),
     ("IndexTags", indexTagsChecks),
