@@ -14,6 +14,8 @@ public final class AppState: ObservableObject {
     @Published public var savedText: String = ""
     /// External (on-disk) version of the open note awaiting conflict resolution.
     @Published public var externalConflict: String? = nil
+    /// Set when a note couldn't be opened (e.g. not UTF-8); the UI shows it and clears it.
+    @Published public var openError: String? = nil
     public var isDirty: Bool { activeText != savedText }
     @Published public var index: MetadataIndex = MetadataIndex()
     @Published public var recentVaults: [URL] = []
@@ -230,9 +232,15 @@ public final class AppState: ObservableObject {
         if let existing = pane.tabs.first(where: { urlSameFile($0.file.url, file.url) }) {
             switchTab(existing.id); return
         }
+        // Read before touching the current buffer. A note that can't be decoded
+        // (not UTF-8) must not open as an empty buffer — the first keystroke would
+        // autosave over the original bytes.
+        guard let text = try? vault?.read(file) else {
+            openError = "Hanji couldn\u{2019}t read \u{201C}\(file.name)\u{201D} as UTF-8 text, so it left the note closed rather than risk overwriting it."
+            return
+        }
         flushPendingSave()
         writeBackActive()
-        let text = (try? vault?.read(file)) ?? ""
         let tab = OpenTab(file: file, text: text)
         objectWillChange.send()
         pane.tabs.append(tab)
@@ -652,19 +660,28 @@ public final class AppState: ObservableObject {
 
     // MARK: - Note operations (used by WorkspaceActions)
 
+    /// `relativePath` resolved under the vault, or nil if it climbs out of it.
+    /// These paths come from vault content (a periodic-notes folder, a template
+    /// path), so a shared vault must not be able to point them elsewhere.
+    private func urlInsideVault(_ relativePath: String) -> URL? {
+        guard let root = vaultRoot?.standardizedFileURL else { return nil }
+        let url = root.appendingPathComponent(relativePath).standardizedFileURL
+        let prefix = root.path.hasSuffix("/") ? root.path : root.path + "/"
+        return url.path.hasPrefix(prefix) ? url : nil
+    }
+
     public func noteExists(relativePath: String) -> Bool {
-        guard let root = vaultRoot else { return false }
-        return FileManager.default.fileExists(atPath: root.appendingPathComponent(relativePath).path)
+        guard let url = urlInsideVault(relativePath) else { return false }
+        return FileManager.default.fileExists(atPath: url.path)
     }
 
     public func readNote(relativePath: String) -> String? {
-        guard let root = vaultRoot else { return nil }
-        return try? String(contentsOf: root.appendingPathComponent(relativePath), encoding: .utf8)
+        guard let url = urlInsideVault(relativePath) else { return nil }
+        return try? String(contentsOf: url, encoding: .utf8)
     }
 
     public func createNote(relativePath: String, text: String, cursorOffset: Int?) {
-        guard let root = vaultRoot, let v = vault else { return }
-        let url = root.appendingPathComponent(relativePath)
+        guard let url = urlInsideVault(relativePath), let v = vault else { return }
         // Ensure the parent folder exists, then write atomically via Vault (temp+rename).
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)

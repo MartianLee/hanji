@@ -49,6 +49,10 @@ runChecks([
     ("FuzzyFilter", fuzzyFilterChecks),
     ("AppRecents", appRecentsChecks),
     ("AppCreateNote", appCreateNoteChecks),
+    ("VaultContainment", vaultContainmentChecks),
+    ("UnreadableNote", unreadableNoteChecks),
+    ("EditorBinding", editorBindingChecks),
+    ("EditorSnapshotClick", editorSnapshotClickChecks),
     ("CommandRegistry2", commandRegistryChecks),
     ("PeriodicNotesPlugin", periodicNotesPluginChecks),
     ("VaultTree", vaultTreeChecks),
@@ -75,5 +79,6 @@ runChecks([
     ("PluginToggle", pluginToggleChecks),
     ("CalendarGrid", calendarGridChecks),
     ("CalendarPlugin", calendarPluginChecks),
+    ("MermaidPage", mermaidPageChecks),
     ("E2E", e2eChecks),
 ])

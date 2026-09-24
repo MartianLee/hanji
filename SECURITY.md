@@ -11,5 +11,13 @@ expect an acknowledgement within a few days.
 Hanji is a local-first macOS app: it reads and writes markdown files in a
 vault you choose and stores a per-vault search index under
 `~/Library/Application Support/hanji/`. It makes no network requests except
-when a note renders a `mermaid` code block, which loads `mermaid.js` from a CDN
-in a sandboxed `WKWebView`. There is no telemetry, account, or server component.
+when a note renders a `mermaid` code block, which loads a version-pinned,
+integrity-checked `mermaid.js` from jsDelivr into a `WKWebView`. That page gets
+the diagram text as data (never as markup), runs mermaid in strict mode, and
+has a Content-Security-Policy that allows no fetch/XHR or remote images; it
+cannot navigate anywhere and keeps no storage. There is no telemetry, account,
+or server component.
+
+Paths that come from vault content — for example the periodic-notes folder and
+template settings — are confined to the vault. Hanji refuses to open a note it
+can't decode as UTF-8 rather than risk overwriting it.

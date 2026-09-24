@@ -245,11 +245,15 @@ public struct MarkdownEditorView: NSViewRepresentable {
     public var onOpenLink: ((String) -> Void)?
     /// Called when the editor text view becomes first responder (user clicks or tabs into it).
     public var onFocus: (() -> Void)?
+    /// False when `text` is a snapshot rather than the live buffer (an inactive
+    /// split pane). Such an editor can't save an edit, so a click only focuses it.
+    public var isLive: Bool
 
     public init(text: Binding<String>, renderers: RendererRegistry? = nil, vaultRoot: URL? = nil,
                 cursorOffset: Binding<Int?> = .constant(nil), fontSize: CGFloat = 15,
                 onOpenLink: ((String) -> Void)? = nil,
-                onFocus: (() -> Void)? = nil) {
+                onFocus: (() -> Void)? = nil, isLive: Bool = true) {
+        self.isLive = isLive
         self._text = text
         self.renderers = renderers
         self.vaultRoot = vaultRoot
@@ -310,10 +314,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
     public func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = nsView.documentView as? NSTextView else { return }
-        context.coordinator.renderers = renderers
-        context.coordinator.vaultRoot = vaultRoot
-        context.coordinator.onOpenLink = onOpenLink
-        context.coordinator.onFocus = onFocus
+        context.coordinator.sync(with: self)
         if LivePreviewStyler.baseFontSize != fontSize {
             LivePreviewStyler.baseFontSize = fontSize
             textView.font = LivePreviewStyler.baseFont
@@ -337,7 +338,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
     public final class Coordinator: NSObject, NSTextViewDelegate, NSTextLayoutManagerDelegate {
         var parent: MarkdownEditorView
-        weak var textView: NSTextView?
+        public weak var textView: NSTextView?
         var renderers: RendererRegistry?
         var vaultRoot: URL?
         var onOpenLink: ((String) -> Void)?
@@ -366,6 +367,17 @@ public struct MarkdownEditorView: NSViewRepresentable {
         }
 
         deinit { NotificationCenter.default.removeObserver(self) }
+
+        /// Take the latest values SwiftUI handed the view — `parent` included: it
+        /// carries the text binding, which in split view changes as focus moves
+        /// between panes. A stale one sends edits to another note's buffer.
+        public func sync(with view: MarkdownEditorView) {
+            parent = view
+            renderers = view.renderers
+            vaultRoot = view.vaultRoot
+            onOpenLink = view.onOpenLink
+            onFocus = view.onFocus
+        }
 
         @objc private func widgetDidResize() {
             DispatchQueue.main.async { [weak self] in self?.updateWidgets() }
@@ -487,7 +499,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
         /// Toggle a task checkbox if the click landed on one. Returns true if handled.
         func toggleCheckbox(at index: Int) -> Bool {
-            guard let textView, let storage = textView.textStorage else { return false }
+            guard parent.isLive, let textView, let storage = textView.textStorage else { return false }
             guard let t = TaskToggle.toggle(in: storage.string, at: index) else { return false }
             storage.replaceCharacters(in: NSRange(location: t.offset, length: 1), with: t.replacement)
             parent.text = textView.string
@@ -500,7 +512,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// caret to the block's first line (so revealing the source is
         /// predictable, not a hit-test guess against the collapsed text behind
         /// the overlay). Returns true when handled (skip the default placement).
-        func handleClick(at index: Int) -> Bool {
+        public func handleClick(at index: Int) -> Bool {
             if toggleCheckbox(at: index) { return true }
             // Clicking a wiki/markdown link follows it (Obsidian-style).
             if let onOpenLink, let text = textView?.string,

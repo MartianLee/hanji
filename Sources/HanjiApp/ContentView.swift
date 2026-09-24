@@ -155,6 +155,12 @@ struct ContentView: View {
         } message: {
             Text(fileErrorMessage ?? "")
         }
+        .alert("Couldn\u{2019}t open note", isPresented: Binding(get: { appState.openError != nil },
+                                                                 set: { if !$0 { appState.openError = nil } })) {
+            Button("OK", role: .cancel) { appState.openError = nil }
+        } message: {
+            Text(appState.openError ?? "")
+        }
     }
 
     /// Recursive tree rows with controlled folder expansion (so auto-reveal can
@@ -443,7 +449,8 @@ struct ContentView: View {
                     renderers: appState.rendererRegistry, vaultRoot: appState.vaultRoot,
                     cursorOffset: $appState.pendingCursorOffset, fontSize: CGFloat(appState.fontSize),
                     onOpenLink: { appState.openLink($0) },
-                    onFocus: { appState.focusPane(pane.id) })
+                    onFocus: { appState.focusPane(pane.id) },
+                    isLive: isActivePane)
                 .opacity(isActivePane ? 1 : 0.92)
             } else {
                 Text("Open a vault, then select a note")
