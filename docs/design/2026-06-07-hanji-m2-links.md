@@ -1,16 +1,14 @@
 # hanji M2 (Links & Wikilinks) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Extend Live Preview to markdown links `[text](url)` and Obsidian wikilinks `[[Page]]` / `[[Page|Alias]]` — rendered as styled links with their syntax markers hidden off the caret line and revealed on it, reusing the M1 tokenize→decorate→apply pipeline.
 
 **Architecture:** Add a `.link` case to `SpanStyle`, extend `InlineTokenizer` with bracket parsing (wikilink + markdown-link), add link attributes to `LivePreviewStyler`. `Decorator` is generic over spans and needs no change. Verified by `Checks` (offset unit checks + headless styling) and screenshot E2E.
 
 **Tech Stack:** Swift 5 mode / SPM, existing `Checks` runner, `screencapture` E2E via `HANJI_OPEN_VAULT` / `HANJI_CARET` hooks (from M1).
 
-**Reference spec:** `docs/2026-06-06-native-markdown-editor-design.md` (M2 in §10). This plan is the first M2 increment; remaining M2 elements are deferred (see end).
+**Reference spec:** `docs/design/2026-06-06-native-markdown-editor-design.md` (M2 in §10). This plan is the first M2 increment; remaining M2 elements are deferred (see end).
 
-**Conventions:** Work in `~/workspace/hanji` on `main`. UTF-16 offsets. Tests are check-groups in `Sources/Checks/` registered in `main.swift`. Commit trailer: `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+**Conventions:** Work on `main`. UTF-16 offsets. Tests are check-groups in `Sources/Checks/` registered in `main.swift`.
 
 ---
 
@@ -212,9 +210,9 @@ git commit -m "feat(editor): style links and wikilinks"
 ## Task 3: E2E — verify links hide/reveal via screenshot
 
 **Files:**
-- Modify: `~/workspace/hanji-demo-vault/demo.md`
+- Modify: `<demo-vault>/demo.md`
 
-- [ ] **Step 1: Add link examples** to the demo note (append to `~/workspace/hanji-demo-vault/demo.md`):
+- [ ] **Step 1: Add link examples** to the demo note (append to `<demo-vault>/demo.md`):
 
 ```markdown
 
@@ -227,7 +225,7 @@ plus an aliased one [[Target Page|nice name]].
 - [ ] **Step 2: Capture with caret OFF the links line (markers hidden)**
 
 ```bash
-cd ~/workspace/hanji && swift build >/dev/null 2>&1
+swift build >/dev/null 2>&1
 HANJI_OPEN_VAULT="$HOME/workspace/hanji-demo-vault" HANJI_CARET=0 ./.build/debug/hanji >/tmp/mk.log 2>&1 &
 APP=$!; sleep 6; screencapture -x /tmp/hanji-m2-off.png; sleep 1; kill $APP 2>/dev/null; pkill -x hanji 2>/dev/null
 ```
@@ -238,7 +236,6 @@ Read `/tmp/hanji-m2-off.png`. Expected: link text shows as styled link words ("t
 Find the UTF-16 offset of the links paragraph (it follows the appended "## Links" heading). Use an offset within that paragraph (e.g., compute by trial: open the file length and target the `[the docs]` region; a value around the end of the document works since the links are last). Run:
 
 ```bash
-cd ~/workspace/hanji
 HANJI_OPEN_VAULT="$HOME/workspace/hanji-demo-vault" HANJI_CARET=999 ./.build/debug/hanji >/tmp/mk.log 2>&1 &
 APP=$!; sleep 6; screencapture -x /tmp/hanji-m2-on.png; sleep 1; kill $APP 2>/dev/null; pkill -x hanji 2>/dev/null
 ```

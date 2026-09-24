@@ -1,20 +1,16 @@
 # hanji M0 (Walking Skeleton) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Stand up a runnable native macOS markdown editor skeleton that opens a markdown vault, edits/saves a note in a TextKit 2 `NSTextView`, builds an in-memory metadata index, and proves the compile-time plugin loop with a Word Count sidebar plugin — packaged as a launchable `.app` built purely from Swift Package Manager.
 
 **Architecture:** Protocol-oriented SPM multi-target workspace. Dependencies flow downward only: `HanjiApp(exe) → AppCore → {VaultKit, ExtensionSDK, EditorEngine, MarkdownCore}`; `VaultKit → MarkdownCore`; `WordCountPlugin → ExtensionSDK`. Plugins depend on `ExtensionSDK` only — never on the app. (Matches spec §4.)
 
 **Tech Stack:** Swift 5 language mode (tools 5.10) on the Swift 6.3 toolchain, macOS 14+ deployment, SwiftUI app shell, AppKit `NSTextView` + TextKit 2 for the editor, and a lightweight `Checks` executable as the test runner (XCTest requires full Xcode; this machine has Command Line Tools only — confirmed during execution). **Zero external package dependencies in M0** (GRDB/SQLite deferred to M3).
 
-**Reference spec:** `docs/superpowers/specs/2026-06-06-native-markdown-editor-design.md` (M0 in §10).
+**Reference spec:** `docs/design/2026-06-06-native-markdown-editor-design.md` (M0 in §10).
 
 **Conventions for every task:**
-- Work in `~/workspace/hanji` (created in Task 1). This is greenfield — no worktree needed.
+- Work in the new repository (created in Task 1). This is greenfield — no worktree needed.
 - TDD: write the failing test, run it red, write minimal code, run it green, commit.
-- **Every commit message must end with this trailer line** (one blank line before it):
-  `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`
 - Run all checks with `swift run Checks` from the project root (or `swift run Checks <GroupName>` for one group).
 
 ## Testing approach (revised 2026-06-07 — CLT only, no XCTest)
@@ -36,15 +32,14 @@ XCTest ships with full Xcode, which is not installed here (Command Line Tools on
 **Why first:** The single biggest unknown is whether this machine (Command Line Tools only, no full Xcode) can build and launch a SwiftUI GUI from SPM. Prove it with the smallest possible app before building anything else.
 
 **Files:**
-- Create: `~/workspace/hanji/Package.swift`
-- Create: `~/workspace/hanji/.gitignore`
-- Create: `~/workspace/hanji/Sources/HanjiApp/HanjiApp.swift`
+- Create: `Package.swift`
+- Create: `.gitignore`
+- Create: `Sources/HanjiApp/HanjiApp.swift`
 
 - [ ] **Step 1: Create project dir and init git**
 
 ```bash
-mkdir -p ~/workspace/hanji/Sources/HanjiApp
-cd ~/workspace/hanji
+mkdir -p Sources/HanjiApp
 git init
 ```
 
@@ -1120,7 +1115,7 @@ git commit -m "build: script to assemble launchable .app bundle"
 # hanji
 
 A native macOS (SwiftUI + TextKit 2) markdown editor that opens markdown vaults,
-with a Swift extension SDK. See `docs/superpowers/specs/2026-06-06-native-markdown-editor-design.md`.
+with a Swift extension SDK. See `docs/design/2026-06-06-native-markdown-editor-design.md`.
 
 ## Status: M0 — walking skeleton
 

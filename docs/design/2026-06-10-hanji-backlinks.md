@@ -1,16 +1,14 @@
 # Backlinks Panel (SDK ② MetadataQuerying) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** A right-sidebar Backlinks panel (first-party plugin over a new minimal SDK ② query surface) listing every note that links to the active note, with context snippets, updating live.
 
 **Architecture:** Pure `LinkParser` (MarkdownCore) extracts wikilinks/markdown links; MKSearchKit migration v2 stores a `link(source, target, offset)` table refreshed on every reindex and answers `backlinks(of:)` with boundary-safe snippets (shared `SnippetWindow` helper, also adopted by `SearchHit`). The host exposes `MetadataQuerying` (backlinks + indexDidUpdate) and `EditorContext.activeNotePath`; `BacklinksPlugin` (ExtensionSDK-only) renders the panel — registering it restores the 3-column layout automatically.
 
 **Tech Stack:** Swift 5.10/SPM, GRDB 7 (already in, MKSearchKit-only), NSRegularExpression, Combine, custom `Checks` runner.
 
-**Spec:** `docs/2026-06-10-hanji-backlinks-design.md` (architecture diagram in §2)
+**Spec:** `docs/design/2026-06-10-hanji-backlinks-design.md` (architecture diagram in §2)
 
-**Conventions:** TDD via `Sources/Checks` (`expect`/`expectEqual`, register in main.swift, `swift run Checks <Group>`); red = build failure for new symbols; commits straight to main with real timestamps + `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` trailer. ⚠️ The search module target/import is **`MKSearchKit`**.
+**Conventions:** TDD via `Sources/Checks` (`expect`/`expectEqual`, register in main.swift, `swift run Checks <Group>`); red = build failure for new symbols; commits straight to main. ⚠️ The search module target/import is **`MKSearchKit`**.
 
 ---
 
@@ -156,7 +154,7 @@ public enum LinkParser {
 
 ```bash
 git add Sources/MarkdownCore/LinkParser.swift Sources/Checks/LinkParserChecks.swift Sources/Checks/main.swift
-git commit -m "feat(core): LinkParser — wikilinks + markdown links, embeds/fences excluded" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(core): LinkParser — wikilinks + markdown links, embeds/fences excluded"
 ```
 
 ---
@@ -363,7 +361,7 @@ Note: existing DBs created by v1-only builds migrate forward automatically (GRDB
 
 ```bash
 git add Package.swift Sources/MKSearchKit Sources/Checks/SearchIndexChecks.swift Sources/Checks/main.swift
-git commit -m "feat(search): link table (schema v2) + backlinks(of:) with shared snippet window" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(search): link table (schema v2) + backlinks(of:) with shared snippet window"
 ```
 
 ---
@@ -513,7 +511,7 @@ Add a new section:
 
 ```bash
 git add Sources/ExtensionSDK/ExtensionSDK.swift Sources/AppCore/Host.swift Sources/Checks/BacklinksPluginChecks.swift Sources/Checks/main.swift
-git commit -m "feat(sdk): surface ② MetadataQuerying (backlinks + index updates) and activeNotePath" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(sdk): surface ② MetadataQuerying (backlinks + index updates) and activeNotePath"
 ```
 
 ---
@@ -675,7 +673,7 @@ struct BacklinksView: View {
 
 ```bash
 git add Package.swift Sources/BacklinksPlugin Sources/HanjiApp/HanjiApp.swift Sources/Checks/BacklinksPluginChecks.swift Sources/Checks/main.swift
-git commit -m "feat(backlinks): first-party Backlinks panel over SDK ② (right sidebar returns)" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(backlinks): first-party Backlinks panel over SDK ② (right sidebar returns)"
 ```
 
 ---
@@ -709,7 +707,7 @@ git commit -m "feat(backlinks): first-party Backlinks panel over SDK ② (right 
 
 ```bash
 git add Sources/Checks/E2EChecks.swift README.md
-git commit -m "test: backlinks E2E step + README" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "test: backlinks E2E step + README"
 ```
 
 ---

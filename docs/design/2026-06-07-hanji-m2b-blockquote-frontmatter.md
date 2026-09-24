@@ -1,16 +1,14 @@
 # hanji M2b (Blockquote & Frontmatter) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Extend Live Preview to blockquotes (`> text`, with `> ` hidden off the caret line and an indented muted style) and YAML frontmatter (`---` … `---` at the top of a note, shown as a dimmed monospaced block).
 
 **Architecture:** Add `.blockquote` and `.frontmatter` to `SpanStyle`. `InlineTokenizer` emits a line span for each blockquote line (marker `> `) and one span per frontmatter line (no markers; detected only at document start). `Decorator` is unchanged (generic). `LivePreviewStyler` adds the two styles, using `NSParagraphStyle` for the blockquote indent. Verified by `Checks` + screenshot E2E.
 
 **Tech Stack:** Swift 5 / SPM; existing `Checks` runner + `screencapture` E2E hooks.
 
-**Reference spec:** `docs/2026-06-06-native-markdown-editor-design.md` (M2 in §10). Continues the M2 increments after links/wikilinks.
+**Reference spec:** `docs/design/2026-06-06-native-markdown-editor-design.md` (M2 in §10). Continues the M2 increments after links/wikilinks.
 
-**Conventions:** Work in `~/workspace/hanji` on `main`. UTF-16 offsets. Check-groups in `Sources/Checks/` registered in `main.swift`. Commit trailer: `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+**Conventions:** Work on `main`. UTF-16 offsets. Check-groups in `Sources/Checks/` registered in `main.swift`.
 
 > Note: adding `SpanStyle` cases makes `LivePreviewStyler`'s switch non-exhaustive, so Task 1 and Task 2 are implemented together in one build (learned from the links increment).
 
@@ -191,9 +189,9 @@ git commit -m "feat: Live Preview for blockquotes and frontmatter"
 ## Task 3: E2E — verify via screenshot
 
 **Files:**
-- Modify: `~/workspace/hanji-demo-vault/demo.md`
+- Modify: `<demo-vault>/demo.md`
 
-- [ ] **Step 1: Add a frontmatter header and a quote.** Prepend frontmatter to the very top of `~/workspace/hanji-demo-vault/demo.md` and add a blockquote section. The file must START with the `---` block (frontmatter is only recognized at line 0):
+- [ ] **Step 1: Add a frontmatter header and a quote.** Prepend frontmatter to the very top of `<demo-vault>/demo.md` and add a blockquote section. The file must START with the `---` block (frontmatter is only recognized at line 0):
 
 Top of file becomes:
 ```markdown
@@ -214,7 +212,7 @@ And add before "## Links":
 - [ ] **Step 2: Capture (caret at top — quote markers hidden)**
 
 ```bash
-cd ~/workspace/hanji && swift build >/dev/null 2>&1
+swift build >/dev/null 2>&1
 HANJI_OPEN_VAULT="$HOME/workspace/hanji-demo-vault" HANJI_CARET=0 ./.build/debug/hanji >/tmp/mk.log 2>&1 &
 A=$!; sleep 7; screencapture -x /tmp/hanji-m2b.png; kill $A 2>/dev/null; pkill -x hanji 2>/dev/null
 ```
@@ -223,7 +221,6 @@ Read `/tmp/hanji-m2b.png`. Expected: frontmatter shows as a dim monospaced block
 - [ ] **Step 3: Capture (caret on a quote line — `>` revealed)**
 
 ```bash
-cd ~/workspace/hanji
 OFF=$(python3 -c "print(open('$HOME/workspace/hanji-demo-vault/demo.md').read().find('This is a blockquote'))")
 HANJI_OPEN_VAULT="$HOME/workspace/hanji-demo-vault" HANJI_CARET=$OFF ./.build/debug/hanji >/tmp/mk.log 2>&1 &
 A=$!; sleep 7; screencapture -x /tmp/hanji-m2b-on.png; kill $A 2>/dev/null; pkill -x hanji 2>/dev/null

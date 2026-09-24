@@ -1,12 +1,10 @@
 # hanji — Interactive Checkboxes & Callouts Plan
 
-> REQUIRED SUB-SKILL: superpowers:executing-plans. Branch `checkbox-callout` (off `main`).
-
 **Goal:** (1) Make task checkboxes **interactive** — clicking `[ ]`/`[x]` toggles the source and saves. (2) Render **callouts** (`> [!type] …`) as a tinted, indented box.
 
 **Architecture:** `MarkdownCore` gets a pure `TaskToggle` (click offset → which char to flip) and callout parsing (`.callout` span via multi-line state in `spans(in:)`). `EditorEngine` uses an `NSTextView` subclass whose `mouseDown` asks a callback to toggle a checkbox (minimal `replaceCharacters`, preserving caret/undo). `LivePreviewStyler` styles `.callout`. Verified by `Checks` + screenshot E2E.
 
-**Conventions:** UTF-16 offsets; check-groups in `Sources/Checks/`; commit trailer `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+**Conventions:** UTF-16 offsets; check-groups in `Sources/Checks/`.
 
 ---
 
@@ -201,7 +199,7 @@ func calloutStylerChecks() {
 
 - [ ] README: add "interactive checkboxes" and "callouts" to the Live Preview line.
 - [ ] `swift run Checks` (green); copy this plan into repo `docs/`; commit.
-- [ ] superpowers:finishing-a-development-branch → merge `checkbox-callout` → `main`.
+- [ ] Merge `checkbox-callout` → `main`.
 
 ---
 

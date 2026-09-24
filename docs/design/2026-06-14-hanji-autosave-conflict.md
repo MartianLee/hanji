@@ -1,16 +1,14 @@
 # Autosave + External-Edit Conflict Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add Obsidian-style autosave (debounced + flush on note switch/quit) with content-based dirty tracking, and surface external edits to the open note via a non-modal conflict banner.
 
 **Architecture:** `AppState` gains a `savedText` disk baseline (`isDirty = activeText != savedText`), a debounced `$activeText` autosave that routes through `flushPendingSave()`, an outgoing-note flush in `open(_:)`, external-change detection appended to `reloadTree()`, and two conflict-resolution methods. `ContentView` shows a banner when `externalConflict != nil`; `HanjiApp` flushes on `scenePhase` background.
 
 **Tech Stack:** Swift 5.10/SPM, Combine, SwiftUI, custom Checks runner. No new dependencies.
 
-**Spec:** `docs/2026-06-14-hanji-autosave-conflict-design.md`
+**Spec:** `docs/design/2026-06-14-hanji-autosave-conflict-design.md`
 
-**Conventions:** TDD via `Sources/Checks` (`expect`/`expectEqual`, register in `main.swift`, `swift run Checks <Group>`); commits to main, real timestamps, trailer `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`. Tests construct `AppState` and drive it directly (`flushPendingSave()`, `reloadTree()`) — never rely on the debounce timer or the FS watcher firing (main runloop isn't spinning headless). READ files before editing.
+**Conventions:** TDD via `Sources/Checks` (`expect`/`expectEqual`, register in `main.swift`, `swift run Checks <Group>`); commits to main. Tests construct `AppState` and drive it directly (`flushPendingSave()`, `reloadTree()`) — never rely on the debounce timer or the FS watcher firing (main runloop isn't spinning headless). READ files before editing.
 
 ---
 
@@ -171,7 +169,7 @@ Expected: PASS (all assertions). Then `swift run Checks` (full suite green — e
 
 ```bash
 git add Sources/AppCore/AppState.swift Sources/Checks/AutosaveChecks.swift Sources/Checks/main.swift
-git commit -m "feat(editor): content-based dirty tracking + debounced autosave (flush on switch)" -m "Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+git commit -m "feat(editor): content-based dirty tracking + debounced autosave (flush on switch)"
 ```
 
 ---
@@ -294,7 +292,7 @@ Expected: PASS. Then `swift run Checks Autosave` (still green) and full `swift r
 
 ```bash
 git add Sources/AppCore/AppState.swift Sources/Checks/AutosaveChecks.swift Sources/Checks/main.swift
-git commit -m "feat(editor): external-edit conflict detection + reload/keep-mine resolution" -m "Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+git commit -m "feat(editor): external-edit conflict detection + reload/keep-mine resolution"
 ```
 
 ---
@@ -362,7 +360,7 @@ git commit -m "feat(editor): external-edit conflict detection + reload/keep-mine
 
 ```bash
 git add Sources/HanjiApp/ContentView.swift Sources/HanjiApp/HanjiApp.swift Sources/Checks/E2EChecks.swift
-git commit -m "feat(editor): conflict banner + flush on background/quit + E2E reload step" -m "Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+git commit -m "feat(editor): conflict banner + flush on background/quit + E2E reload step"
 ```
 
 ---

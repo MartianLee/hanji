@@ -1,14 +1,12 @@
 # Global Search (FTS5 + GRDB) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Vault-wide full-text search (Korean-friendly trigram FTS5) over a persistent, incrementally-updated SQLite index, surfaced as an Obsidian-style sidebar search panel (⇧⌘F).
 
 **Architecture:** New `SearchKit` target is the only thing that knows GRDB. `SearchIndex` owns a per-vault DB in Application Support (outside the vault — avoids polluting it and avoids FSEvents feedback). AppState schedules debounced background reindexes (mtime-skip makes them cheap) from every write path + the watcher; the sidebar gains Files/Search icon tabs and a search panel whose hits jump the caret to the match via the existing `pendingCursorOffset`.
 
 **Tech Stack:** Swift 5.10 / SPM, GRDB.swift 7.x (first external dependency), system SQLite FTS5 `trigram` tokenizer (macOS 14 ships SQLite ≥3.43), CryptoKit (SHA-256 path hashing), custom `Checks` runner.
 
-**Spec:** `docs/2026-06-10-hanji-global-search-design.md`
+**Spec:** `docs/design/2026-06-10-hanji-global-search-design.md`
 
 **Conventions:** tests are `Sources/Checks/<Name>Checks.swift` functions registered in `Sources/Checks/main.swift`, run via `swift run Checks <Group>`. TDD "red" for a new symbol = build failure. Commit after each task with real timestamps (evening rule — no backdating needed). First `swift build` after Task 1 fetches GRDB from GitHub (network required once; afterwards cached).
 
@@ -138,7 +136,7 @@ Expected: `✅ All checks passed (5 assertions, 1 group(s))`.
 
 ```bash
 git add Package.swift Package.resolved Sources/SearchKit/SearchIndex.swift Sources/Checks/SearchIndexChecks.swift Sources/Checks/main.swift
-git commit -m "feat(search): GRDB dependency + SearchKit target with per-vault FTS5 schema" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(search): GRDB dependency + SearchKit target with per-vault FTS5 schema"
 ```
 
 ---
@@ -441,7 +439,7 @@ Expected: all three groups `✅ All checks passed`. (If `MATCH` errors with `no 
 
 ```bash
 git add Sources/SearchKit Sources/Checks/SearchIndexChecks.swift Sources/Checks/main.swift
-git commit -m "feat(search): incremental FTS5 index + trigram search with snippets" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(search): incremental FTS5 index + trigram search with snippets"
 ```
 
 ---
@@ -539,7 +537,7 @@ Run: `swift run Checks AppStateSearch` → `✅`. Then the full suite: `swift ru
 
 ```bash
 git add Sources/AppCore/AppState.swift Sources/Checks/SearchIndexChecks.swift Sources/Checks/main.swift
-git commit -m "feat(search): AppState owns the index; write paths + watcher trigger background reindex" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(search): AppState owns the index; write paths + watcher trigger background reindex"
 ```
 
 ---
@@ -747,7 +745,7 @@ And in `Package.swift`, add `"SearchKit"` to the `HanjiApp` executable target de
 ```bash
 swift build && swift run Checks
 ./Scripts/bundle-app.sh
-HANJI_OPEN_VAULT=~/workspace/hanji-render-test open ./hanji.app
+HANJI_OPEN_VAULT=<test-vault> open ./hanji.app
 ```
 Screenshot: sidebar shows the two icon tabs; clicking 🔍 (or ⇧⌘F) shows the search field; typing a Korean word from a real note (e.g. "운동") lists title+snippet hits with the match highlighted; clicking a hit opens the note with the caret at the match.
 
@@ -755,7 +753,7 @@ Screenshot: sidebar shows the two icon tabs; clicking 🔍 (or ⇧⌘F) shows th
 
 ```bash
 git add Package.swift Sources/HanjiApp Sources/AppCore
-git commit -m "feat(search): sidebar Files/Search tabs + search panel with snippet highlights (⇧⌘F)" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(search): sidebar Files/Search tabs + search panel with snippet highlights (⇧⌘F)"
 ```
 
 ---
@@ -797,7 +795,7 @@ swift run Checks          # all groups green
 
 ```bash
 git add Sources/Checks/E2EChecks.swift README.md
-git commit -m "test: global-search E2E step + README" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "test: global-search E2E step + README"
 ```
 
 ---

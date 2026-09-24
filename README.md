@@ -9,7 +9,7 @@ SwiftUI + TextKit 2, with a Swift extension SDK. Local-first, fast, no account.
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Platform: macOS 14+](https://img.shields.io/badge/Platform-macOS%2014%2B-lightgrey.svg)
-![Swift 5.10](https://img.shields.io/badge/Swift-5.10-orange.svg)
+![Swift 6.1+](https://img.shields.io/badge/Swift-6.1%2B-orange.svg)
 
 ![Hanji — Live Preview with syntax-highlighted code, backlinks and calendar panels](docs/images/editor.png)
 
@@ -74,7 +74,9 @@ swift run Checks                             # run the test suite
 ```
 
 **Command Line Tools is sufficient** to build and run — full Xcode is only needed
-for XCTest, Instruments, and code-signing. Minimum target: **macOS 14**.
+for XCTest, Instruments, and code-signing. Minimum target: **macOS 14**; building
+needs a **Swift 6.1+** toolchain (Xcode 16.3+ / matching Command Line Tools),
+because GRDB 7 declares `swift-tools-version:6.1`.
 
 ### Installing the app
 
@@ -87,9 +89,11 @@ builds (planned). The only external dependency is
 ## Architecture
 
 ```
-HanjiApp (exe) → AppCore → { VaultKit, ExtensionSDK, EditorEngine, MarkdownCore, MKSearchKit }
-MKSearchKit → GRDB          (the only module that imports GRDB)
-Plugins     → ExtensionSDK  (+ pure libs like TemplateKit) — never AppCore/the app
+HanjiApp (exe) → { AppCore, EditorEngine, CoreRenderers, first-party plugins }
+AppCore        → { VaultKit, ExtensionSDK, MarkdownCore, MKSearchKit }
+EditorEngine   → { MarkdownCore, ExtensionSDK }
+MKSearchKit    → GRDB           (the only module that imports GRDB)
+Plugins        → ExtensionSDK   (+ pure libs like TemplateKit) — never AppCore/the app
 ```
 
 Pure, dependency-free logic lives in `MarkdownCore` / `TemplateKit` and is fully
@@ -104,7 +108,7 @@ Pre-1.0 and under active development. Working toward an open-source v0.1.
 - **Not built yet**: export / print, a separate reading (rendered-only) mode,
   and an outline / table-of-contents panel.
 - **Move Tab Left/Right (⌃⌘←/→) collides with macOS Spaces switching** if you
-  have that enabled in System Settings ▸ Keyboard. Use the Edit menu items, or
+  have that enabled in System Settings ▸ Keyboard. Use the File menu items, or
   rebind Spaces.
 - Vault-wide replace is literal only — no regex, and no per-occurrence review;
   it replaces every match at once (⌥⌘Z reverts the whole batch).

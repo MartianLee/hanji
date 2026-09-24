@@ -11,4 +11,7 @@ was built. Each feature went through a **design** doc (the spec) and an
 - [`images/`](images/) — screenshots used in the README.
 
 These are point-in-time records — for current behavior, the code and
-[`../README.md`](../README.md) are the source of truth.
+[`../README.md`](../README.md) are the source of truth. The earliest ones are
+written in Korean and name a few libraries that were considered but never
+adopted; the plans were written as step-by-step checklists to be executed
+task by task.

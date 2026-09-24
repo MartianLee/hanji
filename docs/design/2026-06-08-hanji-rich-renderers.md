@@ -1,13 +1,12 @@
 # hanji — Rich Renderers (Images, Mermaid, Dataview-lite) Plan
 
-> REQUIRED SUB-SKILL: superpowers:executing-plans. Branch `rich-renderers` (off `main`).
 > Scope note: three substantial first-cut features built on the renderer/overlay mechanism. Implemented + verified in sequence.
 
 **Goal:** Inline rendering of (1) **images** (`![[file]]` / `![alt](path)`), (2) **mermaid** diagrams (` ```mermaid `), and (3) **Dataview-lite** (` ```dataview ` with `LIST FROM #tag`).
 
 **Shared foundation:** Generalize the editor's widget placement so any widget reserves the **height it actually needs** (measured via `NSHostingView.fittingSize`, capped), by setting `minimumLineHeight` on the block's first line + collapsing the rest, then overlaying. Caret inside the block → raw source (no widget), as today.
 
-**Conventions:** branch `rich-renderers`; UTF-16 offsets; `Checks` runner; commit trailer `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+**Conventions:** branch `rich-renderers`; UTF-16 offsets; `Checks` runner.
 
 ---
 
@@ -128,7 +127,7 @@ Verify (screenshot): a note with a `#proj` tag elsewhere + a ` ```dataview \n LI
 
 - README: add images / mermaid / Dataview-lite to status.
 - `swift run Checks` green; copy plan to repo `docs/`; commit.
-- superpowers:finishing-a-development-branch → merge `rich-renderers` → `main`.
+- Merge `rich-renderers` → `main`.
 
 ---
 

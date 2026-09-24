@@ -1,7 +1,5 @@
 # Tab Reorder + Send-Tab-to-Pane Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Drag a tab to reorder it within its pane, and move a tab into the left/right pane via a context menu or keyboard (creating the second pane when there's room).
 
 **Architecture:** Two new AppState operations over the existing `Pane`/`panes` model. `moveTab(_:before:in:)` is a pure positional change of a pane's `tabs` (active tab and live buffer untouched). `moveTabToSide(_:_:)` moves a tab into the neighbouring pane (merging) or a freshly created pane (splitting), reusing `writeBackActive`/`hydrate`/`closePaneIfEmpty`. UI: SwiftUI `.draggable`/`.dropDestination` on tabs for reorder; a `.contextMenu` + `⌃⌘←/→` commands for send-to-pane.
@@ -13,7 +11,7 @@
 ## Global Constraints
 
 - TDD via `Sources/Checks` (zero-dependency runner; Command Line Tools ship no XCTest). Model logic gets a headless check; UI is verified by `swift build` + screenshot.
-- Commits go to `main`, message trailer: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
+- Commits go to `main`.
 - READ each file before editing it.
 - Minimum target macOS 14. No new external dependencies (GRDB is the only one).
 - `Pane` is a plain class, not `@Published`-observed — **every mutation of a pane's `tabs`/`activeTabID` must be wrapped in `objectWillChange.send()`** so views re-render (mirror the existing `open`/`switchTab`/`closeTab`).
@@ -122,7 +120,7 @@ Expected: all PASS.
 
 ```bash
 git add Sources/AppCore/AppState.swift Sources/Checks/TabChecks.swift Sources/Checks/main.swift
-git commit -m "feat(tabs): moveTab — within-pane insert-style reorder (model)" -m "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+git commit -m "feat(tabs): moveTab — within-pane insert-style reorder (model)"
 ```
 
 ---
@@ -227,7 +225,7 @@ Open two or three notes (⌘O), drag a tab left/right of another, confirm the or
 
 ```bash
 git add Sources/HanjiApp/TabBarView.swift
-git commit -m "feat(tabs): drag-and-drop tab reorder within a pane" -m "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+git commit -m "feat(tabs): drag-and-drop tab reorder within a pane"
 ```
 
 ---
@@ -370,7 +368,7 @@ Expected: all PASS; final line `✅ All checks passed`.
 
 ```bash
 git add Sources/AppCore/AppState.swift Sources/Checks/TabChecks.swift Sources/Checks/main.swift
-git commit -m "feat(panes): moveTabToSide — send a tab to the left/right pane (model)" -m "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+git commit -m "feat(panes): moveTabToSide — send a tab to the left/right pane (model)"
 ```
 
 ---
@@ -434,7 +432,7 @@ With two notes open in one pane: right-click a tab → **Move to Right Pane** �
 ```bash
 ./Scripts/e2e.sh
 git add Sources/HanjiApp/TabBarView.swift Sources/HanjiApp/HanjiApp.swift
-git commit -m "feat(panes): context menu + ⌃⌘←/→ to move a tab between panes" -m "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+git commit -m "feat(panes): context menu + ⌃⌘←/→ to move a tab between panes"
 ```
 
 ---

@@ -1,7 +1,5 @@
 # Editor Tabs Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Open multiple notes as tabs; each tab is an independent buffer (text, dirty, conflict). Clicking a note opens or focuses its tab; ⌘W closes the active tab.
 
 **Architecture:** AppState keeps its existing single-doc `@Published` fields as the **active tab's working state**. `tabs: [OpenTab]` are saved snapshots; switching writes the working state back into the outgoing tab and hydrates from the incoming one. The editor binding (`$appState.activeText`), autosave (`$activeText`), and all SDK publishers stay unchanged — only `open`/`switchTab`/`closeTab`/`rename`, `reloadTree`'s reconcile, and a `TabBarView` are new.
@@ -10,7 +8,7 @@
 
 **Spec:** `docs/design/2026-06-16-hanji-tabs-design.md`
 
-**Conventions:** TDD via `Sources/Checks` (`expect`/`expectEqual`, register in `main.swift`, `swift run Checks <Group>`); commits to main, trailer `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. READ files before editing. `MarkdownFile(url:)` is a public init (AppState already uses it).
+**Conventions:** TDD via `Sources/Checks` (`expect`/`expectEqual`, register in `main.swift`, `swift run Checks <Group>`); commits to main. READ files before editing. `MarkdownFile(url:)` is a public init (AppState already uses it).
 
 ---
 
@@ -259,7 +257,7 @@ In `openVault(at:)`, where it resets `selectedFile = nil` / `activeText = ""`, a
 
 ```bash
 git add Sources/AppCore/OpenTab.swift Sources/AppCore/AppState.swift Sources/Checks/TabChecks.swift Sources/Checks/main.swift
-git commit -m "feat(tabs): multi-document model — open/switch/close/rename over OpenTab snapshots" -m "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+git commit -m "feat(tabs): multi-document model — open/switch/close/rename over OpenTab snapshots"
 ```
 
 ---
@@ -363,7 +361,7 @@ func tabReloadChecks() {
 
 ```bash
 git add Sources/AppCore/AppState.swift Sources/Checks/TabChecks.swift Sources/Checks/main.swift
-git commit -m "feat(tabs): reconcile every open tab against disk on reload (per-tab conflict)" -m "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+git commit -m "feat(tabs): reconcile every open tab against disk on reload (per-tab conflict)"
 ```
 
 ---
@@ -457,7 +455,7 @@ struct TabBarView: View {
 
 ```bash
 git add Sources/HanjiApp/TabBarView.swift Sources/HanjiApp/ContentView.swift Sources/HanjiApp/HanjiApp.swift
-git commit -m "feat(tabs): tab bar UI + ⌘W close-tab" -m "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+git commit -m "feat(tabs): tab bar UI + ⌘W close-tab"
 ```
 
 ---

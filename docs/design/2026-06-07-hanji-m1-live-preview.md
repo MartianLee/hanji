@@ -1,20 +1,17 @@
 # hanji M1 (Live Preview Basics + Marker-Hiding Spike) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add incremental Live Preview to the hanji editor for the first element set — headings, bold, italic, inline code — where markdown is styled inline and syntax markers collapse except on the line containing the caret (the caret-aware reveal that defines the Obsidian feel).
 
 **Architecture:** Pure logic lives in `MarkdownCore`: a line-based `InlineTokenizer` produces `MarkSpan`s (UTF-16 offset ranges for content + markers + enclosing line), and a pure `Decorator.decorations(spans:selection:)` turns spans + caret position into a `DecorationSet` (style runs + marker ranges to hide). `EditorEngine` applies the `DecorationSet` to the `NSTextView`'s `NSTextStorage` and recomputes it on every text/selection change. This isolates the testable heart (tokenize + decide) from the empirical part (apply to TextKit).
 
 **Tech Stack:** Swift 5 mode / SPM, AppKit `NSTextView` (TextKit 2) + `NSTextStorage` attributes, the existing zero-dependency `Checks` runner (`swift run Checks`). Builds on M0; no new external dependencies.
 
-**Reference spec:** `docs/superpowers/specs/2026-06-06-native-markdown-editor-design.md` (M1 in §10, decoration pipeline in §5.3, R1 in §11).
+**Reference spec:** `docs/design/2026-06-06-native-markdown-editor-design.md` (M1 in §10, decoration pipeline in §5.3, R1 in §11).
 
 **Conventions for every task:**
-- Work in `~/workspace/hanji` on `main` (continues M0).
+- Work on `main` (continues M0).
 - All offsets are **UTF-16 code units** (NSRange/`NSString`-compatible).
 - Tests are check-group functions in `Sources/Checks/`, registered in `Sources/Checks/main.swift`, run with `swift run Checks [GroupName]`.
-- **Every commit message ends with** (blank line before it): `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`
 
 ---
 

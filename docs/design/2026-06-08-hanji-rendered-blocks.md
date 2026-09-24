@@ -1,16 +1,14 @@
 # hanji — Rendered Blocks (RendererRegistry + inline widget spike) Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:executing-plans or subagent-driven-development. Checkbox steps. Work on branch `rendered-blocks` (main is the stable baseline).
-
 **Goal:** Open the SDK's renderer surface ① — a `CodeBlockRenderer` + `RendererRegistry` that plugins register into — and render a fenced code block whose language has a registered renderer as an **inline widget** in the TextKit 2 editor, **without mutating the document text** (the source is preserved and revealed when the caret enters the block). First built-in renderer is a simple boxed "card" renderer (` ```card `) to prove the whole pipeline end-to-end; mermaid / Dataview tables / images build on this later.
 
 **Architecture:** `MarkdownCore` gains a block-level `CodeBlockRegion` (language + ranges). `ExtensionSDK` defines `CodeBlockRenderer` + `RendererRegistry` and adds `renderers` to `PluginHost`. `AppCore` provides `DefaultRendererRegistry` and wires it into `Host`. `EditorEngine` renders registered blocks via a TextKit 2 mechanism (the spike). A `CoreRenderers` target ships `CardRenderer`, registered by the app.
 
 **Tech Stack:** Swift 5 / SPM; AppKit/TextKit 2 (`NSTextLayoutManagerDelegate` / `NSTextLayoutFragment` or `NSTextAttachmentViewProvider`); SwiftUI via `NSHostingView`; `Checks` runner + screenshot E2E.
 
-**Reference spec:** `docs/2026-06-06-native-markdown-editor-design.md` (§5.3 inline blocks, §5.4 `CodeBlockRenderer`, R1-style spike).
+**Reference spec:** `docs/design/2026-06-06-native-markdown-editor-design.md` (§5.3 inline blocks, §5.4 `CodeBlockRenderer`, R1-style spike).
 
-**Conventions:** branch `rendered-blocks`; UTF-16 offsets; check-groups in `Sources/Checks/`; commit trailer `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+**Conventions:** branch `rendered-blocks`; UTF-16 offsets; check-groups in `Sources/Checks/`.
 
 ---
 
@@ -230,7 +228,7 @@ Render each `CodeBlockRegion` whose `language` has a registered renderer as an i
 
 - [ ] README: note "extensible code-block renderers (SDK surface ①) + built-in card renderer".
 - [ ] `swift run Checks` (green); copy this plan into repo `docs/`; commit.
-- [ ] Use superpowers:finishing-a-development-branch to decide merging `rendered-blocks` → `main`.
+- [ ] Merge `rendered-blocks` → `main`.
 
 ---
 

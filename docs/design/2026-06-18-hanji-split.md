@@ -1,7 +1,5 @@
 # Left/Right Editor Split Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Two editor panes side by side, each its own tab group; only the focused pane is the live buffer (the other shows its active tab's snapshot and goes live on click).
 
 **Architecture:** `Pane` is a plain tab-group class (`tabs`/`activeTabID`). AppState keeps its single working state (= active pane's active tab) and exposes `tabs`/`activeTabID` as **computed proxies to the active pane**. Tab mutators move onto `activePane` (firing `objectWillChange` since `Pane` is a class). `focusPane`/`splitRight`/`closePaneIfEmpty` manage panes; reconcile spans all panes. The UI renders 1 or 2 panes (`HSplitView`); the inactive pane's editor binds a `.constant` snapshot and `MarkdownEditorView.onFocus` activates a pane.
@@ -10,7 +8,7 @@
 
 **Spec:** `docs/design/2026-06-18-hanji-split-design.md`
 
-**Conventions:** TDD via `Sources/Checks`; commits to main, trailer `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. READ files before editing. The existing tab/autosave/conflict tests (`Tabs`, `TabReload`, `Autosave`, `Conflict`, `E2E`) are the safety net for the Task 1 refactor — they MUST stay green (behavior preserved with one pane).
+**Conventions:** TDD via `Sources/Checks`; commits to main. READ files before editing. The existing tab/autosave/conflict tests (`Tabs`, `TabReload`, `Autosave`, `Conflict`, `E2E`) are the safety net for the Task 1 refactor — they MUST stay green (behavior preserved with one pane).
 
 ---
 
@@ -253,7 +251,7 @@ In `rename` and `move`, the tab-update loops currently use `tabs.firstIndex`/`ta
 
 ```bash
 git add Sources/AppCore/Pane.swift Sources/AppCore/AppState.swift Sources/Checks/TabChecks.swift Sources/Checks/main.swift
-git commit -m "refactor(panes): tabs live on the active Pane; AppState proxies it (single pane, behavior-preserving)" -m "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+git commit -m "refactor(panes): tabs live on the active Pane; AppState proxies it (single pane, behavior-preserving)"
 ```
 
 ---
@@ -346,7 +344,7 @@ func paneSplitChecks() {
 
 ```bash
 git add Sources/AppCore/AppState.swift Sources/Checks/TabChecks.swift Sources/Checks/main.swift
-git commit -m "feat(panes): splitRight + focusPane (single live buffer, snapshot per pane)" -m "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+git commit -m "feat(panes): splitRight + focusPane (single live buffer, snapshot per pane)"
 ```
 
 ---
@@ -480,7 +478,7 @@ struct TabBarView: View {
 
 ```bash
 git add Sources/EditorEngine/MarkdownEditorView.swift Sources/HanjiApp/TabBarView.swift Sources/HanjiApp/ContentView.swift Sources/HanjiApp/HanjiApp.swift
-git commit -m "feat(panes): left/right split UI + active-pane focus + ⌘\\ Split Right" -m "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+git commit -m "feat(panes): left/right split UI + active-pane focus + ⌘\\ Split Right"
 ```
 
 ---

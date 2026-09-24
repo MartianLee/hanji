@@ -1,19 +1,17 @@
 # Periodic Notes + Templater + ⌘P/⌘O + Onboarding — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Ship hanji's first two first-party plugins — Periodic Notes (daily/weekly/monthly) and Templater (curated `tp.*`, static substitution) — plus the ⌘P command palette, ⌘O quick switcher, and a welcome/vault-selection onboarding flow.
 
 **Architecture:** A pure, dependency-free `TemplateKit` library holds the template engine, `tp.*` functions, moment-format→date formatting, Obsidian-config parsing, and periodic open/create planning (fully tested via the headless `swift run Checks` runner). The extension SDK grows by exactly two surfaces actually consumed now — ③ `Command`/`CommandRegistry` and a `WorkspaceActions` note create/open capability — and the two plugins are thin adapters. The SwiftUI shell gains a reusable palette overlay (⌘P/⌘O) and a WelcomeView + Settings window backed by recent-vault persistence in `AppState`.
 
 **Tech Stack:** Swift 5.10 / SPM, SwiftUI + AppKit + TextKit 2, Foundation `JSONSerialization`, custom `Checks` test runner (XCTest unavailable with Command Line Tools only). Build/test: `swift build`, `swift run Checks [Group]`, `./Scripts/bundle-app.sh`.
 
-**Spec:** `docs/2026-06-09-hanji-periodic-templater-design.md`
+**Spec:** `docs/design/2026-06-09-hanji-periodic-templater-design.md`
 
 **Conventions for every task:**
 - Tests are functions in `Sources/Checks/<Name>Checks.swift` using `expect(_:_:)` / `expectEqual(_:_:_:)`, registered as a tuple in `Sources/Checks/main.swift`.
 - The "red" step for a brand-new symbol is a **build failure** (`cannot find 'X' in scope`) because Swift compiles the whole `Checks` target; that is the expected failing state. After implementing, the same command turns green.
-- Commit after each task. Branch is `periodic-templater` (already created). End commit messages with the `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>` trailer.
+- Commit after each task. Branch is `periodic-templater` (already created).
 
 ---
 
@@ -1554,7 +1552,7 @@ swift build && swift run hanji
 ```
 Then (separate shell): launch with the demo vault and capture:
 ```bash
-HANJI_OPEN_VAULT=~/workspace/hanji-demo-vault swift run hanji &
+HANJI_OPEN_VAULT=<demo-vault> swift run hanji &
 sleep 4 && screencapture -x /tmp/mk-palette.png
 ```
 Press ⌘P (command palette appears with the three "Open … note" commands + "New note from template…") and ⌘O (file list). Read `/tmp/mk-palette.png` to confirm the overlay renders and filters as you type.
@@ -1720,7 +1718,7 @@ git commit -m "feat(shell): WelcomeView onboarding, recent-vault auto-reopen, Se
 **Files:**
 - Modify: `Scripts/bundle-app.sh`
 - Modify: `README.md`
-- Create (E2E fixtures): `~/workspace/hanji-demo-vault/.obsidian/plugins/periodic-notes/data.json`, `~/workspace/hanji-demo-vault/Templates/Daily.md`
+- Create (E2E fixtures): `<demo-vault>/.obsidian/plugins/periodic-notes/data.json`, `<demo-vault>/Templates/Daily.md`
 
 - [ ] **Step 1: Make the bundle script ad-hoc sign**
 
@@ -1732,11 +1730,11 @@ codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
 - [ ] **Step 2: Seed the demo vault for the periodic-notes E2E**
 
 ```bash
-mkdir -p ~/workspace/hanji-demo-vault/.obsidian/plugins/periodic-notes ~/workspace/hanji-demo-vault/Templates
-cat > ~/workspace/hanji-demo-vault/.obsidian/plugins/periodic-notes/data.json <<'JSON'
+mkdir -p <demo-vault>/.obsidian/plugins/periodic-notes <demo-vault>/Templates
+cat > <demo-vault>/.obsidian/plugins/periodic-notes/data.json <<'JSON'
 { "daily": { "folder": "Daily", "format": "YYYY-MM-DD", "template": "Templates/Daily" } }
 JSON
-cat > ~/workspace/hanji-demo-vault/Templates/Daily.md <<'TMPL'
+cat > <demo-vault>/Templates/Daily.md <<'TMPL'
 # <% tp.date.now("YYYY-MM-DD") %> — <% tp.file.title %>
 
 <% tp.file.cursor() %>
@@ -1752,12 +1750,12 @@ Expected: `✅ All checks passed` across all groups (the new groups: MomentForma
 
 ```bash
 ./Scripts/bundle-app.sh
-HANJI_OPEN_VAULT=~/workspace/hanji-demo-vault open hanji.app   # (or: swift run hanji with the env var)
+HANJI_OPEN_VAULT=<demo-vault> open hanji.app   # (or: swift run hanji with the env var)
 ```
 Press ⌘P → select "Open today's daily note". Confirm a `Daily/<today>.md` note is created and opened with the template rendered (date + title) and the caret on the blank line. Capture and read a screenshot to verify, then delete the generated `Daily/` note so the fixture stays clean:
 ```bash
 sleep 3 && screencapture -x /tmp/mk-daily.png
-rm -rf ~/workspace/hanji-demo-vault/Daily
+rm -rf <demo-vault>/Daily
 ```
 
 - [ ] **Step 5: Update `README.md` status section**
@@ -1773,7 +1771,7 @@ git commit -m "chore: ad-hoc sign bundle, README, periodic-notes E2E fixtures"
 
 - [ ] **Step 7: Finish the branch**
 
-Use the **superpowers:finishing-a-development-branch** skill to merge `periodic-templater` → `main` (fast-forward), verify `swift run Checks`, delete the branch, and update the hanji memory files (`project_hanji.md` + `MEMORY.md`) to record Periodic Notes + Templater + ⌘P/⌘O + onboarding on `main`.
+Merge `periodic-templater` → `main` (fast-forward), verify `swift run Checks`, and delete the branch.
 
 ---
 

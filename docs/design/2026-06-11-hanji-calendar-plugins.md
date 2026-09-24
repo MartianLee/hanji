@@ -1,16 +1,14 @@
 # Calendar Panel + Plugin Toggles Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Obsidian-style live plugin on/off in Settings ▸ Plugins (existing plugins toggleable with zero plugin-code changes) and a Calendar right-sidebar panel whose days dot when a daily note exists and open-or-create on click.
 
 **Architecture:** `PluginManager` keeps a plugin roster and an ownership ledger — while a plugin's `activate(host:)` runs, every `addSidebar/addCommand/addStatusItem` is recorded under that plugin's id; `setEnabled(id,false)` removes exactly those contributions and calls the new `deactivate()` hook, `setEnabled(id,true)` re-activates (host held weakly). `CalendarGrid` is pure date math (TDD); `CalendarPlugin` (ExtensionSDK+TemplateKit) renders the grid, dots via `PeriodicConfig.notePath(.daily)`+`workspace.noteExists`, clicks via the already-tested `planOpen`.
 
 **Tech Stack:** Swift 5.10/SPM, SwiftUI, Combine, custom Checks runner. No new external deps.
 
-**Spec:** `docs/2026-06-11-hanji-calendar-plugins-design.md` (flow diagram §2)
+**Spec:** `docs/design/2026-06-11-hanji-calendar-plugins-design.md` (flow diagram §2)
 
-**Conventions:** tests in `Sources/Checks` (`expect`/`expectEqual`, register in main.swift, `swift run Checks <Group>`); red = build failure for new symbols; commits to main, real timestamps, trailer `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`. READ real files before editing — line numbers drift.
+**Conventions:** tests in `Sources/Checks` (`expect`/`expectEqual`, register in main.swift, `swift run Checks <Group>`); red = build failure for new symbols; commits to main. READ real files before editing — line numbers drift.
 
 **Spec note:** the spec sketches tagging via a `pluginID` field on contribution types; the chosen mechanism is an ownership ledger inside PluginManager (same observable behavior, zero SDK type changes) — this is the intended interpretation, not a deviation.
 
@@ -214,7 +212,7 @@ Note: the shell's own `file.moveTo` command is registered OUTSIDE any plugin act
 
 ```bash
 git add Sources/ExtensionSDK/ExtensionSDK.swift Sources/AppCore/PluginManager.swift Sources/Checks/PluginToggleChecks.swift Sources/Checks/main.swift
-git commit -m "feat(plugins): live enable/disable engine with per-plugin contribution ownership" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(plugins): live enable/disable engine with per-plugin contribution ownership"
 ```
 
 ---
@@ -290,7 +288,7 @@ And the tab body:
 
 ```bash
 git add Sources/HanjiApp/SettingsView.swift Sources/HanjiApp/HanjiApp.swift Sources/Checks/E2EChecks.swift
-git commit -m "feat(settings): Plugins tab with live toggles (+ E2E toggle step)" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(settings): Plugins tab with live toggles (+ E2E toggle step)"
 ```
 
 ---
@@ -414,7 +412,7 @@ public enum CalendarGrid {
 
 ```bash
 git add Package.swift Sources/CalendarPlugin/CalendarGrid.swift Sources/Checks/CalendarChecks.swift Sources/Checks/main.swift
-git commit -m "feat(calendar): pure month-grid math (locale week start, padding, leap years)" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(calendar): pure month-grid math (locale week start, padding, leap years)"
 ```
 
 ---
@@ -611,7 +609,7 @@ struct CalendarView: View {
 
 ```bash
 git add Package.swift Sources/CalendarPlugin Sources/HanjiApp/HanjiApp.swift Sources/Checks/CalendarChecks.swift Sources/Checks/main.swift
-git commit -m "feat(calendar): month panel with daily-note dots and open-or-create days" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(calendar): month panel with daily-note dots and open-or-create days"
 ```
 
 ---
@@ -635,7 +633,7 @@ git commit -m "feat(calendar): month panel with daily-note dots and open-or-crea
 
 ```bash
 git add README.md
-git commit -m "docs: calendar + plugin toggles in README" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "docs: calendar + plugin toggles in README"
 ```
 
 ---

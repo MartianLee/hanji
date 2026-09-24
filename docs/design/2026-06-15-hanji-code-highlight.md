@@ -1,16 +1,14 @@
 # Code-Block Syntax Highlighting Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Color keywords/types/strings/comments/numbers inside fenced code blocks via a pure, grammar-configured tokenizer, applied as foreground colors over the existing mono slab.
 
 **Architecture:** A pure `CodeHighlighter` in MarkdownCore scans a code block's text with one char-by-char scanner parameterized by a per-language `LanguageGrammar` (keywords, comment markers, string delimiters), with a C-like fallback for unknown languages. The editor's `restyle()` runs it over each `CodeBlockRegion.body` and adds foreground colors from a `LivePreviewStyler` palette — the mono font and slab background are untouched.
 
 **Tech Stack:** Swift 5.10/SPM, AppKit (NSColor/NSTextStorage), custom Checks runner. No new dependencies.
 
-**Spec:** `docs/2026-06-15-hanji-code-highlight-design.md`
+**Spec:** `docs/design/2026-06-15-hanji-code-highlight-design.md`
 
-**Conventions:** TDD via `Sources/Checks` (`expect`/`expectEqual`, register in `main.swift`, `swift run Checks <Group>`); commits to main, real timestamps, trailer `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`. Tokens are **UTF-16 ranges** (the scanner indexes `NSString` so offsets map straight onto `NSTextStorage`). READ files before editing.
+**Conventions:** TDD via `Sources/Checks` (`expect`/`expectEqual`, register in `main.swift`, `swift run Checks <Group>`); commits to main. Tokens are **UTF-16 ranges** (the scanner indexes `NSString` so offsets map straight onto `NSTextStorage`). READ files before editing.
 
 ---
 
@@ -271,7 +269,7 @@ Expected: PASS (all assertions). Then `swift run Checks` (full suite green).
 
 ```bash
 git add Sources/MarkdownCore/CodeHighlighter.swift Sources/Checks/CodeHighlighterChecks.swift Sources/Checks/main.swift
-git commit -m "feat(core): grammar-configured code syntax tokenizer (swift/js/py/json/bash + fallback)" -m "Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+git commit -m "feat(core): grammar-configured code syntax tokenizer (swift/js/py/json/bash + fallback)"
 ```
 
 ---
@@ -379,7 +377,7 @@ Expected: PASS. Then `swift run Checks` (full suite green — existing `CodeBloc
 
 ```bash
 git add Sources/EditorEngine/LivePreviewStyler.swift Sources/EditorEngine/MarkdownEditorView.swift Sources/Checks/CodeBlockStylerChecks.swift Sources/Checks/main.swift README.md
-git commit -m "feat(editor): syntax-highlight fenced code blocks over the slab" -m "Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+git commit -m "feat(editor): syntax-highlight fenced code blocks over the slab"
 ```
 
 ---

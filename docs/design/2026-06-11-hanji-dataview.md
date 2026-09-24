@@ -1,16 +1,14 @@
 # Dataview TABLE/WHERE/SORT Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Upgrade the `dataview` block from `LIST FROM #tag` to TABLE with frontmatter columns, FROM #tag/"folder"/all, AND-chained WHERE comparisons, SORT, and `file.name`/`file.mtime` built-ins — backed by persisted tag/field tables.
 
 **Architecture:** Pure `Frontmatter.parse` + an extended `DataviewQuery` (parser + `Parsed`/`ResultRow` types) live in MarkdownCore so both MKSearchKit and CoreRenderers can share them without new coupling. MKSearchKit migration v3 adds `tag`/`field` tables (populated in `upsert`, reset for backfill — Epic D lesson) and `dataview(_:)` executes source→WHERE→SORT. `DataviewRenderer` swaps its `indexProvider` for a query closure wired from `appState.searchIndex`.
 
 **Tech Stack:** Swift 5.10/SPM, GRDB (MKSearchKit-only invariant), custom Checks runner.
 
-**Spec:** `docs/2026-06-11-hanji-dataview-design.md`
+**Spec:** `docs/design/2026-06-11-hanji-dataview-design.md`
 
-**Conventions:** TDD via `Sources/Checks` (`expect`/`expectEqual`, register in `main.swift`, `swift run Checks <Group>`); red = build failure for new symbols; commits to main with real timestamps + trailer `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`. Search module = **MKSearchKit**. READ real files before editing.
+**Conventions:** TDD via `Sources/Checks` (`expect`/`expectEqual`, register in `main.swift`, `swift run Checks <Group>`); red = build failure for new symbols; commits to main. Search module = **MKSearchKit**. READ real files before editing.
 
 ---
 
@@ -128,7 +126,7 @@ public enum Frontmatter {
 
 ```bash
 git add Sources/MarkdownCore/Frontmatter.swift Sources/Checks/FrontmatterChecks.swift Sources/Checks/main.swift
-git commit -m "feat(core): scalar frontmatter parser" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(core): scalar frontmatter parser"
 ```
 
 ---
@@ -331,7 +329,7 @@ public enum DataviewQuery {
 
 ```bash
 git add Sources/MarkdownCore/DataviewQuery.swift Sources/Checks/DataviewChecks.swift Sources/Checks/main.swift
-git commit -m "feat(core): dataview query parser — TABLE/FROM/WHERE/SORT subset" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(core): dataview query parser — TABLE/FROM/WHERE/SORT subset"
 ```
 
 ---
@@ -544,7 +542,7 @@ Append to the class:
 
 ```bash
 git add Sources/MKSearchKit/SearchIndex.swift Sources/Checks/SearchIndexChecks.swift Sources/Checks/main.swift
-git commit -m "feat(search): tag/field tables (schema v3, backfilled) + dataview execution" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(search): tag/field tables (schema v3, backfilled) + dataview execution"
 ```
 
 ---
@@ -696,7 +694,7 @@ Remove the now-unused `MetadataIndex` import only if nothing else in the file us
 
 ```bash
 git add Sources/CoreRenderers/DataviewRenderer.swift Sources/HanjiApp/HanjiApp.swift Sources/Checks/E2EChecks.swift README.md
-git commit -m "feat(dataview): TABLE rendering over the index (FROM/WHERE/SORT, built-ins)" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git commit -m "feat(dataview): TABLE rendering over the index (FROM/WHERE/SORT, built-ins)"
 ```
 
 ---

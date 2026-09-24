@@ -1,16 +1,14 @@
 # hanji M2c (Lists & Tasks) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax.
-
 **Goal:** Live Preview for unordered list items (`- `/`* `/`+ `) and tasks (`- [ ] ` / `- [x] `): list items get a hanging indent; completed tasks get a strikethrough + muted text; the checkbox stays visible (interactive checkboxes are deferred to the attachment milestone).
 
 **Architecture:** Add `.listItem` and `.task(Bool)` to `SpanStyle`. `InlineTokenizer.parseLine` recognizes task lines (before list lines) and list lines (after heading/blockquote). `Decorator` unchanged. `LivePreviewStyler` adds paragraph indent + (for done tasks) strikethrough. Verified by `Checks`.
 
 **Tech Stack:** Swift 5 / SPM; `Checks` runner.
 
-**Reference spec:** `docs/2026-06-06-native-markdown-editor-design.md` (M2 §10). Continues M2 increments.
+**Reference spec:** `docs/design/2026-06-06-native-markdown-editor-design.md` (M2 §10). Continues M2 increments.
 
-**Conventions:** `~/workspace/hanji` on `main`; UTF-16 offsets; check-groups in `Sources/Checks/`; commit trailer `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`. Tokenizer + styler land together (SpanStyle coupling).
+**Conventions:** work on `main`; UTF-16 offsets; check-groups in `Sources/Checks/`. Tokenizer + styler land together (SpanStyle coupling).
 
 ---
 

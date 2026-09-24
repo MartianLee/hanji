@@ -1,16 +1,14 @@
 # hanji M2d (Fenced Code Blocks — styled) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:executing-plans or subagent-driven-development. Checkbox steps.
-
 **Goal:** Live Preview for fenced code blocks (` ``` … ``` `): render the whole block (fences + body) as a monospaced, background-shaded region. (Rendering code blocks as *interactive widgets* — mermaid diagrams, Dataview tables — is the separate attachments milestone using `NSTextAttachmentViewProvider` + the SDK `RendererRegistry`; this increment is pure text styling, no attachments.)
 
 **Architecture:** Add `.codeBlock` to `SpanStyle`. `InlineTokenizer.spans(in:)` tracks an `inCodeBlock` state (open/close on lines starting with ` ``` `), emitting a `.codeBlock` span per line. `Decorator` unchanged. `LivePreviewStyler` styles `.codeBlock` as mono + background. Verified by `Checks`.
 
 **Tech Stack:** Swift 5 / SPM; `Checks` runner.
 
-**Reference spec:** `docs/2026-06-06-native-markdown-editor-design.md` (§10 M2, §5.3 notes the future widget path).
+**Reference spec:** `docs/design/2026-06-06-native-markdown-editor-design.md` (§10 M2, §5.3 notes the future widget path).
 
-**Conventions:** `~/workspace/hanji` on `main`; UTF-16 offsets; check-groups in `Sources/Checks/`; commit trailer `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`. Tokenizer + styler land together (SpanStyle coupling).
+**Conventions:** work on `main`; UTF-16 offsets; check-groups in `Sources/Checks/`. Tokenizer + styler land together (SpanStyle coupling).
 
 ---
 
