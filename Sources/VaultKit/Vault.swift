@@ -30,15 +30,23 @@ public struct Vault {
     }
 
     /// Atomic write: write a temp file in the same directory, then replace.
+    /// A symlinked note is written through to its target (replacing the link
+    /// itself fails), and the temp file never outlives a failed write.
     public func write(_ text: String, to file: MarkdownFile) throws {
         let fm = FileManager.default
-        let dir = file.url.deletingLastPathComponent()
-        let tmp = dir.appendingPathComponent(".\(file.name).tmp-\(UUID().uuidString)")
+        let target = file.url.resolvingSymlinksInPath()
+        let dir = target.deletingLastPathComponent()
+        let tmp = dir.appendingPathComponent(".\(target.lastPathComponent).tmp-\(UUID().uuidString)")
         try Data(text.utf8).write(to: tmp)
-        if fm.fileExists(atPath: file.url.path) {
-            _ = try fm.replaceItemAt(file.url, withItemAt: tmp)
-        } else {
-            try fm.moveItem(at: tmp, to: file.url)
+        do {
+            if fm.fileExists(atPath: target.path) {
+                _ = try fm.replaceItemAt(target, withItemAt: tmp)
+            } else {
+                try fm.moveItem(at: tmp, to: target)
+            }
+        } catch {
+            try? fm.removeItem(at: tmp)
+            throw error
         }
     }
 }

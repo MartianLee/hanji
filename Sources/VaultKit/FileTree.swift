@@ -24,7 +24,7 @@ public enum VaultError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .invalidName: return "Name cannot be empty."
+        case .invalidName: return "That name can\u{2019}t be used: a name can\u{2019}t be empty, start with \u{201C}.\u{201D}, or contain \u{201C}/\u{201D}."
         case .nameTaken(let name): return "\u{201C}\(name)\u{201D} already exists here."
         case .cannotMoveIntoItself: return "A folder can\u{2019}t be moved into itself."
         }
@@ -109,17 +109,25 @@ extension Vault {
     }
 
     /// Rename within the same parent. Files keep/normalize their `.md` extension.
-    /// Throws `VaultError.nameTaken` on collision and `.invalidName` when empty.
+    /// Throws `VaultError.nameTaken` on collision and `.invalidName` for a name
+    /// that is empty, contains a path (`/`, `..`), or starts with a dot (it
+    /// would vanish from the tree, which skips hidden files). A rename that only
+    /// changes letter case is allowed even though the disk sees the same name.
     @discardableResult
     public func rename(_ url: URL, to newName: String) throws -> URL {
         let trimmed = newName.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { throw VaultError.invalidName }
+        guard !trimmed.isEmpty, !trimmed.contains("/"), !trimmed.hasPrefix(".") else {
+            throw VaultError.invalidName
+        }
         let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
         var finalName = trimmed
         if !isDir && !finalName.lowercased().hasSuffix(".md") { finalName += ".md" }
         let dest = url.deletingLastPathComponent().appendingPathComponent(finalName)
         if dest.standardizedFileURL == url.standardizedFileURL { return url }
-        guard !FileManager.default.fileExists(atPath: dest.path) else { throw VaultError.nameTaken(finalName) }
+        let caseOnly = dest.lastPathComponent.lowercased() == url.lastPathComponent.lowercased()
+        guard caseOnly || !FileManager.default.fileExists(atPath: dest.path) else {
+            throw VaultError.nameTaken(finalName)
+        }
         try FileManager.default.moveItem(at: url, to: dest)
         return dest
     }

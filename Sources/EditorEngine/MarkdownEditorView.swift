@@ -364,6 +364,22 @@ public struct MarkdownEditorView: NSViewRepresentable {
             // re-measure and re-reserve when that happens.
             NotificationCenter.default.addObserver(self, selector: #selector(widgetDidResize),
                                                    name: .hanjiWidgetDidResize, object: nil)
+            // ⌘Z / ⇧⌘Z change the text without a textDidChange reaching us, so the
+            // note would keep the undone text (and a later update would put it back).
+            for name in [Notification.Name.NSUndoManagerDidUndoChange, .NSUndoManagerDidRedoChange] {
+                NotificationCenter.default.addObserver(self, selector: #selector(undoRedoDidChange(_:)),
+                                                       name: name, object: nil)
+            }
+        }
+
+        @objc private func undoRedoDidChange(_ notification: Notification) {
+            guard let textView, parent.isLive,
+                  let manager = notification.object as? UndoManager, manager === textView.undoManager,
+                  textView.string != parent.text else { return }
+            parent.text = textView.string
+            // Restyle one runloop hop later, as for selection changes: AppKit is
+            // still settling the caret after the undo.
+            DispatchQueue.main.async { [weak self] in self?.refresh() }
         }
 
         deinit { NotificationCenter.default.removeObserver(self) }
@@ -498,12 +514,19 @@ public struct MarkdownEditorView: NSViewRepresentable {
         }
 
         /// Toggle a task checkbox if the click landed on one. Returns true if handled.
+        /// Inside a fenced code block `- [ ]` is code, so it doesn't toggle. The
+        /// toggle goes through the text view's edit path, so ⌘Z takes it back and
+        /// textDidChange carries it to the note.
         func toggleCheckbox(at index: Int) -> Bool {
-            guard parent.isLive, let textView, let storage = textView.textStorage else { return false }
-            guard let t = TaskToggle.toggle(in: storage.string, at: index) else { return false }
-            storage.replaceCharacters(in: NSRange(location: t.offset, length: 1), with: t.replacement)
-            parent.text = textView.string
-            refresh()
+            guard parent.isLive, let textView else { return false }
+            let text = textView.string
+            guard let t = TaskToggle.toggle(in: text, at: index),
+                  !CodeBlockParser.regions(in: text).contains(where: { $0.full.contains(t.offset) })
+            else { return false }
+            let range = NSRange(location: t.offset, length: 1)
+            guard textView.shouldChangeText(in: range, replacementString: t.replacement) else { return false }
+            textView.textStorage?.replaceCharacters(in: range, with: t.replacement)
+            textView.didChangeText()
             return true
         }
 

@@ -23,7 +23,7 @@ func unreadableNoteChecks() {
     expectEqual(state.selectedFile?.name, "fine.md", "an undecodable note doesn't become the open note")
     expectEqual(state.activeText, "fine", "the current buffer is left alone")
     expectEqual(state.activePane?.tabs.count, 1, "no tab is opened for it")
-    expect(state.openError?.contains("legacy.md") == true, "the user is told which note couldn't open")
+    expect(state.notice?.message.contains("legacy.md") == true, "the user is told which note couldn't open")
 
     state.activeText = "typed after the failed open"
     state.flushPendingSave()

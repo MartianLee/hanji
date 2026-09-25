@@ -10,6 +10,11 @@ public enum TaskToggle {
 
         var lineStart = clickOffset
         while lineStart > 0 && ns.character(at: lineStart - 1) != 0x0A { lineStart -= 1 }
+        // Nested tasks sit after an indent (spaces/tabs), same as the tokenizer
+        // that draws their checkbox.
+        while lineStart < len, ns.character(at: lineStart) == 0x20 || ns.character(at: lineStart) == 0x09 {
+            lineStart += 1
+        }
 
         guard lineStart + 6 <= len else { return nil }
         let dash = UInt16(UnicodeScalar("-").value), sp = UInt16(UnicodeScalar(" ").value)

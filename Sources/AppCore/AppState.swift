@@ -14,9 +14,16 @@ public final class AppState: ObservableObject {
     @Published public var savedText: String = ""
     /// External (on-disk) version of the open note awaiting conflict resolution.
     @Published public var externalConflict: String? = nil
-    /// Set when a note couldn't be opened (e.g. not UTF-8); the UI shows it and clears it.
-    @Published public var openError: String? = nil
+    /// Something the user needs to know about — a note that couldn't be opened or
+    /// saved, a close that would lose work. The UI shows it as an alert and clears it.
+    public struct Notice: Equatable {
+        public let title: String
+        public let message: String
+    }
+    @Published public var notice: Notice? = nil
     public var isDirty: Bool { activeText != savedText }
+    /// The open note's file vanished while it had unsaved edits (see `reconcileTabs`).
+    @Published public private(set) var missingOnDisk = false
     @Published public var index: MetadataIndex = MetadataIndex()
     @Published public var recentVaults: [URL] = []
     @Published public var pendingCursorOffset: Int?
@@ -52,6 +59,9 @@ public final class AppState: ObservableObject {
     @Published public private(set) var searchIndexUpdatedAt = Date()
     private let searchQueue = DispatchQueue(label: "io.hanji.searchindex", qos: .utility)
     private let saveQueue = DispatchQueue(label: "io.hanji.save", qos: .utility)
+    /// Autosaves that failed on the save queue, not yet applied on main.
+    /// Only touched on `saveQueue`.
+    private var autosaveFailures: [(file: MarkdownFile, text: String, previous: String, error: Error)] = []
     private let defaults: UserDefaults
     private static let recentsKey = "io.hanji.recentVaults"
     private static let treeSortKey = "io.hanji.treeSort"
@@ -74,7 +84,14 @@ public final class AppState: ObservableObject {
     }
 
     public func openVault(at root: URL) {
-        flushPendingSave()                       // don't lose edits when switching vaults
+        // Don't lose edits when switching vaults: save everything, and stay put if
+        // some note's edits can't be written yet.
+        let unsaved = saveAllForClose()
+        guard unsaved.isEmpty else {
+            notice = Notice(title: "Unsaved changes",
+                            message: "Hanji couldn\u{2019}t save \(Self.list(unsaved)) yet, so it kept this vault open. Resolve or save \(unsaved.count == 1 ? "it" : "them") first.")
+            return
+        }
         resignEditorFocus()                      // editors are torn down as panes reset (avoid teardown-time hang)
         let v = Vault(root: root)
         vault = v
@@ -86,9 +103,11 @@ public final class AppState: ObservableObject {
         activeText = ""
         savedText = ""
         externalConflict = nil
+        missingOnDisk = false
         conflictPaused = false
         panes = [Pane()]
         activePaneID = panes[0].id
+        fileOperations = []                      // undo history belongs to the vault it came from
         addRecent(root)
         watcher?.stop()
         watcher = VaultWatcher(root: root) { [weak self] in self?.reloadTree() }
@@ -106,15 +125,27 @@ public final class AppState: ObservableObject {
         scheduleReindex()
     }
 
-    /// Reconcile every open tab against disk after an FS change: close tabs whose
-    /// file vanished; for surviving tabs detect external edits (the active tab
-    /// uses the live working fields, others their snapshot).
+    /// Reconcile every open tab against disk after an FS change. A tab whose file
+    /// vanished closes if it was clean; with unsaved edits it stays open, flagged
+    /// `missingOnDisk`, until the user saves it again or closes it (a git
+    /// checkout or a sync client can remove a file mid-edit). For surviving tabs,
+    /// detect external edits (the active tab uses the live working fields, others
+    /// their snapshot).
     private func reconcileTabs() {
         guard let vault else { return }
         let fm = FileManager.default
         for pane in panes {
-            for gone in pane.tabs.filter({ !fm.fileExists(atPath: $0.file.url.path) }) {
-                removeTab(gone.id, in: pane)
+            for tab in pane.tabs {
+                let isLive = pane.id == activePaneID && tab.id == pane.activeTabID
+                let gone = !fm.fileExists(atPath: tab.file.url.path)
+                let unsaved = isLive ? (isDirty || externalConflict != nil)
+                                     : (tab.isDirty || tab.externalConflict != nil)
+                let flagged = isLive ? missingOnDisk : tab.missingOnDisk
+                if gone && !unsaved && !flagged {
+                    removeTab(tab.id, in: pane)
+                } else if gone != flagged {
+                    setMissing(gone, tabID: tab.id, in: pane, isLive: isLive)
+                }
             }
         }
         for pane in panes {
@@ -136,6 +167,15 @@ public final class AppState: ObservableObject {
             }
         }
         for pane in Array(panes) { closePaneIfEmpty(pane) }
+    }
+
+    private func setMissing(_ missing: Bool, tabID: UUID, in pane: Pane, isLive: Bool) {
+        if isLive {
+            missingOnDisk = missing
+            conflictPaused = missing || externalConflict != nil
+        } else if let idx = pane.tabs.firstIndex(where: { $0.id == tabID }) {
+            pane.tabs[idx].missingOnDisk = missing
+        }
     }
 
     /// Remove a tab (no save — file gone) from a specific pane.
@@ -199,6 +239,7 @@ public final class AppState: ObservableObject {
         pane.tabs[idx].text = activeText
         pane.tabs[idx].savedText = savedText
         pane.tabs[idx].externalConflict = externalConflict
+        pane.tabs[idx].missingOnDisk = missingOnDisk
     }
 
     /// Load the working state from a tab snapshot.
@@ -207,7 +248,8 @@ public final class AppState: ObservableObject {
         activeText = tab.text
         savedText = tab.savedText
         externalConflict = tab.externalConflict
-        conflictPaused = (tab.externalConflict != nil)
+        missingOnDisk = tab.missingOnDisk
+        conflictPaused = (tab.externalConflict != nil) || tab.missingOnDisk
         pendingCursorOffset = 0
     }
 
@@ -217,14 +259,23 @@ public final class AppState: ObservableObject {
         activeText = ""
         savedText = ""
         externalConflict = nil
+        missingOnDisk = false
         conflictPaused = false
     }
 
-    /// Synchronous write of a non-active tab's snapshot if dirty.
-    private func flush(_ tab: OpenTab) {
-        guard tab.isDirty, let vault else { return }
-        try? vault.write(tab.text, to: tab.file)
+    /// Synchronous write of a non-active tab's snapshot if dirty. False when the
+    /// edits are still only in memory (the write failed; the user has been told).
+    @discardableResult
+    private func flush(_ tab: OpenTab) -> Bool {
+        guard tab.isDirty, let vault else { return true }
+        guard tab.externalConflict == nil, !tab.missingOnDisk else { return false }
+        guard write(tab.text, to: tab.file, with: vault) else { return false }
+        if let pane = panes.first(where: { $0.tabs.contains { $0.id == tab.id } }),
+           let idx = pane.tabs.firstIndex(where: { $0.id == tab.id }) {
+            pane.tabs[idx].savedText = tab.text
+        }
         scheduleReindex()
+        return true
     }
 
     public func open(_ file: MarkdownFile) {
@@ -236,7 +287,8 @@ public final class AppState: ObservableObject {
         // (not UTF-8) must not open as an empty buffer — the first keystroke would
         // autosave over the original bytes.
         guard let text = try? vault?.read(file) else {
-            openError = "Hanji couldn\u{2019}t read \u{201C}\(file.name)\u{201D} as UTF-8 text, so it left the note closed rather than risk overwriting it."
+            notice = Notice(title: "Couldn\u{2019}t open note",
+                            message: "Hanji couldn\u{2019}t read \u{201C}\(file.name)\u{201D} as UTF-8 text, so it left the note closed rather than risk overwriting it.")
             return
         }
         flushPendingSave()
@@ -264,7 +316,21 @@ public final class AppState: ObservableObject {
     public func closeTab(_ id: UUID) {
         guard let pane = activePane, let idx = pane.tabs.firstIndex(where: { $0.id == id }) else { return }
         let wasActive = id == pane.activeTabID
-        if wasActive { flushPendingSave() } else { flush(pane.tabs[idx]) }
+        // A tab still waiting on the "changed on disk" banner holds two versions the
+        // user hasn't chosen between: closing would either drop the edits or write
+        // them over the other version. Ask for the choice first.
+        if (wasActive ? externalConflict : pane.tabs[idx].externalConflict) != nil {
+            notice = Notice(title: "Resolve the conflict first",
+                            message: "\u{201C}\(pane.tabs[idx].file.name)\u{201D} changed on disk while it had unsaved edits. Choose \u{201C}Reload from disk\u{201D} or \u{201C}Keep my edits\u{201D} in the note before closing it.")
+            return
+        }
+        if wasActive ? missingOnDisk : pane.tabs[idx].missingOnDisk {
+            notice = Notice(title: "This note was removed on disk",
+                            message: "\u{201C}\(pane.tabs[idx].file.name)\u{201D} was moved or deleted outside Hanji while it had unsaved edits. Choose \u{201C}Save again\u{201D} or \u{201C}Close without saving\u{201D} in the note.")
+            return
+        }
+        // A tab whose edits couldn't be saved stays open — closing it would throw them away.
+        guard wasActive ? flushPendingSave() : flush(pane.tabs[idx]) else { return }
         objectWillChange.send()
         pane.tabs.remove(at: idx)
         if wasActive {
@@ -398,29 +464,148 @@ public final class AppState: ObservableObject {
         closePaneIfEmpty(src)
     }
 
+    /// Save everything before the app quits or the vault closes: the open note
+    /// (even mid-debounce), every tab's snapshot, and whatever autosave is still
+    /// in flight. Returns the notes whose edits are still only in memory — a
+    /// failed write or an unresolved conflict — so the caller can stop and say so.
+    public func saveAllForClose() -> [String] {
+        applyAutosaveFailures()                  // waits for in-flight autosaves too
+        var unsaved: [String] = []
+        if !flushPendingSave(), let file = selectedFile { unsaved.append(file.name) }
+        for pane in panes {
+            for tab in pane.tabs where !(pane.id == activePaneID && tab.id == pane.activeTabID) {
+                if !flush(tab) { unsaved.append(tab.file.name) }
+            }
+        }
+        var seen = Set<String>()
+        return unsaved.filter { seen.insert($0).inserted }
+    }
+
+    /// "“A.md”" / "“A.md” and “B.md”" / "“A.md”, “B.md” and 3 more".
+    static func list(_ names: [String]) -> String {
+        let quoted = names.map { "\u{201C}\($0)\u{201D}" }
+        switch quoted.count {
+        case 0: return ""
+        case 1: return quoted[0]
+        case 2, 3: return quoted.dropLast().joined(separator: ", ") + " and " + quoted.last!
+        default: return quoted.prefix(2).joined(separator: ", ") + " and \(quoted.count - 2) more"
+        }
+    }
+
     /// Toolbar/menu "Save" — writes only if there are unsaved changes.
     public func save() { flushPendingSave() }
 
     /// Synchronous write — used for note switch, quit, and tests where the bytes
-    /// must hit disk before the next step. Idempotent when clean.
-    public func flushPendingSave() {
-        guard !conflictPaused, isDirty, let file = selectedFile, let vault else { return }
-        try? vault.write(activeText, to: file)
+    /// must hit disk before the next step. Idempotent when clean. Returns false
+    /// when the open note's edits are still only in memory: the write failed (the
+    /// user has been told) or a conflict is waiting to be resolved.
+    @discardableResult
+    public func flushPendingSave() -> Bool {
+        guard isDirty, let file = selectedFile, let vault else { return true }
+        guard !conflictPaused else { return false }
+        guard write(activeText, to: file, with: vault) else { return false }
         savedText = activeText
         scheduleReindex()
+        return true
     }
 
     /// Debounced autosave: write OFF the main thread so a save never blocks
     /// typing (iCloud writes can stall on file coordination). The baseline is
-    /// marked clean immediately so a follow-up watcher fire sees no conflict.
+    /// marked clean immediately so a follow-up watcher fire sees no conflict;
+    /// if the write then fails, the note is marked dirty again.
     private func autosave() {
         guard !conflictPaused, isDirty, let file = selectedFile, let vault else { return }
         let text = activeText
+        let previous = savedText
         savedText = text
         saveQueue.async { [weak self] in
-            try? vault.write(text, to: file)
-            DispatchQueue.main.async { self?.scheduleReindex() }
+            do {
+                try vault.write(text, to: file)
+                DispatchQueue.main.async { self?.scheduleReindex() }
+            } catch {
+                self?.autosaveFailures.append((file, text, previous, error))
+                DispatchQueue.main.async { self?.applyAutosaveFailures() }
+            }
         }
+    }
+
+    /// Apply every autosave failure recorded so far. Waiting on the serial save
+    /// queue also lets any autosave still in flight finish (and record) first.
+    private func applyAutosaveFailures() {
+        let failures = saveQueue.sync { () -> [(file: MarkdownFile, text: String, previous: String, error: Error)] in
+            defer { autosaveFailures = [] }
+            return autosaveFailures
+        }
+        for f in failures { autosaveFailed(file: f.file, text: f.text, previous: f.previous, error: f.error) }
+    }
+
+    /// Put the dirty mark back on whichever copy of the note still claims `text`
+    /// was saved — the live buffer, or the tab snapshot if the user moved on.
+    private func autosaveFailed(file: MarkdownFile, text: String, previous: String, error: Error) {
+        if selectedFile?.url == file.url, savedText == text {
+            savedText = previous
+        } else {
+            for pane in panes {
+                for idx in pane.tabs.indices where pane.tabs[idx].file.url == file.url
+                    && pane.tabs[idx].savedText == text {
+                    pane.tabs[idx].savedText = previous
+                }
+            }
+        }
+        reportSaveFailure(file, error)
+    }
+
+    /// Every save goes through the serial save queue, so a synchronous save can't
+    /// land before — and be overwritten by — an older autosave still in flight.
+    private func write(_ text: String, to file: MarkdownFile, with vault: Vault) -> Bool {
+        do {
+            try saveQueue.sync { try vault.write(text, to: file) }
+            return true
+        } catch {
+            reportSaveFailure(file, error)
+            return false
+        }
+    }
+
+    /// Before moving or rewriting files: let any in-flight autosave land (so it
+    /// can't recreate a path that's about to move) and save the open note.
+    private func settleSaves() {
+        applyAutosaveFailures()
+        flushPendingSave()
+    }
+
+    /// Open tabs showing `url` itself or — for a folder — a note inside it, with
+    /// each one's path below `url` ("" for the item itself). Captured before a
+    /// rename/move/undo so the tabs can follow the file to its new place.
+    private func tabsFollowing(_ url: URL) -> [(pane: Pane, tabID: UUID, suffix: String)] {
+        let base = url.resolvingSymlinksInPath().path
+        var out: [(pane: Pane, tabID: UUID, suffix: String)] = []
+        for pane in panes {
+            for tab in pane.tabs {
+                let path = tab.file.url.resolvingSymlinksInPath().path
+                if path == base || urlSameFile(tab.file.url, url) {
+                    out.append((pane, tab.id, ""))
+                } else if path.hasPrefix(base + "/") {
+                    out.append((pane, tab.id, String(path.dropFirst(base.count + 1))))
+                }
+            }
+        }
+        return out
+    }
+
+    private func retarget(_ followers: [(pane: Pane, tabID: UUID, suffix: String)], to newURL: URL) {
+        for f in followers {
+            guard let idx = f.pane.tabs.firstIndex(where: { $0.id == f.tabID }) else { continue }
+            let file = MarkdownFile(url: f.suffix.isEmpty ? newURL : newURL.appendingPathComponent(f.suffix))
+            f.pane.tabs[idx].file = file
+            if f.pane.id == activePaneID && f.tabID == f.pane.activeTabID { selectedFile = file }
+        }
+    }
+
+    private func reportSaveFailure(_ file: MarkdownFile, _ error: Error) {
+        guard notice == nil else { return }   // one alert at a time, not one per keystroke
+        notice = Notice(title: "Couldn\u{2019}t save note",
+                        message: "Hanji couldn\u{2019}t save \u{201C}\(file.name)\u{201D}: \(error.localizedDescription) Your edits are still open and will be saved once the note can be written.")
     }
 
     /// Background reindex. A full pass with mtime-skip is cheap and
@@ -468,30 +653,54 @@ public final class AppState: ObservableObject {
         case moved(from: URL, to: URL)
         case trashed(original: URL, trashed: URL)
         case copied(URL)          // duplicate / import results
-        /// A vault-wide replace, with each rewritten file's previous text. One
-        /// entry covers the whole batch so undo can't leave the vault half-replaced.
-        case replaced([(url: URL, previous: String)])
+        /// A vault-wide replace, with each rewritten file's text before and after.
+        /// One entry covers the whole batch so undo can't leave the vault
+        /// half-replaced; the "after" text lets undo skip files changed since.
+        case replaced([(url: URL, previous: String, replaced: String)])
     }
 
     @Published public private(set) var fileOperations: [FileOperation] = []
+    /// How many operations ⌥⌘Z can walk back. Replace batches hold whole file
+    /// texts, so the history can't be allowed to grow without bound.
+    private static let undoLimit = 100
+
+    private func record(_ op: FileOperation) {
+        fileOperations.append(op)
+        if fileOperations.count > Self.undoLimit { fileOperations.removeFirst(fileOperations.count - Self.undoLimit) }
+    }
     public var canUndoFileOperation: Bool { !fileOperations.isEmpty }
 
     /// Undo the most recent file operation (create/rename/move/trash/duplicate/import).
     public func undoLastFileOperation() {
-        guard let op = fileOperations.popLast(), let v = vault else { return }
+        guard let v = vault else { return }
+        settleSaves()
+        guard let op = fileOperations.popLast() else { return }
         let fm = FileManager.default
         switch op {
         case .created(let url), .copied(let url):
             try? v.delete(url)                              // to Trash, still recoverable
         case .renamed(let from, let to), .moved(let from, let to):
-            try? fm.moveItem(at: to, to: from)
+            let followers = tabsFollowing(to)
+            if (try? fm.moveItem(at: to, to: from)) != nil { retarget(followers, to: from) }
         case .trashed(let original, let trashed):
+            // Something new took its place meanwhile (a note created over it):
+            // that goes to the Trash, so the undo still never destroys anything.
+            if fm.fileExists(atPath: original.path) { _ = try? v.delete(original) }
             try? fm.moveItem(at: trashed, to: original)
         case .replaced(let entries):
-            // Same atomic write path the replace used, so a half-written file
-            // can't survive an undo either.
+            // Only files that still hold exactly what the replace wrote. One edited
+            // since keeps the newer text, and one moved or deleted since stays
+            // gone — an undo must not destroy newer work or resurrect a note.
+            // Same atomic write path the replace used.
+            var skipped: [String] = []
             for entry in entries {
-                try? v.write(entry.previous, to: MarkdownFile(url: entry.url))
+                let file = MarkdownFile(url: entry.url)
+                guard (try? v.read(file)) == entry.replaced else { skipped.append(file.name); continue }
+                try? v.write(entry.previous, to: file)
+            }
+            if !skipped.isEmpty {
+                notice = Notice(title: "Some notes weren\u{2019}t reverted",
+                                message: "\(Self.list(skipped)) changed after the replace, so Hanji left \(skipped.count == 1 ? "it" : "them") as \(skipped.count == 1 ? "it is" : "they are").")
             }
         }
         reloadTree()
@@ -535,8 +744,8 @@ public final class AppState: ObservableObject {
     public func replaceInVault(find: String, with replacement: String,
                                caseSensitive: Bool) -> VaultReplaceSummary {
         guard !find.isEmpty, let vault else { return .none }
-        flushPendingSave()
-        var restore: [(url: URL, previous: String)] = []
+        settleSaves()
+        var restore: [(url: URL, previous: String, replaced: String)] = []
         var occurrences = 0
         for file in (try? vault.markdownFiles()) ?? [] {
             guard let text = try? vault.read(file) else { continue }
@@ -546,13 +755,13 @@ public final class AppState: ObservableObject {
                                                   caseSensitive: caseSensitive),
                   (try? vault.write(updated, to: file)) != nil
             else { continue }
-            restore.append((file.url, text))
+            restore.append((file.url, text, updated))
             occurrences += hits
         }
         // Nothing written: leave the undo stack alone so a later ⌥⌘Z doesn't
         // revert some unrelated earlier operation.
         guard !restore.isEmpty else { return .none }
-        fileOperations.append(.replaced(restore))
+        record(.replaced(restore))
         reloadTree()
         return VaultReplaceSummary(files: restore.count, occurrences: occurrences)
     }
@@ -561,7 +770,7 @@ public final class AppState: ObservableObject {
     @discardableResult
     public func newNote(inFolder folder: URL? = nil, name: String? = nil) -> URL? {
         guard let v = vault, let url = try? v.createNote(inFolder: folder, name: name) else { return nil }
-        fileOperations.append(.created(url))
+        record(.created(url))
         reloadTree()
         if let f = files.first(where: { $0.url.standardizedFileURL == url.standardizedFileURL }) { open(f) }
         return url
@@ -571,7 +780,7 @@ public final class AppState: ObservableObject {
     @discardableResult
     public func newFolder(inFolder folder: URL? = nil, name: String? = nil) -> URL? {
         guard let v = vault, let url = try? v.createFolder(inFolder: folder, name: name) else { return nil }
-        fileOperations.append(.created(url))
+        record(.created(url))
         reloadTree()
         return url
     }
@@ -580,22 +789,15 @@ public final class AppState: ObservableObject {
     @discardableResult
     public func rename(_ url: URL, to newName: String) throws -> URL {
         guard let v = vault else { throw VaultError.invalidName }
-        // Resolve which tab/selectedFile corresponds to `url` BEFORE the rename,
-        // while the file still exists and stat(2) can compare inodes reliably.
-        let wasOpen = selectedFile.map { urlSameFile($0.url, url) } ?? false
-        // Capture which pane/tab indices match before the rename (inodes valid now).
-        var paneTabMatches: [(Int, Int)] = []
-        for (pi, pane) in panes.enumerated() {
-            if let ti = pane.tabs.firstIndex(where: { urlSameFile($0.file.url, url) }) {
-                paneTabMatches.append((pi, ti))
-            }
-        }
+        settleSaves()
+        // Resolve which tabs follow `url` BEFORE the rename, while the file still
+        // exists and stat(2) can compare inodes reliably — including every open
+        // note inside a renamed folder.
+        let followers = tabsFollowing(url)
         let newURL = try v.rename(url, to: newName)
         if newURL.standardizedFileURL != url.standardizedFileURL {
-            fileOperations.append(.renamed(from: url, to: newURL))
-            let newFile = MarkdownFile(url: newURL)
-            for (pi, ti) in paneTabMatches { panes[pi].tabs[ti].file = newFile }
-            if wasOpen { selectedFile = newFile }
+            record(.renamed(from: url, to: newURL))
+            retarget(followers, to: newURL)
         }
         reloadTree()
         return newURL
@@ -606,30 +808,39 @@ public final class AppState: ObservableObject {
     @discardableResult
     public func move(_ url: URL, into folder: URL) throws -> URL {
         guard let v = vault else { throw VaultError.invalidName }
-        let wasActiveFile = selectedFile.map { urlSameFile($0.url, url) } ?? false
-        // Capture which pane/tab indices match before the move (inodes valid now).
-        var paneTabMatches: [(Int, Int)] = []
-        for (pi, pane) in panes.enumerated() {
-            if let ti = pane.tabs.firstIndex(where: { urlSameFile($0.file.url, url) }) {
-                paneTabMatches.append((pi, ti))
-            }
-        }
+        settleSaves()
+        let followers = tabsFollowing(url)   // before the move, while inodes are valid
         let newURL = try v.move(url, into: folder)
         if newURL.standardizedFileURL != url.standardizedFileURL {
-            fileOperations.append(.moved(from: url, to: newURL))
-            let newFile = MarkdownFile(url: newURL)
-            for (pi, ti) in paneTabMatches { panes[pi].tabs[ti].file = newFile }
-            if wasActiveFile { selectedFile = newFile }
+            record(.moved(from: url, to: newURL))
+            retarget(followers, to: newURL)
         }
         reloadTree()
         return newURL
     }
 
-    /// Move a note or folder to the Trash. Closes the editor if the open note went away.
+    /// Move a note or folder to the Trash, closing its tabs. Their edits are
+    /// saved first, so the copy in the Trash is the latest one; if a save fails,
+    /// nothing is deleted.
     public func delete(_ url: URL) {
         guard let v = vault else { return }
+        settleSaves()
+        let followers = tabsFollowing(url)
+        for f in followers {
+            guard let tab = f.pane.tabs.first(where: { $0.id == f.tabID }) else { continue }
+            let isLive = f.pane.id == activePaneID && f.tabID == f.pane.activeTabID
+            if isLive ? isDirty : !flush(tab) {
+                if notice == nil {
+                    notice = Notice(title: "Not moved to the Trash",
+                                    message: "\u{201C}\(tab.file.name)\u{201D} has edits that couldn\u{2019}t be saved yet, so Hanji left it where it is.")
+                }
+                return
+            }
+        }
         if let trashed = try? v.delete(url) {
-            fileOperations.append(.trashed(original: url, trashed: trashed))
+            record(.trashed(original: url, trashed: trashed))
+            for f in followers { removeTab(f.tabID, in: f.pane) }
+            for pane in Array(panes) { closePaneIfEmpty(pane) }
         }
         reloadTree()
     }
@@ -638,7 +849,7 @@ public final class AppState: ObservableObject {
     @discardableResult
     public func duplicate(_ url: URL) -> URL? {
         guard let v = vault, let copy = try? v.duplicate(url) else { return nil }
-        fileOperations.append(.copied(copy))
+        record(.copied(copy))
         reloadTree()
         return copy
     }
@@ -650,7 +861,7 @@ public final class AppState: ObservableObject {
         var imported: [URL] = []
         for source in sources {
             if let url = try? v.importNote(from: source, into: folder) {
-                fileOperations.append(.copied(url))
+                record(.copied(url))
                 imported.append(url)
             }
         }
@@ -682,6 +893,12 @@ public final class AppState: ObservableObject {
 
     public func createNote(relativePath: String, text: String, cursorOffset: Int?) {
         guard let url = urlInsideVault(relativePath), let v = vault else { return }
+        // Creating over an existing note (Templater's save panel can confirm
+        // "Replace") sends the old one to the Trash first — ⌥⌘Z brings it back.
+        if FileManager.default.fileExists(atPath: url.path) {
+            guard let trashed = try? v.delete(url) else { return }
+            record(.trashed(original: url, trashed: trashed))
+        }
         // Ensure the parent folder exists, then write atomically via Vault (temp+rename).
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
@@ -696,6 +913,27 @@ public final class AppState: ObservableObject {
         if let f = files.first(where: { $0.url.standardizedFileURL == target }) { open(f); return }
         if let v = vault { files = (try? v.markdownFiles()) ?? files }
         if let f = files.first(where: { $0.url.standardizedFileURL == target }) { open(f) }
+    }
+
+    /// Missing-note banner, "Save again": write the note back where it was.
+    public func restoreMissingNote() {
+        guard missingOnDisk, let file = selectedFile, let vault else { return }
+        try? FileManager.default.createDirectory(at: file.url.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        guard write(activeText, to: file, with: vault) else { return }
+        savedText = activeText
+        missingOnDisk = false
+        conflictPaused = externalConflict != nil
+        reloadTree()
+    }
+
+    /// Missing-note banner, "Close without saving": drop the edits and the tab.
+    public func closeMissingNote() {
+        guard missingOnDisk, let pane = activePane, let id = pane.activeTabID else { return }
+        missingOnDisk = false
+        conflictPaused = false
+        removeTab(id, in: pane)
+        closePaneIfEmpty(pane)
     }
 
     // MARK: - Conflict resolution

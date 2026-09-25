@@ -155,11 +155,11 @@ struct ContentView: View {
         } message: {
             Text(fileErrorMessage ?? "")
         }
-        .alert("Couldn\u{2019}t open note", isPresented: Binding(get: { appState.openError != nil },
-                                                                 set: { if !$0 { appState.openError = nil } })) {
-            Button("OK", role: .cancel) { appState.openError = nil }
+        .alert(appState.notice?.title ?? "", isPresented: Binding(get: { appState.notice != nil },
+                                                                  set: { if !$0 { appState.notice = nil } })) {
+            Button("OK", role: .cancel) { appState.notice = nil }
         } message: {
-            Text(appState.openError ?? "")
+            Text(appState.notice?.message ?? "")
         }
     }
 
@@ -441,6 +441,16 @@ struct ContentView: View {
                         Spacer()
                         Button("Reload from disk") { appState.resolveConflictReloadingDisk() }
                         Button("Keep my edits") { appState.resolveConflictKeepingMine() }
+                    }
+                    .padding(8).background(Color.orange.opacity(0.15))
+                }
+                if isActivePane, appState.missingOnDisk {
+                    HStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        Text("This note was moved or deleted on disk.")
+                        Spacer()
+                        Button("Close without saving") { appState.closeMissingNote() }
+                        Button("Save again") { appState.restoreMissingNote() }
                     }
                     .padding(8).background(Color.orange.opacity(0.15))
                 }

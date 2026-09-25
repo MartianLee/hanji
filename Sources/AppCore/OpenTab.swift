@@ -10,6 +10,9 @@ public struct OpenTab: Identifiable, Equatable {
     public var text: String
     public var savedText: String
     public var externalConflict: String?
+    /// The file vanished while this tab had unsaved edits; saving is paused until
+    /// the user saves it again or closes it (or the file comes back).
+    public var missingOnDisk = false
     public var isDirty: Bool { text != savedText }
     public init(file: MarkdownFile, text: String) {
         self.id = UUID()

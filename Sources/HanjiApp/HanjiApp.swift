@@ -10,8 +10,31 @@ import VaultKit
 import BacklinksPlugin
 import CalendarPlugin
 
+/// Saves every note before ⌘Q — the scene-phase flush alone doesn't wait for an
+/// autosave still in flight, and can't stop the quit when a save fails.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    weak var appState: AppState?
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let appState else { return .terminateNow }
+        let unsaved = appState.saveAllForClose()
+        guard !unsaved.isEmpty else { return .terminateNow }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = unsaved.count == 1
+            ? "\u{201C}\(unsaved[0])\u{201D} has changes that couldn\u{2019}t be saved."
+            : "\(unsaved.count) notes have changes that couldn\u{2019}t be saved."
+        alert.informativeText = "The note changed on disk, or Hanji couldn\u{2019}t write it. If you quit now, those edits are lost."
+        alert.addButton(withTitle: "Cancel")
+        let quit = alert.addButton(withTitle: "Quit Anyway")
+        quit.hasDestructiveAction = true
+        return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
+    }
+}
+
 @main
 struct HanjiApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appState = AppState()
     @StateObject private var pluginManager = PluginManager()
     @StateObject private var uiState = UIState()
@@ -33,6 +56,7 @@ struct HanjiApp: App {
                     if phase != .active { appState.flushPendingSave() }
                 }
                 .onAppear {
+                    appDelegate.appState = appState
                     NSApp.setActivationPolicy(.regular)
                     NSApp.activate(ignoringOtherApps: true)
                     guard !activated else { return }

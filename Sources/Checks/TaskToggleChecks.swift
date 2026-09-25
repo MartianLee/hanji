@@ -13,4 +13,12 @@ func taskToggleChecks() {
 
     let second = TaskToggle.toggle(in: "x\n- [ ] a", at: 5)   // offset 5 -> '[' of line 2
     expectEqual(second?.offset, 5, "line-2 checkbox offset")
+
+    // Nested tasks render a checkbox too (after the indent), so they must toggle.
+    let nested = TaskToggle.toggle(in: "- [ ] parent\n    - [ ] child", at: 19)   // '[' of the child
+    expectEqual(nested?.offset, 20, "an indented task toggles its own state char")
+    expectEqual(nested?.replacement, "x", "indented open -> x")
+    let tabbed = TaskToggle.toggle(in: "\t- [x] child", at: 3)
+    expectEqual(tabbed?.offset, 4, "a tab-indented task toggles")
+    expect(TaskToggle.toggle(in: "    - [ ] child", at: 1) == nil, "a click in the indent is not a toggle")
 }
