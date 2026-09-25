@@ -6,6 +6,7 @@ public enum Tags {
     /// (so ATX headings like `# Title` are not tags). Deduplicated, in order.
     public static func extract(from text: String) -> [String] {
         var tags: [String] = []
+        var seen: Set<String> = []   // `tags.contains` per tag was quadratic in distinct tags
         let chars = Array(text)
         func isBoundary(_ i: Int) -> Bool { i <= 0 || chars[i - 1] == " " || chars[i - 1] == "\n" || chars[i - 1] == "\t" }
         func isTagChar(_ c: Character) -> Bool { c.isLetter || c.isNumber || c == "_" || c == "-" || c == "/" }
@@ -15,7 +16,7 @@ public enum Tags {
                 var j = i + 1
                 var tag = ""
                 while j < chars.count, isTagChar(chars[j]) { tag.append(chars[j]); j += 1 }
-                if !tags.contains(tag) { tags.append(tag) }
+                if seen.insert(tag).inserted { tags.append(tag) }
                 i = j
             } else {
                 i += 1

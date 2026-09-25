@@ -106,13 +106,14 @@ public enum InlineTokenizer {
     private static func scanInline(_ ns: NSString, from: Int, lineStart: Int, lineRange: Range<Int>,
                                    into result: inout [MarkSpan]) {
         let n = ns.length
+        var ahead = LinkScans(ns)
         var i = from
         while i < n {
             let c = ns.character(at: i)
             if c == backtick, let (span, next) = codeSpan(ns, from: i, lineStart: lineStart, lineRange: lineRange) {
                 result.append(span); i = next; continue
             }
-            if c == openBracket, let (span, next) = bracketSpan(ns, from: i, lineStart: lineStart, lineRange: lineRange) {
+            if c == openBracket, let (span, next) = bracketSpan(ns, from: i, ahead: &ahead, lineStart: lineStart, lineRange: lineRange) {
                 result.append(span); i = next; continue
             }
             if c == star {
@@ -234,23 +235,38 @@ public enum InlineTokenizer {
         return nil
     }
 
-    private static func bracketSpan(_ ns: NSString, from start: Int, lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {
-        if start + 1 < ns.length && ns.character(at: start + 1) == openBracket {
-            return wikilinkSpan(ns, from: start, lineStart: lineStart, lineRange: lineRange)
+    /// Where the next `]]`, `|`, `]` and `)` are. Every `[` on the line asks,
+    /// and an unclosed one used to rescan to the end of the line each time —
+    /// 20k `[[` took seconds, and this runs on every keystroke.
+    private struct LinkScans {
+        var wikiClose, pipe, close, paren: ForwardScan
+        init(_ ns: NSString) {
+            wikiClose = ForwardScan(ns) { ns, j in
+                j + 1 < ns.length && ns.character(at: j) == closeBracket && ns.character(at: j + 1) == closeBracket
+            }
+            pipe = ForwardScan(ns) { ns, j in ns.character(at: j) == pipeChar }
+            close = ForwardScan(ns) { ns, j in ns.character(at: j) == closeBracket }
+            paren = ForwardScan(ns) { ns, j in ns.character(at: j) == closeParen }
         }
-        return markdownLinkSpan(ns, from: start, lineStart: lineStart, lineRange: lineRange)
     }
 
-    private static func wikilinkSpan(_ ns: NSString, from start: Int, lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {
+    private static func bracketSpan(_ ns: NSString, from start: Int, ahead: inout LinkScans,
+                                    lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {
+        if start + 1 < ns.length && ns.character(at: start + 1) == openBracket {
+            return wikilinkSpan(ns, from: start, ahead: &ahead, lineStart: lineStart, lineRange: lineRange)
+        }
+        return markdownLinkSpan(ns, from: start, ahead: &ahead, lineStart: lineStart, lineRange: lineRange)
+    }
+
+    private static func wikilinkSpan(_ ns: NSString, from start: Int, ahead: inout LinkScans,
+                                     lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {
         let n = ns.length
         let innerStart = start + 2
-        var j = innerStart
-        while j + 1 < n && !(ns.character(at: j) == closeBracket && ns.character(at: j + 1) == closeBracket) { j += 1 }
-        guard j + 1 < n, ns.character(at: j) == closeBracket, ns.character(at: j + 1) == closeBracket, j > innerStart else { return nil }
+        let j = ahead.wikiClose.next(from: innerStart)
+        guard j + 1 < n, j > innerStart else { return nil }
         let closeStart = j
-        var pipe = -1
-        var k = innerStart
-        while k < closeStart { if ns.character(at: k) == pipeChar { pipe = k; break }; k += 1 }
+        let bar = ahead.pipe.next(from: innerStart)
+        let pipe = bar < closeStart ? bar : -1
         let openMarker = (lineStart + start)..<(lineStart + start + 2)
         let closeMarker = (lineStart + closeStart)..<(lineStart + closeStart + 2)
         if pipe >= 0 {
@@ -263,14 +279,13 @@ public enum InlineTokenizer {
         return (MarkSpan(style: .link, content: content, markers: [openMarker, closeMarker], line: lineRange), closeStart + 2)
     }
 
-    private static func markdownLinkSpan(_ ns: NSString, from start: Int, lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {
+    private static func markdownLinkSpan(_ ns: NSString, from start: Int, ahead: inout LinkScans,
+                                         lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {
         let n = ns.length
-        var j = start + 1
-        while j < n && ns.character(at: j) != closeBracket { j += 1 }
+        let j = ahead.close.next(from: start + 1)
         guard j < n, j > start + 1 else { return nil }
         guard j + 1 < n, ns.character(at: j + 1) == openParen else { return nil }
-        var k = j + 2
-        while k < n && ns.character(at: k) != closeParen { k += 1 }
+        let k = ahead.paren.next(from: j + 2)
         guard k < n else { return nil }
         let openMarker = (lineStart + start)..<(lineStart + start + 1)
         let tailMarker = (lineStart + j)..<(lineStart + k + 1)   // ](url)

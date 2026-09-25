@@ -42,13 +42,20 @@ public enum DataviewQuery {
     // field literally named `from`/`where`/`sort` is read as the clause keyword
     // and the query fails to parse (renderer shows an error widget) — acceptable
     // for the subset; revisit with a real tokenizer if it bites.
+    // No trailing `\s*` before `$`: `parse` strips that whitespace first. Next to
+    // the lazy groups, ICU rescanned the whole run for every character the groups
+    // grew by — `TABLE`, 16k spaces and a column name took seconds.
     private static let shape = try! NSRegularExpression(
-        pattern: #"^\s*(LIST|TABLE)\b(.*?)(?:\bFROM\b(.*?))?(?:\bWHERE\b(.*?))?(?:\bSORT\b(.*?))?\s*$"#,
+        pattern: #"^\s*(LIST|TABLE)\b(.*?)(?:\bFROM\b(.*?))?(?:\bWHERE\b(.*?))?(?:\bSORT\b(.*?))?$"#,
         options: [.caseInsensitive, .dotMatchesLineSeparators])
 
     /// nil = syntax error (renderer shows an error widget).
     public static func parse(_ source: String) -> Parsed? {
-        let flat = source.replacingOccurrences(of: "\n", with: " ")
+        // `\p{White_Space}` is exactly ICU's `\s` (Foundation's
+        // `.whitespacesAndNewlines` also holds U+200B, which `\s` does not).
+        var scalars = Substring(source.replacingOccurrences(of: "\n", with: " ")).unicodeScalars
+        while let last = scalars.last, last.properties.isWhitespace { scalars.removeLast() }
+        let flat = String(scalars)
         let ns = flat as NSString
         guard let m = shape.firstMatch(in: flat, range: NSRange(location: 0, length: ns.length)) else { return nil }
         func group(_ i: Int) -> String? {

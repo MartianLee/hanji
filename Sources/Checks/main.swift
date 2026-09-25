@@ -89,5 +89,6 @@ runChecks([
     ("CalendarGrid", calendarGridChecks),
     ("CalendarPlugin", calendarPluginChecks),
     ("MermaidPage", mermaidPageChecks),
+    ("ParserPerf", parserPerfChecks),
     ("E2E", e2eChecks),
 ])
