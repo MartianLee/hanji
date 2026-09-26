@@ -52,12 +52,15 @@ to set everything up again.
 - Settings: editor font size, recent vaults, and **live plugin toggles**.
 
 **Plugins / SDK (compile-time, Swift)**
-- First-party: **Periodic Notes**, **Templater**, **Backlinks**, **Calendar**,
-  Word Count — all built on the same `ExtensionSDK` third parties would use.
+- First-party: **Periodic Notes** (daily → yearly, previous/next, settings
+  tab), **Templater**, **Backlinks**, **Calendar**, Word Count — all built on
+  the same `ExtensionSDK` third parties would use, and each can be switched off
+  completely in Settings ▸ Plugins.
 - **Dataview-lite**: `LIST` / `TABLE` with `FROM #tag` / `"folder"`, `WHERE`,
   `SORT`, frontmatter fields, and `file.name` / `file.mtime` built-ins.
 - SDK surfaces: ① code-block renderers, ② metadata queries (backlinks / index
-  updates), ③ commands + sidebar, and workspace note actions.
+  updates), ③ commands + sidebar + settings tabs, ④ services one plugin offers
+  another, and workspace note actions.
 
 **Vault compatibility** — opens existing markdown vaults; reads the
 `periodic-notes` config (folder, date format, template); renders `<% tp.* %>`
@@ -80,11 +83,18 @@ because GRDB 7 declares `swift-tools-version:6.1`.
 
 ### Installing the app
 
-There is no signed/notarized release yet, so the supported path is **building
-from source** (above). A `.app` you build locally runs fine; a `.app` copied to
-another Mac would be blocked by Gatekeeper until the project ships notarized
-builds (planned). The only external dependency is
-[GRDB](https://github.com/groue/GRDB.swift) for the search index.
+Download `Hanji-<version>.zip` from [Releases](https://github.com/MartianLee/hanji/releases),
+unzip it and move **Hanji.app** to Applications. Builds aren't notarized yet,
+so macOS blocks the first launch: either run
+`xattr -dr com.apple.quarantine /Applications/Hanji.app`, or try to open it
+once and choose **Open Anyway** in System Settings ▸ Privacy & Security.
+Building from source (above) avoids this.
+
+To cut a release, push a `v*` tag: the Release workflow runs
+`Scripts/release.sh` and opens a draft GitHub release (signed and notarized
+when the Developer ID secrets are set). The only external dependency is
+[GRDB](https://github.com/groue/GRDB.swift) for the search index; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Architecture
 
@@ -103,7 +113,7 @@ no XCTest). See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the design records in
 
 ## Status & known gaps
 
-Pre-1.0 and under active development. Working toward an open-source v0.1.
+v0.1 — early, and under active development.
 
 - **Not built yet**: export / print, a separate reading (rendered-only) mode,
   and an outline / table-of-contents panel.

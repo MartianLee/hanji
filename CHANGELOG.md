@@ -6,7 +6,9 @@ based on [Keep a Changelog](https://keepachangelog.com/); this project will use
 
 ## [Unreleased]
 
-First public-ready feature set:
+## [0.1.0] - 2026-09-26
+
+First public release.
 
 ### Editor
 - Live Preview with caret-aware marker hiding: headings, bold, italic, inline
@@ -23,6 +25,15 @@ First public-ready feature set:
 - Save on ⌘S, in addition to autosave.
 - Autosave (debounced, off-main) with external-edit conflict detection and a
   non-modal reload/keep banner.
+- Edits aren't lost quietly:
+  - a failed save is reported and the note stays unsaved;
+  - ⌘Q and switching vaults first save everything, and ask before dropping
+    anything they couldn't save;
+  - a note deleted or moved outside Hanji while it had unsaved edits stays
+    open with "Save again / Close without saving";
+  - tabs follow renamed and moved folders.
+- Notes that aren't UTF-8 are left closed rather than opened blank.
+- Nested task checkboxes toggle; checkbox toggles undo with ⌘Z.
 
 ### Workspace
 - Full file tree (sort, multi-select, drag-and-drop, rename, trash, undo, import).
@@ -37,9 +48,25 @@ First public-ready feature set:
 - Compile-time plugin SDK (`ExtensionSDK`): code-block renderers, commands +
   sidebar, workspace actions, and the `MetadataQuerying` (backlinks/index) surface.
 - First-party plugins: Periodic Notes, Templater, Backlinks, Calendar, Word Count.
+- Periodic Notes: daily, weekly, monthly, quarterly and yearly notes;
+  previous/next periodic note; a Settings tab that edits the vault's
+  periodic-notes config. Switching the plugin off also removes the daily notes
+  Calendar opens.
+- SDK surfaces for plugin settings tabs, services one plugin offers another,
+  and commands that appear only when they apply.
 - Dataview-lite: `LIST`/`TABLE` with `FROM #tag`/`"folder"`, `WHERE`, `SORT`,
   frontmatter fields and `file.name` / `file.mtime` built-ins.
 
 ### Compatibility
 - Opens existing markdown vaults; reads `periodic-notes` config; renders
   `<% tp.* %>` Templater syntax (core date/file functions).
+
+### Security
+- Mermaid diagrams render from a pinned, integrity-checked mermaid.js in a web
+  view that allows no fetch/XHR, no remote images, and no navigation.
+- Paths that come from vault content (periodic-notes and template settings)
+  can't reach outside the vault; a rename can't move a note out of its folder.
+- Parsers stay linear on crafted input: a note can't freeze the editor.
+
+[Unreleased]: https://github.com/MartianLee/hanji/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/MartianLee/hanji/releases/tag/v0.1.0
