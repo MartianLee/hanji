@@ -678,7 +678,7 @@ public final class AppState: ObservableObject {
         let fm = FileManager.default
         switch op {
         case .created(let url), .copied(let url):
-            try? v.delete(url)                              // to Trash, still recoverable
+            _ = try? v.delete(url)                          // to Trash, still recoverable
         case .renamed(let from, let to), .moved(let from, let to):
             let followers = tabsFollowing(to)
             if (try? fm.moveItem(at: to, to: from)) != nil { retarget(followers, to: from) }

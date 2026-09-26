@@ -281,10 +281,6 @@ public struct MarkdownEditorView: NSViewRepresentable {
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
         textView.string = text
-        if let caretEnv = ProcessInfo.processInfo.environment["HANJI_CARET"], let caret = Int(caretEnv) {
-            let len = (text as NSString).length
-            textView.setSelectedRange(NSRange(location: min(max(0, caret), len), length: 0))
-        }
 
         let scroll = NSScrollView()
         scroll.documentView = textView
