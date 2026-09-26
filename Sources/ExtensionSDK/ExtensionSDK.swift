@@ -124,6 +124,10 @@ public protocol WorkspaceActions: AnyObject {
     func readNote(relativePath: String) -> String?
     func createNote(relativePath: String, text: String, cursorOffset: Int?)
     func openNote(relativePath: String)
+    /// Vault-relative paths of every note / every folder, hidden ones (like
+    /// `.obsidian`) excluded, sorted — for pickers and completion.
+    func notePaths() -> [String]
+    func folderPaths() -> [String]
     func pickNote(title: String, startingFolder: String?) -> String?
     func promptNewNotePath(suggestedName: String) -> String?
 }

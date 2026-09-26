@@ -29,7 +29,12 @@ public struct PeriodicNotesPlugin: Plugin {
                                        isAvailable: { notes.activeKind != nil }) { notes.go(1) })
         host.services.provideDailyNotes(notes)
         host.ui.addSettingsView(id: "periodic-notes", title: "Periodic Notes") { [weak ws = host.workspace] in
-            AnyView(PeriodicSettingsView(vaultRoot: ws?.vaultRoot))
+            AnyView(PeriodicSettingsView(
+                vaultRoot: ws?.vaultRoot,
+                folders: { [weak ws] in ws?.folderPaths() ?? [] },
+                templates: { [weak ws] in
+                    (ws?.notePaths() ?? []).map { $0.lowercased().hasSuffix(".md") ? String($0.dropLast(3)) : $0 }
+                }))
         }
     }
 
@@ -102,6 +107,9 @@ final class PeriodicNotes: DailyNotesService {
 /// template, written back to the vault's periodic-notes `data.json`.
 struct PeriodicSettingsView: View {
     let vaultRoot: URL?
+    /// Completion sources for the Folder and Template fields.
+    let folders: () -> [String]
+    let templates: () -> [String]
     @State private var drafts: [PeriodicKind: Draft] = [:]
     @State private var status: String?
 
@@ -142,14 +150,18 @@ struct PeriodicSettingsView: View {
         GroupBox {
             VStack(alignment: .leading, spacing: 6) {
                 Toggle("Enabled", isOn: draft.enabled)
-                LabeledContent("Folder") { TextField("vault root", text: draft.folder) }
+                LabeledContent("Folder") {
+                    CompletionField(placeholder: "vault root", text: draft.folder, candidates: folders)
+                }
                 LabeledContent("Format") {
                     VStack(alignment: .leading, spacing: 2) {
                         TextField(PeriodicConfig.defaults(kind).format, text: draft.format)
                         Text(preview(kind)).font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                LabeledContent("Template") { TextField("none", text: draft.template) }
+                LabeledContent("Template") {
+                    CompletionField(placeholder: "none", text: draft.template, candidates: templates)
+                }
             }
             .disabled(!draft.wrappedValue.enabled)
         } label: {

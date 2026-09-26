@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 import Combine
 import ExtensionSDK
 import MKSearchKit
+import VaultKit
 
 /// Concrete host wiring AppState + PluginManager to the SDK surfaces.
 public final class Host: PluginHost, UIRegistry, EditorContext, CommandRegistry, WorkspaceActions, MetadataQuerying, ServiceRegistry {
@@ -69,6 +70,19 @@ public final class Host: PluginHost, UIRegistry, EditorContext, CommandRegistry,
         appState.createNote(relativePath: relativePath, text: text, cursorOffset: cursorOffset)
     }
     public func openNote(relativePath: String) { appState.openNote(relativePath: relativePath) }
+
+    public func notePaths() -> [String] {
+        guard let root = appState.vaultRoot else { return [] }
+        return appState.files.compactMap { Self.relativePath(of: $0.url, under: root) }.sorted()
+    }
+
+    public func folderPaths() -> [String] {
+        guard let root = appState.vaultRoot else { return [] }
+        func folders(_ nodes: [FileNode]) -> [URL] {
+            nodes.filter(\.isDirectory).flatMap { [$0.url] + folders($0.children ?? []) }
+        }
+        return folders(appState.tree).compactMap { Self.relativePath(of: $0, under: root) }.sorted()
+    }
 
     public func pickNote(title: String, startingFolder: String?) -> String? {
         guard let root = appState.vaultRoot else { return nil }

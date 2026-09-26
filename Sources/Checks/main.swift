@@ -68,6 +68,7 @@ runChecks([
     ("CommandRegistry2", commandRegistryChecks),
     ("PeriodicNotesPlugin", periodicNotesPluginChecks),
     ("PeriodicPluginModule", periodicPluginModuleChecks),
+    ("PathCompletion", pathCompletionChecks),
     ("VaultTree", vaultTreeChecks),
     ("VaultOps", vaultOpsChecks),
     ("RenameName", renameNameChecks),

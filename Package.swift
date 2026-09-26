@@ -26,7 +26,7 @@ let package = Package(
         .target(name: "CoreRenderers", dependencies: ["ExtensionSDK", "VaultKit", "MarkdownCore"]),
         .target(name: "EditorEngine", dependencies: ["MarkdownCore", "ExtensionSDK"]),
         .target(name: "TemplateKit"),
-        .target(name: "PeriodicNotesPlugin", dependencies: ["ExtensionSDK", "TemplateKit"]),
+        .target(name: "PeriodicNotesPlugin", dependencies: ["ExtensionSDK", "TemplateKit", "MarkdownCore"]),
         .target(name: "TemplaterPlugin", dependencies: ["ExtensionSDK", "TemplateKit"]),
         .target(name: "BacklinksPlugin", dependencies: ["ExtensionSDK"]),
         .target(name: "CalendarPlugin", dependencies: ["ExtensionSDK"]),

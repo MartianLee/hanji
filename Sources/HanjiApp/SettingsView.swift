@@ -1,9 +1,11 @@
 import SwiftUI
+import AppKit
 import AppCore
 
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var pluginManager: PluginManager
+    @State private var escape = SettingsEscape.Target()
 
     var body: some View {
         TabView {
@@ -20,6 +22,12 @@ struct SettingsView: View {
             }
         }
         .frame(width: 480, height: 380)
+        // Esc closes Settings. With a text field focused, the field sees Esc first
+        // (a completion list closes on the first press) and this runs only if it
+        // passes; with nothing focused, SwiftUI never reports Esc, so a window-
+        // scoped key monitor does it.
+        .onExitCommand { SettingsEscape.close(escape.window) }
+        .background(SettingsEscape(target: escape))
     }
 
     /// Obsidian-style appearance settings.
@@ -109,5 +117,50 @@ struct SettingsView: View {
             Spacer(minLength: 0)
         }
         .padding(20)
+    }
+}
+
+/// Closes the Settings window on Esc (see SettingsView). Never mid-composition:
+/// with an input method (e.g. Korean) Esc belongs to the text being composed.
+struct SettingsEscape: NSViewRepresentable {
+    /// The window this view sits in, for `onExitCommand` (which gets no window of its own).
+    final class Target { weak var window: NSWindow? }
+    let target: Target
+
+    static func close(_ window: NSWindow?) {
+        guard let window else { return }
+        if let editor = window.firstResponder as? NSTextView, editor.hasMarkedText() { return }
+        window.performClose(nil)
+    }
+
+    func makeNSView(context: Context) -> NSView { MonitorView(target: target) }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    final class MonitorView: NSView {
+        private let target: Target
+        private var monitor: Any?
+
+        init(target: Target) {
+            self.target = target
+            super.init(frame: .zero)
+        }
+        required init?(coder: NSCoder) { fatalError("not used from a nib") }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            target.window = window
+            if let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil }
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                // Only this window, only Esc, and only when no text field is
+                // focused — a focused field goes through onExitCommand instead.
+                guard event.keyCode == 53, let window = self?.window, event.window === window,
+                      !(window.firstResponder is NSTextView) else { return event }
+                SettingsEscape.close(window)
+                return nil
+            }
+        }
+
+        deinit { if let monitor { NSEvent.removeMonitor(monitor) } }
     }
 }
