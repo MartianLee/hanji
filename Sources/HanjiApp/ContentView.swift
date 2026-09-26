@@ -126,6 +126,9 @@ struct ContentView: View {
             }
         }
         .navigationTitle(appState.vaultRoot?.lastPathComponent ?? "Hanji")
+        // Wide enough that the toolbar keeps New note (and New folder) instead
+        // of folding them into the » overflow at the default ~207pt.
+        .navigationSplitViewColumnWidth(min: 230, ideal: 250, max: 400)
         .toolbar {
             ToolbarItemGroup {
                 Button(action: { newNote(in: targetFolder) }) { Image(systemName: "square.and.pencil") }
