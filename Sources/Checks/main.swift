@@ -65,6 +65,8 @@ runChecks([
     ("EditorBinding", editorBindingChecks),
     ("EditorSnapshotClick", editorSnapshotClickChecks),
     ("EditorCheckboxEdit", editorCheckboxEditChecks),
+    ("EditorScroll", editorScrollChecks),
+    ("StyleCommit", styleCommitChecks),
     ("CommandRegistry2", commandRegistryChecks),
     ("PeriodicNotesPlugin", periodicNotesPluginChecks),
     ("PeriodicPluginModule", periodicPluginModuleChecks),

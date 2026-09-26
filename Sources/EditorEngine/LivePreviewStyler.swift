@@ -26,6 +26,31 @@ public enum LivePreviewStyler {
         return p
     }
 
+    /// Copy `styled`'s attributes into `storage`, touching only the runs that
+    /// differ. TextKit 2 discards the layout of every range whose attributes are
+    /// set — even to the values they already had — and falls back to estimated
+    /// line heights there. Restyling the whole document on each keystroke did
+    /// exactly that, so AppKit scrolled to the caret's *estimated* position and the
+    /// real layout then landed it thousands of points off screen. Style into a
+    /// copy, then commit the difference.
+    public static func commit(_ styled: NSAttributedString, to storage: NSTextStorage) {
+        let full = NSRange(location: 0, length: storage.length)
+        guard styled.length == storage.length else {
+            storage.setAttributedString(styled); return
+        }
+        var changes: [(range: NSRange, attrs: [NSAttributedString.Key: Any])] = []
+        styled.enumerateAttributes(in: full, options: []) { attrs, range, _ in
+            var same = NSRange()
+            let current = storage.attributes(at: range.location, longestEffectiveRange: &same, in: range)
+            if same == range && NSDictionary(dictionary: current).isEqual(to: attrs) { return }
+            changes.append((range, attrs))
+        }
+        guard !changes.isEmpty else { return }
+        storage.beginEditing()
+        for change in changes { storage.setAttributes(change.attrs, range: change.range) }
+        storage.endEditing()
+    }
+
     public static func apply(_ deco: DecorationSet, to storage: NSTextStorage) {
         let full = NSRange(location: 0, length: storage.length)
         storage.beginEditing()

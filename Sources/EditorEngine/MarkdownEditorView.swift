@@ -425,10 +425,15 @@ public struct MarkdownEditorView: NSViewRepresentable {
             let sel = textView.selectedRange()
             let selection = sel.location..<(sel.location + sel.length)
             let deco = Decorator.decorations(spans: spans, selection: selection)
-            LivePreviewStyler.apply(deco, to: storage)
-            LivePreviewStyler.highlightCode(regions, in: storage)
-            applyMarkers(spans: spans, sel: sel, storage: storage)
-            reapplyReservations(in: storage, caret: selection)
+            // Style a copy and commit only what changed (see LivePreviewStyler.commit):
+            // rewriting unchanged ranges throws away their layout, and the viewport
+            // jumps as TextKit 2 falls back to estimated heights.
+            let styled = NSTextStorage(attributedString: storage)
+            LivePreviewStyler.apply(deco, to: styled)
+            LivePreviewStyler.highlightCode(regions, in: styled)
+            applyMarkers(spans: spans, sel: sel, storage: styled)
+            reapplyReservations(in: styled, caret: selection)
+            LivePreviewStyler.commit(styled, to: storage)
         }
 
         /// Heights the widget pass is holding open, so a restyle can put them back.
