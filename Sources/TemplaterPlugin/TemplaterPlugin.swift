@@ -4,6 +4,7 @@ import TemplateKit
 
 public struct TemplaterPlugin: Plugin {
     public static let id = "io.hanji.templater"
+    public static let displayName = "Templates"
     public init() {}
 
     public func activate(host: PluginHost) {

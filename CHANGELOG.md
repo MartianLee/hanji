@@ -47,19 +47,19 @@ First public release.
 ### Plugins / SDK
 - Compile-time plugin SDK (`ExtensionSDK`): code-block renderers, commands +
   sidebar, workspace actions, and the `MetadataQuerying` (backlinks/index) surface.
-- First-party plugins: Periodic Notes, Templater, Backlinks, Calendar, Word Count.
-- Periodic Notes: daily, weekly, monthly, quarterly and yearly notes;
+- First-party plugins: Journal, Templates, Backlinks, Calendar, Word Count.
+- Journal: daily, weekly, monthly, quarterly and yearly notes;
   previous/next periodic note; a Settings tab that edits the vault's
   periodic-notes config. Switching the plugin off also removes the daily notes
   Calendar opens.
 - SDK surfaces for plugin settings tabs, services one plugin offers another,
   and commands that appear only when they apply.
-- Dataview-lite: `LIST`/`TABLE` with `FROM #tag`/`"folder"`, `WHERE`, `SORT`,
+- Queries (`dataview` code blocks): `LIST`/`TABLE` with `FROM #tag`/`"folder"`, `WHERE`, `SORT`,
   frontmatter fields and `file.name` / `file.mtime` built-ins.
 
 ### Compatibility
 - Opens existing markdown vaults; reads `periodic-notes` config; renders
-  `<% tp.* %>` Templater syntax (core date/file functions).
+  the common `<% tp.* %>` template syntax (core date/file functions).
 
 ### Security
 - Mermaid diagrams render from a pinned, integrity-checked mermaid.js in a web

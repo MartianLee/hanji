@@ -3,6 +3,7 @@ import ExtensionSDK
 import AppCore
 import PeriodicNotesPlugin
 import CalendarPlugin
+import TemplaterPlugin
 import MKSearchKit
 
 /// Periodic Notes as a module: its commands, its settings pane and the daily-note
@@ -60,7 +61,11 @@ func periodicPluginModuleChecks() {
     expectEqual(appState.selectedFile?.name, "2026-06-01.md", "previous jumps back past missing days")
 
     // A settings pane and the daily-note service while enabled…
-    expect(pm.settingsPanes.contains { $0.id == "periodic-notes" }, "Periodic Notes contributes a settings pane")
+    expect(pm.settingsPanes.contains { $0.id == "periodic-notes" }, "the plugin contributes a settings pane")
+    // Own names in the UI, not the Obsidian community plugins' names.
+    expectEqual(PeriodicNotesPlugin.displayName, "Journal", "shown as Journal in Settings ▸ Plugins")
+    expectEqual(pm.settingsPanes.first { $0.id == "periodic-notes" }?.title, "Journal", "and as the Settings tab title")
+    expectEqual(TemplaterPlugin.displayName, "Templates", "Templater's plugin is shown as Templates")
     _ = pm.settingsPanes.first?.makeView()
     guard let daily = host.services.dailyNotes else { expect(false, "daily-note service provided"); return }
     var cal = Calendar(identifier: .gregorian); cal.timeZone = .current

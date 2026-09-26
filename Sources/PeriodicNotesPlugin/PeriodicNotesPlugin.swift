@@ -10,7 +10,7 @@ import TemplateKit
 /// removes all of it.
 public struct PeriodicNotesPlugin: Plugin {
     public static let id = "io.hanji.periodicnotes"
-    public static let displayName = "Periodic Notes"
+    public static let displayName = "Journal"
     public init() {}
 
     public func activate(host: PluginHost) {
@@ -28,7 +28,7 @@ public struct PeriodicNotesPlugin: Plugin {
         host.commands.register(Command(id: "periodic.next", title: "Go to next periodic note",
                                        isAvailable: { notes.activeKind != nil }) { notes.go(1) })
         host.services.provideDailyNotes(notes)
-        host.ui.addSettingsView(id: "periodic-notes", title: "Periodic Notes") { [weak ws = host.workspace] in
+        host.ui.addSettingsView(id: "periodic-notes", title: "Journal") { [weak ws = host.workspace] in
             AnyView(PeriodicSettingsView(
                 vaultRoot: ws?.vaultRoot,
                 folders: { [weak ws] in ws?.folderPaths() ?? [] },
@@ -103,7 +103,7 @@ final class PeriodicNotes: DailyNotesService {
     func openDailyNote(on date: Date) { open(.daily, date: date) }
 }
 
-/// Settings ▸ Periodic Notes: each period's switch, folder, file-name format and
+/// Settings ▸ Journal: each period's switch, folder, file-name format and
 /// template, written back to the vault's periodic-notes `data.json`.
 struct PeriodicSettingsView: View {
     let vaultRoot: URL?

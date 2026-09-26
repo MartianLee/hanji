@@ -52,19 +52,23 @@ to set everything up again.
 - Settings: editor font size, recent vaults, and **live plugin toggles**.
 
 **Plugins / SDK (compile-time, Swift)**
-- First-party: **Periodic Notes** (daily → yearly, previous/next, settings
-  tab), **Templater**, **Backlinks**, **Calendar**, Word Count — all built on
+- First-party: **Journal** (daily → yearly notes, previous/next, settings
+  tab), **Templates**, **Backlinks**, **Calendar**, Word Count — all built on
   the same `ExtensionSDK` third parties would use, and each can be switched off
   completely in Settings ▸ Plugins.
-- **Dataview-lite**: `LIST` / `TABLE` with `FROM #tag` / `"folder"`, `WHERE`,
-  `SORT`, frontmatter fields, and `file.name` / `file.mtime` built-ins.
+- **Queries** in `dataview` code blocks: `LIST` / `TABLE` with `FROM #tag` /
+  `"folder"`, `WHERE`, `SORT`, frontmatter fields, and `file.name` /
+  `file.mtime` built-ins.
 - SDK surfaces: ① code-block renderers, ② metadata queries (backlinks / index
   updates), ③ commands + sidebar + settings tabs, ④ services one plugin offers
   another, and workspace note actions.
 
-**Vault compatibility** — opens existing markdown vaults; reads the
-`periodic-notes` config (folder, date format, template); renders `<% tp.* %>`
-Templater syntax (core date/file functions).
+**Vault compatibility** — opens existing markdown vaults; Journal reads and
+writes the vault's `periodic-notes` config (folder, date format, template);
+Templates renders the common `<% tp.* %>` template syntax (core date/file
+functions); Queries runs a subset of the `dataview` query language. Hanji is an
+independent project, not affiliated with Obsidian or with the authors of the
+community plugins whose formats it reads.
 
 ![Tasks, bullets, and the editable inline title](docs/images/tasks.png)
 
@@ -126,7 +130,7 @@ v0.1 — early, and under active development.
   logic/tests but were hard to exercise with synthetic input during development
   — please report anything off.
 - Performance/correctness debt being tracked: async search for very large
-  vaults; a `field(path)` / `tag(path)` index for big Dataview sets; a one-time
+  vaults; a `field(path)` / `tag(path)` index for big query result sets; a one-time
   full-vault read on vault open for iCloud vaults; `Tags.extract` should skip
   fenced code blocks. Contributions welcome — see CONTRIBUTING.
 

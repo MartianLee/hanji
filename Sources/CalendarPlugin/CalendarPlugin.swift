@@ -4,7 +4,7 @@ import ExtensionSDK
 
 /// First-party calendar panel: month grid with dots on days that have a daily
 /// note; clicking a day opens-or-creates it. Daily notes come from whichever
-/// plugin provides the daily-note service (Periodic Notes); without one, the
+/// plugin provides the daily-note service (Journal); without one, the
 /// calendar is just a calendar.
 public struct CalendarPlugin: Plugin {
     public static let id = "io.hanji.calendar"
@@ -44,7 +44,7 @@ struct CalendarView: View {
                 }
             }
             if !hasDailyNotes {
-                Text("Turn on Periodic Notes to open daily notes from here.")
+                Text("Turn on Journal to open daily notes from here.")
                     .font(.caption2).foregroundStyle(.secondary)
             }
         }

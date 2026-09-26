@@ -35,6 +35,6 @@ let package = Package(
             "VaultKit", "MarkdownCore", "TemplateKit", "PeriodicNotesPlugin", "TemplaterPlugin",
             "MKSearchKit", "BacklinksPlugin", "CalendarPlugin"
         ]),
-        .executableTarget(name: "Checks", dependencies: ["MarkdownCore", "VaultKit", "AppCore", "ExtensionSDK", "WordCountPlugin", "EditorEngine", "TemplateKit", "PeriodicNotesPlugin", "MKSearchKit", "BacklinksPlugin", "CalendarPlugin", "CoreRenderers"]),
+        .executableTarget(name: "Checks", dependencies: ["MarkdownCore", "VaultKit", "AppCore", "ExtensionSDK", "WordCountPlugin", "EditorEngine", "TemplateKit", "PeriodicNotesPlugin", "MKSearchKit", "BacklinksPlugin", "CalendarPlugin", "CoreRenderers", "TemplaterPlugin"]),
     ]
 )

@@ -79,7 +79,7 @@ struct DataviewErrorView: View {
     let source: String
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Dataview: 구문을 이해하지 못했어요").font(.caption).foregroundStyle(.red)
+            Text("쿼리: 구문을 이해하지 못했어요").font(.caption).foregroundStyle(.red)
             Text(source.trimmingCharacters(in: .whitespacesAndNewlines))
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(.secondary)
