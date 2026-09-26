@@ -13,10 +13,15 @@ public final class PluginManager: ObservableObject {
     @Published public private(set) var commands: [Command] = []
     @Published public private(set) var statusItems: [StatusItem] = []
     @Published public private(set) var plugins: [RegisteredPlugin] = []
+    @Published public private(set) var settingsPanes: [SettingsPane] = []
+    @Published public private(set) var dailyNotes: DailyNotesService?
 
     /// Which contributions each plugin registered, so a toggle-off removes
     /// exactly those. Tagged automatically while `activate(host:)` runs.
-    private struct Ownership { var sidebarIDs: [String] = []; var commandIDs: [String] = []; var statusIDs: [String] = [] }
+    private struct Ownership {
+        var sidebarIDs: [String] = []; var commandIDs: [String] = []; var statusIDs: [String] = []
+        var settingsIDs: [String] = []; var providesDailyNotes = false
+    }
     private var ownership: [String: Ownership] = [:]
     private var activatingPluginID: String?
     private weak var host: PluginHost?
@@ -54,6 +59,8 @@ public final class PluginManager: ObservableObject {
             sidebar.removeAll { owned.sidebarIDs.contains($0.id) }
             commands.removeAll { owned.commandIDs.contains($0.id) }
             statusItems.removeAll { owned.statusIDs.contains($0.id) }
+            settingsPanes.removeAll { owned.settingsIDs.contains($0.id) }
+            if owned.providesDailyNotes { dailyNotes = nil }
             ownership[id] = nil
             registered.instance.deactivate()
         }
@@ -83,5 +90,15 @@ public final class PluginManager: ObservableObject {
     func addStatusItem(_ item: StatusItem) {
         statusItems.append(item)
         if let pid = activatingPluginID { ownership[pid]?.statusIDs.append(item.id) }
+    }
+
+    func addSettingsPane(_ pane: SettingsPane) {
+        settingsPanes.append(pane)
+        if let pid = activatingPluginID { ownership[pid]?.settingsIDs.append(pane.id) }
+    }
+
+    func provideDailyNotes(_ service: DailyNotesService) {
+        dailyNotes = service
+        if let pid = activatingPluginID { ownership[pid]?.providesDailyNotes = true }
     }
 }

@@ -21,7 +21,7 @@ func periodicNotesPluginChecks() {
     let host = Host(appState: appState, pluginManager: pm)
     pm.activate([PeriodicNotesPlugin()], host: host)
 
-    expectEqual(pm.commands.count, 3, "daily/weekly/monthly commands registered")
+    expectEqual(pm.commands.count, 7, "five period commands + previous/next registered")
     guard let today = pm.commands.first(where: { $0.id == "periodic.daily" }) else {
         expect(false, "daily command missing"); return
     }

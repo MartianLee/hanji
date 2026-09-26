@@ -13,6 +13,11 @@ struct SettingsView: View {
                 .tabItem { Label("Vault", systemImage: "folder") }
             pluginsTab
                 .tabItem { Label("Plugins", systemImage: "puzzlepiece.extension") }
+            // Each enabled plugin's own settings; a pane leaves with its plugin.
+            ForEach(pluginManager.settingsPanes) { pane in
+                pane.makeView()
+                    .tabItem { Label(pane.title, systemImage: "gearshape") }
+            }
         }
         .frame(width: 480, height: 380)
     }

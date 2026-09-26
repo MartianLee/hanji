@@ -38,7 +38,7 @@ func e2eChecks() {
     let periodicID = "io.hanji.periodicnotes"
     let commandCountBefore = pm.commands.count
     pm.setEnabled(periodicID, false)
-    expectEqual(pm.commands.count, commandCountBefore - 3, "E2E: disable drops the 3 periodic commands")
+    expectEqual(pm.commands.count, commandCountBefore - 7, "E2E: disable drops the 7 periodic commands")
     pm.setEnabled(periodicID, true)
     expectEqual(pm.commands.count, commandCountBefore, "E2E: enable restores them")
 

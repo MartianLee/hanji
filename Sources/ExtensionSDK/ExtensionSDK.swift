@@ -25,8 +25,19 @@ public struct StatusItem: Identifiable {
 }
 
 /// Surface ③ (UI): where plugins register sidebar views and status-bar items.
+/// A plugin's own settings, shown as a tab in Settings while the plugin is on.
+public struct SettingsPane: Identifiable {
+    public let id: String
+    public let title: String
+    public let makeView: () -> AnyView
+    public init(id: String, title: String, makeView: @escaping () -> AnyView) {
+        self.id = id; self.title = title; self.makeView = makeView
+    }
+}
+
 public protocol UIRegistry: AnyObject {
     func addSidebarView(id: String, title: String, _ make: @escaping () -> AnyView)
+    func addSettingsView(id: String, title: String, _ make: @escaping () -> AnyView)
     /// Register a small footer item shown in the editor status bar.
     func addStatusItem(id: String, _ make: @escaping () -> AnyView)
 }
@@ -53,6 +64,7 @@ public protocol PluginHost: AnyObject {
     var commands: CommandRegistry { get }
     var workspace: WorkspaceActions { get }
     var query: MetadataQuerying { get }
+    var services: ServiceRegistry { get }
 }
 
 /// Surface ①: renders a fenced code block of a given language as a view.
@@ -91,9 +103,13 @@ public extension Plugin {
 public struct Command: Identifiable {
     public let id: String
     public let title: String
+    /// Whether the palette offers the command right now (e.g. only while a
+    /// periodic note is open). Asked each time the palette opens.
+    public let isAvailable: () -> Bool
     public let run: () -> Void
-    public init(id: String, title: String, run: @escaping () -> Void) {
-        self.id = id; self.title = title; self.run = run
+    public init(id: String, title: String, isAvailable: @escaping () -> Bool = { true },
+                run: @escaping () -> Void) {
+        self.id = id; self.title = title; self.isAvailable = isAvailable; self.run = run
     }
 }
 
@@ -125,6 +141,23 @@ public struct SDKBacklink: Identifiable {
         self.snippet = snippet
         self.matchRanges = matchRanges
     }
+}
+
+/// Daily notes, as one plugin (Periodic Notes) offers them to others (Calendar).
+public protocol DailyNotesService: AnyObject {
+    func hasDailyNote(on date: Date) -> Bool
+    /// Open the day's note, creating it from its template if it doesn't exist.
+    func openDailyNote(on date: Date)
+}
+
+/// Surface ④ (services): capabilities one plugin provides for others. A
+/// service belongs to the plugin that provided it and goes away when that
+/// plugin is switched off, so consumers must look it up each time they need it.
+public protocol ServiceRegistry: AnyObject {
+    var dailyNotes: DailyNotesService? { get }
+    func provideDailyNotes(_ service: DailyNotesService)
+    /// Fires when a service appears or goes away.
+    var servicesDidChange: AnyPublisher<Void, Never> { get }
 }
 
 /// Surface ② (metadata queries): read access to the vault index.

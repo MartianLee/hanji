@@ -1,10 +1,11 @@
 import SwiftUI
 import Combine
 import ExtensionSDK
-import TemplateKit
 
 /// First-party calendar panel: month grid with dots on days that have a daily
-/// note; clicking a day opens-or-creates it through the periodic-notes pipeline.
+/// note; clicking a day opens-or-creates it. Daily notes come from whichever
+/// plugin provides the daily-note service (Periodic Notes); without one, the
+/// calendar is just a calendar.
 public struct CalendarPlugin: Plugin {
     public static let id = "io.hanji.calendar"
     public static let displayName = "Calendar"
@@ -13,18 +14,20 @@ public struct CalendarPlugin: Plugin {
     public func activate(host: PluginHost) {
         host.ui.addSidebarView(id: "calendar", title: "Calendar") { [weak host] in
             guard let host else { return AnyView(EmptyView()) }
-            return AnyView(CalendarView(workspace: host.workspace,
-                                        indexUpdates: host.query.indexDidUpdate))
+            return AnyView(CalendarView(services: host.services,
+                                        updates: host.query.indexDidUpdate.merge(with: host.services.servicesDidChange)
+                                            .eraseToAnyPublisher()))
         }
     }
 }
 
 struct CalendarView: View {
-    let workspace: WorkspaceActions
-    let indexUpdates: AnyPublisher<Void, Never>
+    let services: ServiceRegistry
+    let updates: AnyPublisher<Void, Never>
 
     @State private var month = Date()
     @State private var dottedDays: Set<Int> = []
+    @State private var hasDailyNotes = false
 
     private var calendar: Calendar { Calendar.current }
     private var weeks: [[CalendarGrid.Day]] { CalendarGrid.weeks(for: month, calendar: calendar) }
@@ -40,10 +43,14 @@ struct CalendarView: View {
                     }
                 }
             }
+            if !hasDailyNotes {
+                Text("Turn on Periodic Notes to open daily notes from here.")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
         }
         .onAppear { refreshDots() }
         .onChange(of: month) { _, _ in refreshDots() }
-        .onReceive(indexUpdates) { refreshDots() }
+        .onReceive(updates) { refreshDots() }
     }
 
     private var header: some View {
@@ -89,6 +96,7 @@ struct CalendarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!hasDailyNotes)
     }
 
     private func shift(_ delta: Int) {
@@ -97,30 +105,14 @@ struct CalendarView: View {
 
     /// Days of the displayed month that already have a daily note.
     private func refreshDots() {
-        guard let root = workspace.vaultRoot else { dottedDays = []; return }
-        let cfg = PeriodicConfig.load(vaultRoot: root)
-        var dots: Set<Int> = []
-        for day in weeks.flatMap({ $0 }) where day.inMonth {
-            if workspace.noteExists(relativePath: cfg.notePath(.daily, date: day.date)) {
-                dots.insert(day.day)
-            }
-        }
-        dottedDays = dots
+        let daily = services.dailyNotes
+        hasDailyNotes = daily != nil
+        guard let daily else { dottedDays = []; return }
+        dottedDays = Set(weeks.flatMap { $0 }.filter { $0.inMonth && daily.hasDailyNote(on: $0.date) }.map(\.day))
     }
 
     /// Open-or-create the day's daily note (same pipeline as the ⌘P command).
     private func open(_ date: Date) {
-        guard let root = workspace.vaultRoot else { return }
-        let cfg = PeriodicConfig.load(vaultRoot: root)
-        let action = cfg.planOpen(.daily, date: date,
-                                  exists: { workspace.noteExists(relativePath: $0) },
-                                  readTemplate: { workspace.readNote(relativePath: $0) })
-        switch action {
-        case .open(let path):
-            workspace.openNote(relativePath: path)
-        case .create(let path, let text, let cursor):
-            workspace.createNote(relativePath: path, text: text, cursorOffset: cursor)
-            workspace.openNote(relativePath: path)
-        }
+        services.dailyNotes?.openDailyNote(on: date)
     }
 }

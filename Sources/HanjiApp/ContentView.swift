@@ -522,7 +522,7 @@ struct ContentView: View {
         switch mode {
         case .commands:
             return PaletteView(placeholder: "Run a command…",
-                               items: pluginManager.commands.map { c in
+                               items: pluginManager.commands.filter { $0.isAvailable() }.map { c in
                                    PaletteItem(id: c.id, title: c.title, subtitle: nil, action: c.run)
                                },
                                onClose: { uiState.palette = nil })

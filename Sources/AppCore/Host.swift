@@ -6,7 +6,7 @@ import ExtensionSDK
 import MKSearchKit
 
 /// Concrete host wiring AppState + PluginManager to the SDK surfaces.
-public final class Host: PluginHost, UIRegistry, EditorContext, CommandRegistry, WorkspaceActions, MetadataQuerying {
+public final class Host: PluginHost, UIRegistry, EditorContext, CommandRegistry, WorkspaceActions, MetadataQuerying, ServiceRegistry {
     private let appState: AppState
     private let pluginManager: PluginManager
 
@@ -22,6 +22,7 @@ public final class Host: PluginHost, UIRegistry, EditorContext, CommandRegistry,
     public var commands: CommandRegistry { self }
     public var workspace: WorkspaceActions { self }
     public var query: MetadataQuerying { self }
+    public var services: ServiceRegistry { self }
 
     // UIRegistry
     public func addSidebarView(id: String, title: String, _ make: @escaping () -> AnyView) {
@@ -30,6 +31,17 @@ public final class Host: PluginHost, UIRegistry, EditorContext, CommandRegistry,
 
     public func addStatusItem(id: String, _ make: @escaping () -> AnyView) {
         pluginManager.addStatusItem(StatusItem(id: id, makeView: make))
+    }
+
+    public func addSettingsView(id: String, title: String, _ make: @escaping () -> AnyView) {
+        pluginManager.addSettingsPane(SettingsPane(id: id, title: title, makeView: make))
+    }
+
+    // ServiceRegistry
+    public var dailyNotes: DailyNotesService? { pluginManager.dailyNotes }
+    public func provideDailyNotes(_ service: DailyNotesService) { pluginManager.provideDailyNotes(service) }
+    public var servicesDidChange: AnyPublisher<Void, Never> {
+        pluginManager.$dailyNotes.map { _ in () }.eraseToAnyPublisher()
     }
 
     // EditorContext

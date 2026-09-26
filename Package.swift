@@ -29,7 +29,7 @@ let package = Package(
         .target(name: "PeriodicNotesPlugin", dependencies: ["ExtensionSDK", "TemplateKit"]),
         .target(name: "TemplaterPlugin", dependencies: ["ExtensionSDK", "TemplateKit"]),
         .target(name: "BacklinksPlugin", dependencies: ["ExtensionSDK"]),
-        .target(name: "CalendarPlugin", dependencies: ["ExtensionSDK", "TemplateKit"]),
+        .target(name: "CalendarPlugin", dependencies: ["ExtensionSDK"]),
         .executableTarget(name: "HanjiApp", dependencies: [
             "AppCore", "EditorEngine", "ExtensionSDK", "WordCountPlugin", "CoreRenderers",
             "VaultKit", "MarkdownCore", "TemplateKit", "PeriodicNotesPlugin", "TemplaterPlugin",
