@@ -103,9 +103,17 @@ final class CodeBlockFragment: NSTextLayoutFragment {
     /// First/last paragraph of the block → rounded top/bottom corners.
     var roundsTop = false
     var roundsBottom = false
-    /// Text-container width, set by the layout delegate so the slab fills the
-    /// whole code column (not just the glyph extent).
-    var fillWidth: CGFloat = 0
+    /// The slab's width: the whole code column (not just the glyph extent),
+    /// read from the text container when drawing. A fragment can be created
+    /// before the view has a width (a note's first layout) and is kept, not
+    /// recreated, once it has one — a width fixed at creation stayed at 0 or
+    /// below and the slab didn't show until the block was edited.
+    var fillWidth: CGFloat {
+        let live = textLayoutManager?.textContainer?.size.width ?? 0
+        return live > 0 ? live : fallbackWidth
+    }
+    /// The delegate's estimate, for when the container can't tell yet.
+    var fallbackWidth: CGFloat = 0
 
     /// TextKit 2 clips fragment drawing to this rect, so expand it to the full
     /// code column — otherwise the slab is cut to each line's glyph width.
@@ -440,7 +448,9 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// next key, shaking the lines at the bottom. Restyles only invalidate what
         /// changed (LivePreviewStyler.commit), so this re-lays out a few lines.
         private func settleLayoutBelowCaret() {
-            guard let tlm = textView?.textLayoutManager else { return }
+            // Not before the view is in a window: laying the note out at no width
+            // is wasted work (and made fragments that kept that width).
+            guard let tv = textView, tv.window != nil, let tlm = tv.textLayoutManager else { return }
             tlm.ensureLayout(for: tlm.documentRange)
         }
 
@@ -919,7 +929,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
                     // the TLM's container can report 0 during the delegate call).
                     if let tv = textView {
                         let cw = textLayoutManager.textContainer?.size.width ?? 0
-                        fragment.fillWidth = cw > 0 ? cw : tv.bounds.width - tv.textContainerInset.width * 2
+                        fragment.fallbackWidth = cw > 0 ? cw : tv.bounds.width - tv.textContainerInset.width * 2
                     }
                     return fragment
                 }

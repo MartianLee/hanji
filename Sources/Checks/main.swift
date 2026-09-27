@@ -92,6 +92,7 @@ runChecks([
     ("IMEComposition", imeCompositionChecks),
     ("EditorReveal", editorRevealChecks),
     ("EditorBottomTyping", editorBottomTypingChecks),
+    ("CodeSlabOnOpen", codeSlabOnOpenChecks),
     ("IncrementalRestyle", incrementalRestyleChecks),
     ("KeystrokeCost", keystrokeCostChecks),
     ("StyleCommit", styleCommitChecks),

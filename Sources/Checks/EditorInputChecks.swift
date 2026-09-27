@@ -323,3 +323,30 @@ func keystrokeCostChecks() {
     expect(large < small * 8 + 0.01,
            "and far from ten times a short note's (\(Int(small * 1000))ms for 400 lines vs \(Int(large * 1000))ms for 4,000)")
 }
+
+/// A fenced code block shows its background slab as soon as the note opens —
+/// not only after its lines have been edited. (Fragments laid out before the
+/// view had a width drew a slab of width < 0: nothing.)
+func codeSlabOnOpenChecks() {
+    guard let h = EditorHarness("intro line\n```swift\nlet x = 1\n```\nafter line") else { expect(false, "editor found"); return }
+    defer { h.close() }
+    h.pump(0.3)
+    let tv = h.textView
+    guard let tlm = tv.textLayoutManager else { return }
+    func frame(of needle: String) -> CGRect {
+        let off = (tv.string as NSString).range(of: needle).location
+        guard let loc = tlm.location(tlm.documentRange.location, offsetBy: off),
+              let f = tlm.textLayoutFragment(for: loc) else { return .zero }
+        return f.layoutFragmentFrame.offsetBy(dx: tv.textContainerOrigin.x, dy: tv.textContainerOrigin.y)
+    }
+    func pixel(atRightOf r: CGRect) -> [UInt8] {
+        h.window.displayIfNeeded()
+        let spot = NSRect(x: tv.bounds.width - tv.textContainerInset.width - 30, y: r.midY - 1, width: 2, height: 2)
+        guard let rep = tv.bitmapImageRepForCachingDisplay(in: spot) else { return [] }
+        tv.cacheDisplay(in: spot, to: rep)
+        return Array(UnsafeBufferPointer(start: rep.bitmapData, count: 4))
+    }
+    let code = pixel(atRightOf: frame(of: "let x = 1"))
+    let plain = pixel(atRightOf: frame(of: "intro line"))
+    expect(!code.isEmpty && code != plain, "the code line's slab is painted on open (code \(code) vs plain \(plain))")
+}
