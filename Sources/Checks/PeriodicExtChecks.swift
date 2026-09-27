@@ -53,8 +53,10 @@ func momentParseChecks() {
         MomentFormat.parse(s, f, timeZone: utc).map { MomentFormat.format($0, "YYYY-MM-DD", timeZone: utc) }
     }
     expectEqual(parse("2026-06-09", "YYYY-MM-DD"), "2026-06-09", "daily")
-    expectEqual(parse("2026-W24", "gggg-[W]ww"), "2026-06-08", "ISO week → its Monday")
-    expectEqual(parse("2021-W01", "gggg-[W]ww"), "2021-01-04", "ISO week 1 can start in January")
+    expectEqual(parse("2026-W24", "gggg-[W]ww"), "2026-06-07", "locale week → its Sunday (moment's gggg/ww)")
+    expectEqual(parse("2021-W01", "gggg-[W]ww"), "2020-12-27", "locale week 1 holds Jan 1, so it can start in December")
+    expectEqual(parse("2026-W24", "GGGG-[W]WW"), "2026-06-08", "ISO week → its Monday")
+    expectEqual(parse("2021-W01", "GGGG-[W]WW"), "2021-01-04", "ISO week 1 can start in January")
     expectEqual(parse("2026-Q2", "YYYY-[Q]Q"), "2026-04-01", "quarter → its first day")
     expectEqual(parse("2026", "YYYY"), "2026-01-01", "year")
     expectEqual(parse("June 2026", "MMMM YYYY"), "2026-06-01", "month name")

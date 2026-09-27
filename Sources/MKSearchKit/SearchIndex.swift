@@ -62,6 +62,13 @@ public final class SearchIndex {
             try db.execute(sql: "DELETE FROM note")
             try db.execute(sql: "DELETE FROM note_fts")
         }
+        migrator.registerMigration("v4") { db in
+            // Re-derive everything: text is now stored NFC (so decomposed Korean
+            // is searchable), and tags/links are no longer taken from code.
+            for table in ["note", "note_fts", "link", "tag", "field"] {
+                try db.execute(sql: "DELETE FROM \(table)")
+            }
+        }
         try migrator.migrate(dbQueue)
     }
 
@@ -148,8 +155,11 @@ public final class SearchIndex {
     }
 
     private func upsert(path: String, url: URL, mtime: Double) throws {
-        let body = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-        let title = url.deletingPathExtension().lastPathComponent
+        // Everything searchable is stored precomposed (NFC): Finder and many sync
+        // tools write decomposed (NFD) Korean, which wouldn't match what's typed.
+        // `path` stays as it is on disk — it's how the file is found again.
+        let body = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").precomposedStringWithCanonicalMapping
+        let title = url.deletingPathExtension().lastPathComponent.precomposedStringWithCanonicalMapping
         try dbQueue.write { db in
             try db.execute(sql: "INSERT OR REPLACE INTO note (path, title, mtime) VALUES (?, ?, ?)",
                            arguments: [path, title, mtime])
@@ -186,7 +196,7 @@ public final class SearchIndex {
     /// bm25 ranking; shorter ones fall back to LIKE (substring) so 1–2-char
     /// Korean queries still work.
     public func search(_ query: String, limit: Int = 50) throws -> [SearchHit] {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).precomposedStringWithCanonicalMapping
         guard !q.isEmpty else { return [] }
         struct Stored { let path: String; let title: String; let body: String; let score: Double }
         let stored: [Stored]
@@ -284,7 +294,7 @@ public final class SearchIndex {
     }
 
     private static func normalizeTarget(_ raw: String) -> String {
-        var t = raw.trimmingCharacters(in: .whitespaces).lowercased()
+        var t = raw.trimmingCharacters(in: .whitespaces).precomposedStringWithCanonicalMapping.lowercased()
         if t.hasSuffix(".md") { t = String(t.dropLast(3)) }
         if t.hasPrefix("./") { t = String(t.dropFirst(2)) }
         return t
