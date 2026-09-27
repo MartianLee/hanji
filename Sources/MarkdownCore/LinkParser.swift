@@ -13,13 +13,16 @@ public struct LinkRef: Equatable {
 
 /// Extracts wikilinks (`[[Target]]`, `[[Target|alias]]`, `[[Target#heading]]`)
 /// and markdown links to `.md` files. Skips embeds/images (`![[…]]`, `![…](…)`),
-/// external URLs, and anything inside fenced code blocks.
+/// external URLs, and anything inside code (fenced blocks or inline spans).
 public enum LinkParser {
     private static let wiki = try! NSRegularExpression(pattern: #"(?<!\!)\[\[([^\[\]]+)\]\]"#)
 
     public static func links(in text: String) -> [LinkRef] {
         let ns = text as NSString
-        let fenced = fencedRanges(ns)
+        // Code — fenced (closed or not) and inline spans — holds no links.
+        let fenced = CodeBlockParser.allCodeRanges(in: text).map {
+            NSRange(location: $0.lowerBound, length: $0.upperBound - $0.lowerBound)
+        }
         // `fenced` is sorted and disjoint: binary-search the first fence that ends
         // after `r` starts (testing every fence per link was fences × links).
         func inFence(_ r: NSRange) -> Bool {
@@ -91,31 +94,5 @@ public enum LinkParser {
             i += 1
         }
         return out
-    }
-
-    /// UTF-16 ranges of fenced code blocks (``` … ```), line-based.
-    private static func fencedRanges(_ ns: NSString) -> [NSRange] {
-        var ranges: [NSRange] = []
-        var fenceStart: Int? = nil
-        var pos = 0
-        while pos < ns.length {
-            let line = ns.lineRange(for: NSRange(location: pos, length: 0))
-            var content = ns.substring(with: line)
-            if content.hasSuffix("\n") { content.removeLast() }
-            if content.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
-                if let start = fenceStart {
-                    ranges.append(NSRange(location: start, length: NSMaxRange(line) - start))
-                    fenceStart = nil
-                } else {
-                    fenceStart = line.location
-                }
-            }
-            pos = NSMaxRange(line)
-            if line.length == 0 { break }
-        }
-        if let start = fenceStart {   // unterminated fence runs to EOF
-            ranges.append(NSRange(location: start, length: ns.length - start))
-        }
-        return ranges
     }
 }

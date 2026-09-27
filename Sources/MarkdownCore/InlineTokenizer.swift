@@ -14,13 +14,17 @@ public enum InlineTokenizer {
         var inFrontmatter = false
         var inCodeBlock = false
         var inCallout = false
+        // Frontmatter needs its closing `---`: a lone `---` on the first line is a
+        // rule, not the start of a note-long YAML block.
+        let frontmatterCloses = text.hasPrefix("---\n") && text.dropFirst(4).split(separator: "\n",
+            omittingEmptySubsequences: false).contains("---")
         while lineStart <= length {
             var lineEnd = lineStart
             while lineEnd < length && ns.character(at: lineEnd) != newline { lineEnd += 1 }
             let lineRange = lineStart..<lineEnd
             let lineText = ns.substring(with: NSRange(location: lineStart, length: lineEnd - lineStart))
 
-            if lineIndex == 0 && lineText == "---" {
+            if lineIndex == 0 && lineText == "---" && frontmatterCloses {
                 inFrontmatter = true
                 result.append(MarkSpan(style: .frontmatter, content: lineRange, markers: [], line: lineRange))
             } else if inFrontmatter {

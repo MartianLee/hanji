@@ -17,8 +17,7 @@ public enum Tags {
     /// - `# Heading` and `##` aren't tags (nothing tag-like right after the `#`);
     /// - nothing inside fenced code blocks or inline code spans.
     public static func occurrences(in text: String) -> [Occurrence] {
-        let ns = text as NSString
-        let code = codeRanges(ns, text)
+        let code = CodeBlockParser.allCodeRanges(in: text)
         var nextCode = 0
 
         var scalars: [Unicode.Scalar] = []
@@ -61,38 +60,5 @@ public enum Tags {
     public static func extract(from text: String) -> [String] {
         var seen: Set<String> = []   // `tags.contains` per tag was quadratic in distinct tags
         return occurrences(in: text).map(\.name).filter { seen.insert($0).inserted }
-    }
-
-    /// Fenced code blocks and inline code spans, as sorted UTF-16 ranges.
-    private static func codeRanges(_ ns: NSString, _ text: String) -> [Range<Int>] {
-        let fences = CodeBlockParser.regions(in: text).map(\.full)
-        let backtick = UInt16(UnicodeScalar("`").value), newline = UInt16(UnicodeScalar("\n").value)
-        var inline: [Range<Int>] = []
-        var fence = 0
-        var i = 0
-        while i < ns.length {
-            while fence < fences.count, fences[fence].upperBound <= i { fence += 1 }
-            if fence < fences.count, fences[fence].contains(i) { i = fences[fence].upperBound; continue }
-            guard ns.character(at: i) == backtick else { i += 1; continue }
-            // A run of n backticks opens a span that the next run of exactly n
-            // backticks on the same line closes.
-            var run = i
-            while run < ns.length, ns.character(at: run) == backtick { run += 1 }
-            let n = run - i
-            var j = run
-            var closed: Int?
-            while j < ns.length, ns.character(at: j) != newline {
-                if ns.character(at: j) == backtick {
-                    var r = j
-                    while r < ns.length, ns.character(at: r) == backtick { r += 1 }
-                    if r - j == n { closed = r; break }
-                    j = r
-                } else {
-                    j += 1
-                }
-            }
-            if let closed { inline.append(i..<closed); i = closed } else { i = run }
-        }
-        return (fences + inline).sorted { $0.lowerBound < $1.lowerBound }
     }
 }

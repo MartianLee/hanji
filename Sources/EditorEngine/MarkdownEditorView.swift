@@ -273,6 +273,11 @@ public struct MarkdownEditorView: NSViewRepresentable {
         textView.delegate = context.coordinator
         textView.isRichText = false
         textView.allowsUndo = true
+        // Markdown is plain text: `---` is a rule or frontmatter and `"` is a
+        // quote, so the system's smart dashes/quotes (on by default) must not
+        // rewrite what's typed.
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.font = LivePreviewStyler.baseFont
         textView.textContainerInset = NSSize(width: 24, height: 20)
         textView.autoresizingMask = [.width]
@@ -331,6 +336,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
             tv.setSelectedRange(NSRange(location: clamped, length: 0))
             tv.scrollRangeToVisible(NSRange(location: clamped, length: 0))
             tv.window?.makeFirstResponder(tv)
+            context.coordinator.revealCaretAfterLayout()
             DispatchQueue.main.async { self.cursorOffset = nil }
         }
     }
@@ -405,6 +411,17 @@ public struct MarkdownEditorView: NSViewRepresentable {
         struct WidgetSpec { let key: String; let region: Range<Int>; let view: AnyView }
 
         private var widgetUpdateScheduled = false
+        /// Set by an edit or a jump: once the widget pass has laid the document
+        /// out for real, bring the caret back into view. AppKit scrolls to the
+        /// caret right away, while the lines around it may still be estimated —
+        /// after a paste or a jump deep into a long note that left it off screen.
+        /// Only after an edit or a jump, so scrolling away from the caret isn't undone.
+        private var revealCaret = false
+
+        func revealCaretAfterLayout() {
+            revealCaret = true
+            scheduleWidgetUpdate()
+        }
 
         func refresh() {
             restyle()
@@ -427,7 +444,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         func restyle() {
             guard let textView, let storage = textView.textStorage else { return }
             let regions = CodeBlockParser.regions(in: storage.string)
-            codeRegions = regions.map(\.full)
+            codeRegions = CodeBlockParser.codeRanges(in: storage.string)   // unclosed fences too
             let spans = InlineTokenizer.spans(in: storage.string)
             let sel = textView.selectedRange()
             let selection = sel.location..<(sel.location + sel.length)
@@ -529,7 +546,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
             guard parent.isLive, let textView else { return false }
             let text = textView.string
             guard let t = TaskToggle.toggle(in: text, at: index),
-                  !CodeBlockParser.regions(in: text).contains(where: { $0.full.contains(t.offset) })
+                  !CodeBlockParser.codeRanges(in: text).contains(where: { $0.contains(t.offset) })
             else { return false }
             let range = NSRange(location: t.offset, length: 1)
             guard textView.shouldChangeText(in: range, replacementString: t.replacement) else { return false }
@@ -622,6 +639,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
             // skip it when there is nothing to place — without it the insertion point
             // is left unpainted after a restyle.
             tlm.ensureLayout(for: tcs.documentRange)
+            if revealCaret {
+                revealCaret = false
+                textView.scrollRangeToVisible(textView.selectedRange())
+            }
             let origin = textView.textContainerOrigin
             for pl in placements {
                 guard let tr = textRange(pl.region, in: tcs) else { continue }
@@ -755,6 +776,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         public func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
+            revealCaret = true
             lastCaretParagraph = (textView.string as NSString).paragraphRange(for: textView.selectedRange())
             // Never while an input method is still composing. refresh() rewrites the
             // storage's attributes across the whole document — marked text included —
@@ -773,6 +795,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
             // within a line must not restyle the whole document (it re-laid out
             // everything and flickered).
             guard let textView else { return }
+            // Not mid-composition: the selection moves with every jamo, and a
+            // restyle would pull the marked text out from under the input method.
+            // Committing the composition sends textDidChange, which restyles.
+            guard !textView.hasMarkedText() else { return }
             let paragraph = (textView.string as NSString).paragraphRange(for: textView.selectedRange())
             if paragraph == lastCaretParagraph { return }
             lastCaretParagraph = paragraph
@@ -784,7 +810,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
             // down happened to survive). One runloop hop later the storage edit lands
             // after AppKit has finished with the caret, and the marker reveal still
             // arrives in the same frame.
-            DispatchQueue.main.async { [weak self] in self?.refresh() }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.textView?.hasMarkedText() != true else { return }
+                self.refresh()
+            }
         }
     }
 }
