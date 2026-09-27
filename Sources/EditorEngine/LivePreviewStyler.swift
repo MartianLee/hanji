@@ -19,6 +19,15 @@ public enum LivePreviewStyler {
     /// Reading rhythm shared by all paragraph styles (body, lists, quotes, …):
     /// a roomier line height plus a visible gap between paragraphs, instead of
     /// AppKit's tight single-spaced default.
+    /// What a fresh line is typed with — the body style `apply` gives plain text.
+    /// NSTextView lays out a new empty line (and the extra line at the end of the
+    /// note) with its typing attributes; without the body paragraph style that
+    /// line is shorter (×1.0, no spacing) until its first character is restyled,
+    /// so AppKit's scroll-to-caret went down on Return and back up on the next key.
+    public static var typingAttributes: [NSAttributedString.Key: Any] {
+        [.font: baseFont, .foregroundColor: NSColor.textColor, .paragraphStyle: bodyParagraph()]
+    }
+
     static func bodyParagraph() -> NSMutableParagraphStyle {
         let p = NSMutableParagraphStyle()
         p.lineHeightMultiple = 1.3

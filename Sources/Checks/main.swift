@@ -90,6 +90,7 @@ runChecks([
     ("UnclosedFrontmatter", unclosedFrontmatterChecks),
     ("IMEComposition", imeCompositionChecks),
     ("EditorReveal", editorRevealChecks),
+    ("EditorBottomTyping", editorBottomTypingChecks),
     ("StyleCommit", styleCommitChecks),
     ("CommandRegistry2", commandRegistryChecks),
     ("PeriodicNotesPlugin", periodicNotesPluginChecks),

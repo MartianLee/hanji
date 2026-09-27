@@ -178,3 +178,32 @@ func editorRevealChecks() {
     let (pasted, pasteInfo) = paste.caretInView
     expect(pasted, "after pasting 200 lines the caret is on screen (\(pasteInfo))")
 }
+
+/// Typing at the bottom of a long note (below a `---`, at the end) mustn't shake
+/// the view: a new line has to be as tall before its first character as after
+/// it, or AppKit's scroll-to-caret goes one way on Return and back on the next key.
+func editorBottomTypingChecks() {
+    var doc: [String] = []
+    for i in 0..<120 { doc += ["## Section \(i)", "Paragraph \(i) with **bold**, `code` and a [[link]].", ""] }
+    doc += ["---", "Typing at the end"]
+    guard let h = EditorHarness(doc.joined(separator: "\n")) else { expect(false, "editor found"); return }
+    defer { h.close() }
+    let tv = h.textView
+    guard let clip = tv.enclosingScrollView?.contentView else { expect(false, "scroll view"); return }
+    let end = (tv.string as NSString).length
+    h.caret(at: end); tv.scrollRangeToVisible(NSRange(location: end, length: 0)); h.pump(0.4)
+    var ys: [CGFloat] = [clip.documentVisibleRect.minY]
+    var returnSteps: [CGFloat] = []
+    for ch in "abc\ndef\nghi jkl\nmno\n" {
+        let before = clip.documentVisibleRect.minY
+        if ch == "\n" { h.key("\r", 36) } else { h.key(String(ch), 0) }
+        h.pump(0.05); h.window.displayIfNeeded()
+        let y = clip.documentVisibleRect.minY
+        ys.append(y)
+        if ch == "\n" { returnSteps.append(y - before) }
+    }
+    let backwards = zip(ys, ys.dropFirst()).filter { $1 < $0 - 0.5 }.count
+    expectEqual(backwards, 0, "typing at the bottom never scrolls back up (scroll positions: \(ys.map { Int($0) }))")
+    expect((returnSteps.max() ?? 0) - (returnSteps.min() ?? 0) <= 1,
+           "every Return scrolls by the same line height (steps: \(returnSteps.map { Int($0) }))")
+}

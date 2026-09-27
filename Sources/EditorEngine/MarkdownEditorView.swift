@@ -279,6 +279,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.font = LivePreviewStyler.baseFont
+        textView.typingAttributes = LivePreviewStyler.typingAttributes
         textView.textContainerInset = NSSize(width: 24, height: 20)
         textView.autoresizingMask = [.width]
         textView.isVerticallyResizable = true
@@ -425,7 +426,20 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
         func refresh() {
             restyle()
+            settleLayoutBelowCaret()
             scheduleWidgetUpdate()
+        }
+
+        /// Lay out from the caret's line to the end now, not in the deferred widget
+        /// pass. Until then the lines below are measured provisionally, so the
+        /// document height AppKit sizes and scrolls against right after a keystroke
+        /// is a few points off from the real one — typing at the end of a note
+        /// (pinned to its bottom edge) scrolled down on Return and back up on the
+        /// next key, shaking the lines at the bottom. Restyles only invalidate what
+        /// changed (LivePreviewStyler.commit), so this re-lays out a few lines.
+        private func settleLayoutBelowCaret() {
+            guard let tlm = textView?.textLayoutManager else { return }
+            tlm.ensureLayout(for: tlm.documentRange)
         }
 
         /// Coalesce widget rebuilds: `updateWidgets` forces a full-document layout,
@@ -458,6 +472,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
             applyMarkers(spans: spans, sel: sel, storage: styled)
             reapplyReservations(in: styled, caret: selection)
             LivePreviewStyler.commit(styled, to: storage)
+            // The next line typed is body text until restyled: give it the body
+            // metrics now (NSTextView otherwise carries whatever it picked up, e.g.
+            // a rule's reserved height or no paragraph style at all).
+            textView.typingAttributes = LivePreviewStyler.typingAttributes
         }
 
         /// Heights the widget pass is holding open, so a restyle can put them back.
