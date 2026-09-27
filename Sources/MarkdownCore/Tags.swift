@@ -15,9 +15,12 @@ public enum Tags {
     ///   tags (`#project/hanji`); combining marks stay part of the tag;
     /// - at least one character isn't a digit (`#123` isn't a tag, `#2026년` is);
     /// - `# Heading` and `##` aren't tags (nothing tag-like right after the `#`);
-    /// - nothing inside fenced code blocks or inline code spans.
+    /// - nothing inside fenced code blocks, inline code spans or frontmatter.
     public static func occurrences(in text: String) -> [Occurrence] {
-        let code = CodeBlockParser.allCodeRanges(in: text)
+        // Code holds no tags, and neither does YAML frontmatter (`color: #ffaa00`);
+        // its `tags:` key is a property, not inline tags.
+        let code = ([Frontmatter.range(in: text)].compactMap { $0 } + CodeBlockParser.allCodeRanges(in: text))
+            .sorted { $0.lowerBound < $1.lowerBound }
         var nextCode = 0
 
         var scalars: [Unicode.Scalar] = []

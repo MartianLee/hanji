@@ -27,12 +27,33 @@ public enum TemplateEngine {
         var i = 0
         while i < s.count {
             if s[i] == "<", i + 1 < s.count, s[i + 1] == "%" {
-                let isExec = (i + 2 < s.count && s[i + 2] == "*")
-                // j lands on the '%' of the closing '%>' if found, else s.count (unterminated).
+                // j lands on the '%' of the closing '%>'.
                 var j = i + 2
                 while j < s.count && !(s[j] == "%" && j + 1 < s.count && s[j + 1] == ">") { j += 1 }
-                let inner = String(s[(i + 2)..<j])
-                let end = (j < s.count) ? j + 2 : s.count
+                // Never closed: not a tag. Keep it and everything after it as
+                // written, rather than dropping the rest of the template.
+                guard j < s.count else { out.append(contentsOf: s[i...]); break }
+                var inner = String(s[(i + 2)..<j])
+                var end = j + 2
+                // Templater's whitespace control: `<%-`/`-%>` eat one newline on
+                // that side, `<%_`/`_%>` all whitespace.
+                if let lead = inner.first, lead == "-" || lead == "_" {
+                    inner.removeFirst()
+                    if lead == "_" {
+                        while out.last?.isWhitespace == true { out.removeLast() }
+                    } else if out.last?.isNewline == true {
+                        out.removeLast()
+                    }
+                }
+                if let trail = inner.last, trail == "-" || trail == "_" {
+                    inner.removeLast()
+                    if trail == "_" {
+                        while end < s.count && s[end].isWhitespace { end += 1 }
+                    } else if end < s.count && s[end].isNewline {
+                        end += 1
+                    }
+                }
+                let isExec = inner.first == "*"
                 if !isExec, let call = parseCall(inner) {
                     if call.function == "file.cursor" {
                         let order = call.intArg(0) ?? 0
@@ -42,6 +63,7 @@ public enum TemplateEngine {
                     }
                 }
                 i = end
+                if let c = cursor, c.offset > out.utf16.count { cursor = (c.order, out.utf16.count) }
             } else {
                 out.append(s[i]); i += 1
             }
@@ -112,7 +134,7 @@ public enum TemplateEngine {
         var head = trimmed
         var argsPart = ""
         if let open = trimmed.firstIndex(of: "("), let close = trimmed.lastIndex(of: ")"), open < close {
-            head = String(trimmed[trimmed.startIndex..<open])
+            head = String(trimmed[trimmed.startIndex..<open]).trimmingCharacters(in: .whitespaces)
             argsPart = String(trimmed[trimmed.index(after: open)..<close])
         }
         let dotted = head.split(separator: ".", maxSplits: 1).map(String.init)
@@ -124,16 +146,18 @@ public enum TemplateEngine {
         var args: [Arg] = []
         var fields: [String] = []
         var cur = ""
-        var inQuote = false
+        var quote: Character?   // the quote we're inside, " or '
         for ch in s {
-            if ch == "\"" { inQuote.toggle(); cur.append(ch) }
-            else if ch == "," && !inQuote { fields.append(cur); cur = "" }
+            if ch == "\"" || ch == "'" {
+                if quote == nil { quote = ch } else if quote == ch { quote = nil }
+                cur.append(ch)
+            } else if ch == "," && quote == nil { fields.append(cur); cur = "" }
             else { cur.append(ch) }
         }
         if !cur.trimmingCharacters(in: .whitespaces).isEmpty || !fields.isEmpty { fields.append(cur) }
         for f in fields {
             let t = f.trimmingCharacters(in: .whitespaces)
-            if t.hasPrefix("\"") && t.hasSuffix("\"") && t.count >= 2 {
+            if t.count >= 2, let q = t.first, q == "\"" || q == "'", t.last == q {
                 args.append(.string(String(t.dropFirst().dropLast())))
             } else if let n = Int(t) {
                 args.append(.int(n))

@@ -8,7 +8,7 @@ public enum HRParser {
     public static func lines(in text: String) -> [Range<Int>] {
         let ns = text as NSString
         var out: [Range<Int>] = []
-        var inFence = false
+        var openFence: Fence?
         var pos = 0
         var lineIndex = 0
         var skipUntilFrontmatterClose = false
@@ -16,16 +16,18 @@ public enum HRParser {
         while pos < ns.length {
             let lineRange = ns.lineRange(for: NSRange(location: pos, length: 0))
             var content = ns.substring(with: lineRange)
-            if content.hasSuffix("\n") { content.removeLast() }
+            while content.last?.isNewline == true { content.removeLast() }   // "\r\n" is one Character
             let trimmed = content.trimmingCharacters(in: .whitespaces)
 
             if lineIndex == 0, trimmed == "---", hasFrontmatterClose(ns, after: lineRange) {
                 skipUntilFrontmatterClose = true
             } else if skipUntilFrontmatterClose {
                 if trimmed == "---" { skipUntilFrontmatterClose = false }
-            } else if trimmed.hasPrefix("```") {
-                inFence.toggle()
-            } else if !inFence, isRule(content) {
+            } else if let open = openFence {
+                if open.isClosed(by: content) { openFence = nil }
+            } else if let fence = Fence.opening(content) {
+                openFence = fence
+            } else if isRule(content) {
                 out.append(lineRange.location..<(lineRange.location + (content as NSString).length))
             }
 
@@ -51,7 +53,7 @@ public enum HRParser {
         while pos < ns.length {
             let lineRange = ns.lineRange(for: NSRange(location: pos, length: 0))
             var content = ns.substring(with: lineRange)
-            if content.hasSuffix("\n") { content.removeLast() }
+            while content.last?.isNewline == true { content.removeLast() }   // "\r\n" is one Character
             if content.trimmingCharacters(in: .whitespaces) == "---" { return true }
             pos = lineRange.location + lineRange.length
             if lineRange.length == 0 { break }

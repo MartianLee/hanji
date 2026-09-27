@@ -204,9 +204,7 @@ public final class SearchIndex {
             // Exactly one `#tag`: the notes that carry it (or a tag nested under
             // it), from the tag table — not every note whose text has the letters.
             let t = tag.lowercased()
-            let nested = t.replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "%", with: "\\%")
-                .replacingOccurrences(of: "_", with: "\\_") + "/%"
+            let nested = Self.likeEscaped(t) + "/%"
             stored = try dbQueue.read { db in
                 try Row.fetchAll(db, sql: """
                     SELECT n.path AS path, n.title AS title, f.body AS body, 0.0 AS score
@@ -249,6 +247,13 @@ public final class SearchIndex {
         }
         return stored.map { SearchHit.make(path: $0.path, title: $0.title, body: $0.body,
                                            query: q, score: $0.score) }
+    }
+
+    /// `s` with LIKE's wildcards and the escape character escaped (ESCAPE '\\').
+    static func likeEscaped(_ s: String) -> String {
+        s.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
     }
 
     /// The tag name when `query` is exactly one `#tag` and nothing else.
@@ -316,11 +321,16 @@ public final class SearchIndex {
             let rows: [Row]
             switch query.source {
             case .tag(let tag):
+                // A tag includes the tags nested under it, as in search.
+                let t = tag.lowercased()
                 rows = try Row.fetchAll(db, sql: """
                     SELECT n.path AS path, n.title AS title, n.mtime AS mtime
-                    FROM note n JOIN tag t ON t.path = n.path WHERE t.tag = ?
-                    """, arguments: [tag.lowercased()])
-            case .folder(let folder):
+                    FROM note n JOIN tag t ON t.path = n.path
+                    WHERE t.tag = ? OR t.tag LIKE ? ESCAPE '\\'
+                    GROUP BY n.path
+                    """, arguments: [t, Self.likeEscaped(t) + "/%"])
+            case .folder(let raw):
+                let folder = raw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))   // "p/" is "p"
                 let escaped = folder.replacingOccurrences(of: "\\", with: "\\\\")
                     .replacingOccurrences(of: "%", with: "\\%")
                     .replacingOccurrences(of: "_", with: "\\_")

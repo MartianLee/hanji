@@ -13,28 +13,31 @@ public enum InlineTokenizer {
         var lineIndex = 0
         var inFrontmatter = false
         var inCodeBlock = false
+        var openFence: Fence?
         var inCallout = false
         // Frontmatter needs its closing `---`: a lone `---` on the first line is a
         // rule, not the start of a note-long YAML block.
-        let frontmatterCloses = text.hasPrefix("---\n") && text.dropFirst(4).split(separator: "\n",
-            omittingEmptySubsequences: false).contains("---")
+        let frontmatterCloses = Frontmatter.range(in: text) != nil
         while lineStart <= length {
             var lineEnd = lineStart
             while lineEnd < length && ns.character(at: lineEnd) != newline { lineEnd += 1 }
             let lineRange = lineStart..<lineEnd
             let lineText = ns.substring(with: NSRange(location: lineStart, length: lineEnd - lineStart))
+            // Structure is judged without a CRLF line's trailing `\r`.
+            let bare = lineText.last == "\r" ? String(lineText.dropLast()) : lineText
 
-            if lineIndex == 0 && lineText == "---" && frontmatterCloses {
+            if lineIndex == 0 && bare == "---" && frontmatterCloses {
                 inFrontmatter = true
                 result.append(MarkSpan(style: .frontmatter, content: lineRange, markers: [], line: lineRange))
             } else if inFrontmatter {
                 result.append(MarkSpan(style: .frontmatter, content: lineRange, markers: [], line: lineRange))
-                if lineText == "---" { inFrontmatter = false }
+                if bare == "---" { inFrontmatter = false }
             } else if inCodeBlock {
                 result.append(MarkSpan(style: .codeBlock, content: lineRange, markers: [], line: lineRange))
-                if lineText.hasPrefix("```") { inCodeBlock = false }
-            } else if lineText.hasPrefix("```") {
+                if openFence?.isClosed(by: lineText) == true { inCodeBlock = false }
+            } else if let fence = Fence.opening(lineText) {
                 inCodeBlock = true
+                openFence = fence
                 inCallout = false
                 result.append(MarkSpan(style: .codeBlock, content: lineRange, markers: [], line: lineRange))
             } else if lineText.hasPrefix("> ") && (inCallout || String(lineText.dropFirst(2)).hasPrefix("[!")) {
