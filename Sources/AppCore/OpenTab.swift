@@ -13,6 +13,8 @@ public struct OpenTab: Identifiable, Equatable {
     /// The file vanished while this tab had unsaved edits; saving is paused until
     /// the user saves it again or closes it (or the file comes back).
     public var missingOnDisk = false
+    /// Pinned tabs can't be closed until unpinned, and the vault reopens them.
+    public var isPinned = false
     public var isDirty: Bool { text != savedText }
     public init(file: MarkdownFile, text: String) {
         self.id = UUID()

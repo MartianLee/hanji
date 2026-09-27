@@ -71,6 +71,10 @@ struct HanjiApp: App {
                     let plugins: [any Plugin] = [WordCountPlugin(), PeriodicNotesPlugin(), TemplaterPlugin(), BacklinksPlugin(), CalendarPlugin()]
                     pluginManager.activate(plugins, host: h)
                     // First-party shell command: keyboard-driven move via the folder palette.
+                    h.commands.register(Command(id: "tab.togglePin", title: "Pin or unpin this tab",
+                                                isAvailable: { [weak appState] in appState?.activeTabID != nil }) { [weak appState] in
+                        if let id = appState?.activeTabID { appState?.togglePin(id) }
+                    })
                     h.commands.register(Command(id: "file.moveTo", title: "Move note to folder\u{2026}") { [weak uiState, weak appState] in
                         guard appState?.selectedFile != nil else { return }
                         uiState?.palette = .moveTo
@@ -114,6 +118,10 @@ struct HanjiApp: App {
                     if let id = appState.activeTabID { appState.closeTab(id) }
                 }
                 .keyboardShortcut("w", modifiers: .command)
+                Button(appState.tabs.first { $0.id == appState.activeTabID }?.isPinned == true ? "Unpin Tab" : "Pin Tab") {
+                    if let id = appState.activeTabID { appState.togglePin(id) }
+                }
+                .disabled(appState.activeTabID == nil)
                 Button("Split Right") { appState.splitRight() }
                     .keyboardShortcut("\\", modifiers: .command)
                 Button("Move Tab Right") {

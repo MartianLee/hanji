@@ -42,6 +42,8 @@ to set everything up again.
 
 **Workspace**
 - **Tabs and split panes**: drag to reorder, drop a tab on either edge to split.
+  **Pin** a tab (its context menu, File ▸ Pin Tab, or ⌘P) to keep it from
+  closing; the vault reopens its pinned notes next time.
 - Full file tree: sort, multi-select, drag-and-drop, rename, trash, undo, import.
 - **Command palette (⌘P)**, **quick switcher (⌘O)**, **global search (⇧⌘F)** over
   a persistent SQLite FTS5 index (Korean-friendly trigram tokenizer).

@@ -45,10 +45,19 @@ struct TabBarView: View {
                 .font(.callout).lineLimit(1)
                 .foregroundStyle(isActive ? .primary : .secondary)
             if dirty { Circle().fill(Color.secondary).frame(width: 6, height: 6) }
-            Button { appState.focusPane(pane.id); appState.closeTab(tab.id) } label: {
-                Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
+            if tab.isPinned {
+                // Pinned: no close button — unpin first (click the pin, or the menu).
+                Button { appState.togglePin(tab.id) } label: {
+                    Image(systemName: "pin.fill").font(.system(size: 9, weight: .semibold))
+                }
+                .buttonStyle(.plain).foregroundStyle(.secondary)
+                .help("Unpin")
+            } else {
+                Button { appState.focusPane(pane.id); appState.closeTab(tab.id) } label: {
+                    Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
+                }
+                .buttonStyle(.plain).foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12).frame(height: 32)
         .background(isActive ? Color(nsColor: .textBackgroundColor) : Color.clear)
@@ -60,6 +69,8 @@ struct TabBarView: View {
         .contentShape(Rectangle())
         .onTapGesture { appState.focusPane(pane.id); appState.switchTab(tab.id) }
         .contextMenu {
+            Button(tab.isPinned ? "Unpin" : "Pin") { appState.togglePin(tab.id) }
+            Divider()
             Button("Move to Left Pane") { appState.moveTabToSide(tab.id, .left) }
                 .disabled(!appState.canMoveTab(tab.id, .left))
             Button("Move to Right Pane") { appState.moveTabToSide(tab.id, .right) }

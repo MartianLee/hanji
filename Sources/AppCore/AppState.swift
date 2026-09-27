@@ -66,6 +66,7 @@ public final class AppState: ObservableObject {
     private static let recentsKey = "io.hanji.recentVaults"
     private static let treeSortKey = "io.hanji.treeSort"
     private static let fontSizeKey = "io.hanji.fontSize"
+    private static func pinsKey(_ root: URL) -> String { "io.hanji.pinned.\(root.standardizedFileURL.path)" }
 
     public init(defaults: UserDefaults = .standard, autosaveInterval: TimeInterval = 0.8) {
         self.defaults = defaults
@@ -113,6 +114,7 @@ public final class AppState: ObservableObject {
         watcher = VaultWatcher(root: root) { [weak self] in self?.reloadTree() }
         searchIndex = try? SearchIndex(vaultRoot: root)
         scheduleReindex()
+        restorePins()
     }
 
     /// Rebuild tree/files/index from disk (our ops and the FS watcher both call
@@ -183,7 +185,9 @@ public final class AppState: ObservableObject {
         guard let idx = pane.tabs.firstIndex(where: { $0.id == id }) else { return }
         let wasActiveTab = pane.id == activePaneID && id == pane.activeTabID
         objectWillChange.send()
+        let wasPinned = pane.tabs[idx].isPinned
         pane.tabs.remove(at: idx)
+        if wasPinned { persistPins() }
         if wasActiveTab {
             if let next = pane.tabs[safe: idx] ?? pane.tabs.last {
                 pane.activeTabID = next.id
@@ -316,6 +320,8 @@ public final class AppState: ObservableObject {
     public func closeTab(_ id: UUID) {
         guard let pane = activePane, let idx = pane.tabs.firstIndex(where: { $0.id == id }) else { return }
         let wasActive = id == pane.activeTabID
+        // Pinned tabs stay until unpinned (⌘W and the tab's close button do nothing).
+        if pane.tabs[idx].isPinned { return }
         // A tab still waiting on the "changed on disk" banner holds two versions the
         // user hasn't chosen between: closing would either drop the edits or write
         // them over the other version. Ask for the choice first.
@@ -600,6 +606,7 @@ public final class AppState: ObservableObject {
             f.pane.tabs[idx].file = file
             if f.pane.id == activePaneID && f.tabID == f.pane.activeTabID { selectedFile = file }
         }
+        persistPins()
     }
 
     private func reportSaveFailure(_ file: MarkdownFile, _ error: Error) {
@@ -617,6 +624,47 @@ public final class AppState: ObservableObject {
             guard (try? index.reindexAll(vault: root)) != nil else { return }
             DispatchQueue.main.async { self?.searchIndexUpdatedAt = Date() }
         }
+    }
+
+    // MARK: - Pinned tabs
+
+    /// Pin or unpin a tab (in any pane).
+    public func togglePin(_ tabID: UUID) {
+        guard let pane = panes.first(where: { $0.tabs.contains { $0.id == tabID } }),
+              let idx = pane.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        objectWillChange.send()
+        pane.tabs[idx].isPinned.toggle()
+        persistPins()
+    }
+
+    /// The vault's pinned notes, vault-relative, in tab order (left pane first).
+    private func persistPins() {
+        guard let root = vaultRoot else { return }
+        let prefix = root.standardizedFileURL.path + "/"
+        var seen = Set<String>()
+        let paths = panes.flatMap(\.tabs).filter(\.isPinned).compactMap { tab -> String? in
+            let path = tab.file.url.standardizedFileURL.path
+            guard path.hasPrefix(prefix) else { return nil }
+            let rel = String(path.dropFirst(prefix.count))
+            return seen.insert(rel).inserted ? rel : nil
+        }
+        defaults.set(paths, forKey: Self.pinsKey(root))
+    }
+
+    /// Reopen the vault's pinned notes as pinned tabs; the first one is shown.
+    /// A pinned note that no longer exists is dropped from the list.
+    private func restorePins() {
+        guard let root = vaultRoot, let pane = activePane,
+              let paths = defaults.stringArray(forKey: Self.pinsKey(root)), !paths.isEmpty else { return }
+        for rel in paths {
+            guard let url = urlInsideVault(rel), FileManager.default.fileExists(atPath: url.path) else { continue }
+            openNote(relativePath: rel)
+            if let idx = pane.tabs.firstIndex(where: { $0.file.url.standardizedFileURL == url.standardizedFileURL }) {
+                pane.tabs[idx].isPinned = true
+            }
+        }
+        if let first = pane.tabs.first, first.id != pane.activeTabID { switchTab(first.id) }
+        persistPins()
     }
 
     // MARK: - Recent vaults

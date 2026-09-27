@@ -37,6 +37,8 @@ First public release.
 
 ### Workspace
 - Full file tree (sort, multi-select, drag-and-drop, rename, trash, undo, import).
+- Pinned tabs: a pinned tab can't be closed until unpinned, and each vault
+  reopens its pinned notes (renames and moves carry the pin along).
 - Command palette (⌘P), quick switcher (⌘O), global FTS5 search (⇧⌘F).
 - Vault-wide find & replace (⌥⇧⌘F): literal match with an optional case
   toggle, a confirmation showing how many occurrences in how many notes, and a

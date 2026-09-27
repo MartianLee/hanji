@@ -18,6 +18,7 @@ runChecks([
     ("ConflictClose", conflictCloseChecks),
     ("Quit", quitChecks),
     ("Vanish", vanishChecks),
+    ("Pin", pinChecks),
     ("PluginLoop", pluginLoopChecks),
     ("WordCounter", wordCounterChecks),
     ("Tokenizer", tokenizerChecks),
