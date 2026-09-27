@@ -58,3 +58,33 @@ func splitSafetyChecks() {
 private extension Array {
     subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }
+
+/// Closing the pane you typed in hands the text to the other pane's copy, and a
+/// note that ends up in one pane twice (renamed away, then back) keeps the tab
+/// with the unsaved work.
+func splitCloseAndDedupeChecks() {
+    let fm = FileManager.default
+    let vault = fm.temporaryDirectory.appendingPathComponent("mk-dedupe-\(UUID().uuidString)")
+    try? fm.createDirectory(at: vault, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: SearchIndex.indexFileURL(forVault: vault)); try? fm.removeItem(at: vault) }
+    try? "v1".write(to: vault.appendingPathComponent("A.md"), atomically: true, encoding: .utf8)
+    let s = AppState(defaults: UserDefaults(suiteName: "mk-dedupe-\(UUID().uuidString)")!)
+    s.openVault(at: vault)
+
+    s.openNote(relativePath: "A.md")
+    s.splitRight()
+    s.activeText = "v2 from the right pane"
+    s.closeTab(s.activeTabID!)
+    expectEqual(s.activeText, "v2 from the right pane", "the remaining pane shows what was typed in the closed one")
+
+    // Renamed away outside Hanji with unsaved text, then the new file renamed back.
+    s.activeText = "a + unsaved"
+    try? fm.moveItem(at: vault.appendingPathComponent("A.md"), to: vault.appendingPathComponent("Moved.md"))
+    s.reloadTree()
+    s.openNote(relativePath: "Moved.md")
+    _ = try? s.rename(vault.appendingPathComponent("Moved.md"), to: "A")
+    let aTabs = s.tabs.filter { $0.file.name == "A.md" }
+    expectEqual(aTabs.count, 1, "one tab per note after renaming it back")
+    let text = s.selectedFile?.name == "A.md" ? s.activeText : aTabs.first?.text
+    expectEqual(text, "a + unsaved", "and it's the one with the unsaved text")
+}

@@ -20,6 +20,7 @@ runChecks([
     ("Vanish", vanishChecks),
     ("Pin", pinChecks),
     ("SplitSafety", splitSafetyChecks),
+    ("SplitCloseDedupe", splitCloseAndDedupeChecks),
     ("AutosaveRace", autosaveRaceChecks),
     ("ConflictLatest", conflictLatestChecks),
     ("FileEdge", fileEdgeChecks),

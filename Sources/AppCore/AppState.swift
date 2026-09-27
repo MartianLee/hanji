@@ -179,7 +179,43 @@ public final class AppState: ObservableObject {
                 }
             }
         }
+        dedupeTabs()
         for pane in Array(panes) { closePaneIfEmpty(pane) }
+    }
+
+    /// A note shown twice in one pane (renamed away and back, say) keeps one tab:
+    /// the one holding unsaved work, else the active one. If two copies hold
+    /// different unsaved text, both stay — nothing is dropped.
+    private func dedupeTabs() {
+        for pane in panes {
+            let groups = Dictionary(grouping: pane.tabs, by: { $0.file.url.standardizedFileURL })
+            for (_, group) in groups where group.count > 1 {
+                let isPaneLive = pane.id == activePaneID
+                func live(_ tab: OpenTab) -> OpenTab {
+                    guard isPaneLive, tab.id == pane.activeTabID else { return tab }
+                    var t = tab
+                    t.text = activeText; t.savedText = savedText
+                    t.externalConflict = externalConflict; t.missingOnDisk = missingOnDisk
+                    return t
+                }
+                let states = group.map(live)
+                let unsaved = states.filter { $0.isDirty || $0.externalConflict != nil || $0.missingOnDisk }
+                if Set(unsaved.map(\.text)).count > 1 { continue }
+                let keep = unsaved.first ?? states.first { $0.id == pane.activeTabID } ?? states[0]
+                let dropped = Set(group.map(\.id)).subtracting([keep.id])
+                objectWillChange.send()
+                if let i = pane.tabs.firstIndex(where: { $0.id == keep.id }) {
+                    pane.tabs[i] = keep
+                    if group.contains(where: \.isPinned) { pane.tabs[i].isPinned = true }
+                }
+                if let active = pane.activeTabID, dropped.contains(active) {
+                    pane.activeTabID = keep.id
+                    if isPaneLive { hydrate(from: keep) }
+                }
+                pane.tabs.removeAll { dropped.contains($0.id) }
+                persistPins()
+            }
+        }
     }
 
     private func setMissing(_ missing: Bool, tabID: UUID, in pane: Pane, isLive: Bool) {
@@ -375,6 +411,7 @@ public final class AppState: ObservableObject {
         }
         // A tab whose edits couldn't be saved stays open — closing it would throw them away.
         guard wasActive ? flushPendingSave() : flush(pane.tabs[idx]) else { return }
+        if wasActive { writeBackActive() }   // the other pane's copy of this note gets the text
         objectWillChange.send()
         pane.tabs.remove(at: idx)
         if wasActive {
@@ -668,6 +705,7 @@ public final class AppState: ObservableObject {
             if f.pane.id == activePaneID && f.tabID == f.pane.activeTabID { selectedFile = file }
         }
         persistPins()
+        dedupeTabs()
     }
 
     private func reportSaveFailure(_ file: MarkdownFile, _ error: Error) {
