@@ -537,11 +537,14 @@ public final class AppState: ObservableObject {
         let target: Pane
         if hasNeighbour {
             target = panes[neighbourIndex]
-            if let existing = target.tabs.first(where: { urlSameFile($0.file.url, snapshot.file.url) }) {
-                // That pane already shows this note (in sync): just go to it.
-                target.activeTabID = existing.id
+            if target.tabs.contains(where: { urlSameFile($0.file.url, snapshot.file.url) }) {
+                // That pane already shows this note: keep whichever copy holds
+                // unsaved work (dedupeTabs decides), and go to it.
+                target.tabs.append(snapshot)
+                target.activeTabID = snapshot.id
                 activePaneID = target.id
-                hydrate(from: existing)
+                hydrate(from: snapshot)
+                dedupeTabs()
                 closePaneIfEmpty(src)
                 return
             }
