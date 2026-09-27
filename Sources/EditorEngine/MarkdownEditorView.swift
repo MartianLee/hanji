@@ -325,10 +325,12 @@ public struct MarkdownEditorView: NSViewRepresentable {
         if LivePreviewStyler.baseFontSize != fontSize {
             LivePreviewStyler.baseFontSize = fontSize
             textView.font = LivePreviewStyler.baseFont
+            context.coordinator.needsFullRestyle = true
             context.coordinator.refresh()
         }
         if textView.string != text {
             textView.string = text
+            context.coordinator.needsFullRestyle = true
             context.coordinator.refresh()
         }
         if let offset = cursorOffset,
@@ -454,28 +456,134 @@ public struct MarkdownEditorView: NSViewRepresentable {
             }
         }
 
-        /// Inline styling + caret-aware marker hiding (Live Preview).
+        /// The text as of the last restyle, and the caret's paragraph then: what an
+        /// edit or a caret move is measured against, to restyle only what it touched.
+        private var styledText: NSString?
+        private var styledCaretParagraph: NSRange?
+        /// Restyle everything next time (first load, font size, text replaced).
+        var needsFullRestyle = true
+
+        /// Inline styling + caret-aware marker hiding (Live Preview) — for the
+        /// paragraphs an edit or caret move touched, or the whole note when the
+        /// change can reach past them (see `dirtyParagraphs`). Restyling every
+        /// paragraph on every keystroke made typing in a long note slow: 135ms a key
+        /// at 4,000 lines in a release build, nearly all of it re-applying and
+        /// re-comparing attributes nothing had changed.
         func restyle() {
             guard let textView, let storage = textView.textStorage else { return }
+            let text = NSString(string: storage.string)
             let regions = CodeBlockParser.regions(in: storage.string)
             codeRegions = CodeBlockParser.codeRanges(in: storage.string)   // unclosed fences too
             let spans = InlineTokenizer.spans(in: storage.string)
             let sel = textView.selectedRange()
             let selection = sel.location..<(sel.location + sel.length)
             let deco = Decorator.decorations(spans: spans, selection: selection)
-            // Style a copy and commit only what changed (see LivePreviewStyler.commit):
-            // rewriting unchanged ranges throws away their layout, and the viewport
-            // jumps as TextKit 2 falls back to estimated heights.
-            let styled = NSTextStorage(attributedString: storage)
-            LivePreviewStyler.apply(deco, to: styled)
-            LivePreviewStyler.highlightCode(regions, in: styled)
-            applyMarkers(spans: spans, sel: sel, storage: styled)
-            reapplyReservations(in: styled, caret: selection)
-            LivePreviewStyler.commit(styled, to: storage)
+            let caretParagraph = text.paragraphRange(for: sel)
+            let everything = NSRange(location: 0, length: text.length)
+            let scopes = needsFullRestyle ? [everything]
+                : dirtyParagraphs(in: text, caret: caretParagraph, regions: regions) ?? [everything]
+            needsFullRestyle = false
+            for scope in scopes where scope.length > 0 {
+                restyle(scope, of: storage, text: text, deco: deco, regions: regions,
+                        spans: spans, sel: sel, caret: selection)
+            }
+            markerLines = markerPlacements(spans: spans, sel: sel, text: text)
+            styledText = text
+            styledCaretParagraph = caretParagraph
             // The next line typed is body text until restyled: give it the body
             // metrics now (NSTextView otherwise carries whatever it picked up, e.g.
             // a rule's reserved height or no paragraph style at all).
             textView.typingAttributes = LivePreviewStyler.typingAttributes
+        }
+
+        /// Style one paragraph-aligned stretch on a copy and commit what changed
+        /// (LivePreviewStyler.commit): rewriting unchanged ranges throws away their
+        /// layout, and the viewport jumps as TextKit 2 falls back to estimated heights.
+        private func restyle(_ scope: NSRange, of storage: NSTextStorage, text: NSString, deco: DecorationSet,
+                             regions: [CodeBlockRegion], spans: [MarkSpan], sel: NSRange, caret: Range<Int>) {
+            let range = scope.location..<NSMaxRange(scope)
+            let local = NSTextStorage(attributedString: storage.attributedSubstring(from: scope))
+            LivePreviewStyler.apply(deco.clipped(to: range), to: local)
+            let inside = regions.filter { $0.full.lowerBound >= range.lowerBound && $0.full.upperBound <= range.upperBound }
+                .map { r in CodeBlockRegion(language: r.language,
+                                            body: (r.body.lowerBound - scope.location)..<(r.body.upperBound - scope.location),
+                                            full: (r.full.lowerBound - scope.location)..<(r.full.upperBound - scope.location)) }
+            LivePreviewStyler.highlightCode(inside, in: local)
+            hideMarkers(spans: spans, sel: sel, text: text, in: local, offset: scope.location)
+            reapplyReservations(in: local, text: text, caret: caret, offset: scope.location)
+            LivePreviewStyler.commit(local, to: storage, at: scope.location)
+        }
+
+        /// Paragraph-aligned ranges of the current text that an edit or caret move
+        /// since the last restyle touched: the changed paragraphs and the caret's
+        /// old and new paragraphs (markers only show on the caret's line), widened
+        /// to whole code blocks (highlighting runs over a block). nil when the change
+        /// can restyle lines beyond those — a fence, a `---` line or a `>` line
+        /// opens or closes a block that runs on — so the whole note is restyled.
+        private func dirtyParagraphs(in text: NSString, caret: NSRange, regions: [CodeBlockRegion]) -> [NSRange]? {
+            guard let old = styledText, let oldCaret = styledCaretParagraph else { return nil }
+            let (oldChanged, newChanged) = Self.changedRanges(old, text)
+            let edited = oldChanged.length > 0 || newChanged.length > 0
+            var ranges = [caret]
+            if edited {
+                let oldParas = old.paragraphRange(for: oldChanged)
+                let newParas = text.paragraphRange(for: newChanged)
+                if Self.isStructural(old.substring(with: oldParas)) || Self.isStructural(text.substring(with: newParas)) {
+                    return nil
+                }
+                ranges.append(newParas)
+            }
+            // The caret's old paragraph, carried through the edit (one overlapping
+            // the edit is already inside the changed paragraphs).
+            if NSMaxRange(oldCaret) <= oldChanged.location || !edited {
+                ranges.append(oldCaret)
+            } else if oldCaret.location >= NSMaxRange(oldChanged) {
+                ranges.append(NSRange(location: oldCaret.location + text.length - old.length, length: oldCaret.length))
+            }
+            let widened = ranges.compactMap { r -> NSRange? in
+                guard NSMaxRange(r) <= text.length else { return nil }
+                var lo = r.location, hi = NSMaxRange(r)
+                for region in regions where region.full.lowerBound <= hi && lo <= region.full.upperBound {
+                    lo = min(lo, region.full.lowerBound); hi = max(hi, region.full.upperBound)
+                }
+                return text.paragraphRange(for: NSRange(location: lo, length: hi - lo))
+            }.sorted { $0.location < $1.location }
+            var merged: [NSRange] = []
+            for r in widened {
+                if let last = merged.last, r.location <= NSMaxRange(last) {
+                    merged[merged.count - 1] = NSUnionRange(last, r)
+                } else {
+                    merged.append(r)
+                }
+            }
+            return merged
+        }
+
+        /// Where two texts differ: the common prefix and suffix trimmed off, as a
+        /// range in each.
+        static func changedRanges(_ old: NSString, _ new: NSString) -> (old: NSRange, new: NSRange) {
+            let oldLength = old.length, newLength = new.length
+            var a = [unichar](repeating: 0, count: oldLength)
+            var b = [unichar](repeating: 0, count: newLength)
+            old.getCharacters(&a, range: NSRange(location: 0, length: oldLength))
+            new.getCharacters(&b, range: NSRange(location: 0, length: newLength))
+            let shorter = min(oldLength, newLength)
+            var prefix = 0
+            while prefix < shorter && a[prefix] == b[prefix] { prefix += 1 }
+            var suffix = 0
+            while suffix < shorter - prefix && a[oldLength - 1 - suffix] == b[newLength - 1 - suffix] { suffix += 1 }
+            return (NSRange(location: prefix, length: oldLength - suffix - prefix),
+                    NSRange(location: prefix, length: newLength - suffix - prefix))
+        }
+
+        /// Lines whose change can restyle lines after them: fences (code runs on),
+        /// `---` (frontmatter, or a rule), `>` (quotes and callouts run on).
+        static func isStructural(_ lines: String) -> Bool {
+            (lines as NSString).components(separatedBy: "\n").contains { raw in
+                let line = raw.hasSuffix("\r") ? String(raw.dropLast()) : raw
+                return Fence.opening(line) != nil || line.trimmingCharacters(in: .whitespaces) == "---"
+                    || line.hasPrefix(">")
+            }
         }
 
         /// Heights the widget pass is holding open, so a restyle can put them back.
@@ -491,69 +599,84 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// widget pass caught up.
         private var reservations: [(region: Range<Int>, height: CGFloat, source: String)] = []
 
-        private func reapplyReservations(in storage: NSTextStorage, caret: Range<Int>) {
+        /// Put back the reservations inside `storage`, a stretch of `text` starting
+        /// at `offset`.
+        private func reapplyReservations(in storage: NSTextStorage, text: NSString, caret: Range<Int>, offset: Int) {
             guard !reservations.isEmpty else { return }
-            let ns = storage.string as NSString
             for r in reservations {
                 // A block the caret is inside shows its source instead of its widget.
-                guard !intersects(r.region, caret) else { continue }
+                guard !intersects(r.region, caret),
+                      r.region.lowerBound >= offset, r.region.upperBound <= offset + storage.length else { continue }
                 let length = r.region.upperBound - r.region.lowerBound
-                guard r.region.lowerBound >= 0, r.region.lowerBound + length <= ns.length,
-                      ns.substring(with: NSRange(location: r.region.lowerBound, length: length)) == r.source
+                guard r.region.lowerBound + length <= text.length,
+                      text.substring(with: NSRange(location: r.region.lowerBound, length: length)) == r.source
                 else { continue }   // edited since: the widget pass re-measures it
-                reserve(region: r.region, height: r.height, in: storage)
+                reserve(region: (r.region.lowerBound - offset)..<(r.region.upperBound - offset),
+                        height: r.height, in: storage)
             }
         }
 
         /// Hide list/task marker glyphs (keeping width so clicks/toggles still map)
-        /// and record which lines should draw a bullet/checkbox. Caret-aware: the
-        /// line being edited shows its raw `- [ ]` text.
-        private func applyMarkers(spans: [MarkSpan], sel: NSRange, storage: NSTextStorage) {
-            let ns = storage.string as NSString
-            let caretLine = ns.paragraphRange(for: sel)
-            var marks: [Int: MarkerPlacement] = [:]
-            func onCaret(_ line: Range<Int>) -> Bool {
-                let r = NSRange(location: line.lowerBound, length: line.upperBound - line.lowerBound)
-                return NSLocationInRange(line.lowerBound, caretLine) || NSIntersectionRange(r, caretLine).length > 0
-            }
-            func firstNonSpace(_ from: Int, _ upTo: Int) -> Int {
-                var i = from
-                while i < upTo, ns.character(at: i) == 0x20 || ns.character(at: i) == 0x09 { i += 1 }
-                return i
-            }
+        /// inside one restyled stretch; `markerPlacements` records where the
+        /// bullets/checkboxes are drawn. Caret-aware: the line being edited shows
+        /// its raw `- [ ]` text.
+        private func hideMarkers(spans: [MarkSpan], sel: NSRange, text: NSString, in storage: NSTextStorage, offset: Int) {
+            let caretLine = text.paragraphRange(for: sel)
+            let window = offset..<(offset + storage.length)
+            // Writes land in `storage` (a stretch of `text` starting at `offset`).
             func collapse(_ loc: Int, _ len: Int) {
-                guard len > 0, loc >= 0, loc + len <= ns.length else { return }
+                guard len > 0, loc >= window.lowerBound, loc + len <= window.upperBound else { return }
                 storage.addAttributes([.font: NSFont.systemFont(ofSize: 0.01), .foregroundColor: NSColor.clear],
-                                      range: NSRange(location: loc, length: len))
+                                      range: NSRange(location: loc - offset, length: len))
             }
             func clearGlyph(_ loc: Int, _ len: Int) {
-                guard len > 0, loc >= 0, loc + len <= ns.length else { return }
-                storage.addAttribute(.foregroundColor, value: NSColor.clear, range: NSRange(location: loc, length: len))
+                guard len > 0, loc >= window.lowerBound, loc + len <= window.upperBound else { return }
+                storage.addAttribute(.foregroundColor, value: NSColor.clear, range: NSRange(location: loc - offset, length: len))
             }
-            for span in spans {
+            for span in spans where span.line.lowerBound >= window.lowerBound && span.line.lowerBound < window.upperBound {
+                guard !Self.onCaret(span.line, caretLine) else { continue }
+                let m = Self.firstNonSpace(text, span.line.lowerBound, span.line.upperBound)
                 switch span.style {
                 case .listItem:
-                    guard !onCaret(span.line) else { continue }
-                    let m = firstNonSpace(span.line.lowerBound, span.line.upperBound)
                     clearGlyph(m, 2)              // `- ` invisible (width kept); • drawn over it
-                    marks[span.line.lowerBound] = MarkerPlacement(kind: .bullet,
-                                                                  charIndex: m - span.line.lowerBound)
-                case .task(let done):
-                    guard !onCaret(span.line) else { continue }
-                    let m = firstNonSpace(span.line.lowerBound, span.line.upperBound)
+                case .task:
                     collapse(m, 2)               // `- `
                     // Keep the width of the whole `[x]`, not just `[x`: the drawn box
                     // is narrower than those three glyphs, so the leftover — plus the
                     // trailing space — becomes the gap between the box and the label.
                     // Collapsing `]` (as before) left the text almost touching it.
                     clearGlyph(m + 2, 3)         // `[x]` kept width = click target; box drawn over
-                    marks[span.line.lowerBound] = MarkerPlacement(kind: .task(done),
-                                                                  charIndex: m - span.line.lowerBound)
                 default:
                     break
                 }
             }
-            markerLines = marks
+        }
+
+        /// Where to draw a bullet or checkbox, for the whole note (lines off the
+        /// caret; the caret's line shows its raw `- [ ]`).
+        private func markerPlacements(spans: [MarkSpan], sel: NSRange, text: NSString) -> [Int: MarkerPlacement] {
+            let caretLine = text.paragraphRange(for: sel)
+            var marks: [Int: MarkerPlacement] = [:]
+            for span in spans where !Self.onCaret(span.line, caretLine) {
+                let m = Self.firstNonSpace(text, span.line.lowerBound, span.line.upperBound)
+                switch span.style {
+                case .listItem: marks[span.line.lowerBound] = MarkerPlacement(kind: .bullet, charIndex: m - span.line.lowerBound)
+                case .task(let done): marks[span.line.lowerBound] = MarkerPlacement(kind: .task(done), charIndex: m - span.line.lowerBound)
+                default: break
+                }
+            }
+            return marks
+        }
+
+        private static func onCaret(_ line: Range<Int>, _ caretLine: NSRange) -> Bool {
+            let r = NSRange(location: line.lowerBound, length: line.upperBound - line.lowerBound)
+            return NSLocationInRange(line.lowerBound, caretLine) || NSIntersectionRange(r, caretLine).length > 0
+        }
+
+        private static func firstNonSpace(_ text: NSString, _ from: Int, _ upTo: Int) -> Int {
+            var i = from
+            while i < upTo, text.character(at: i) == 0x20 || text.character(at: i) == 0x09 { i += 1 }
+            return i
         }
 
         /// Toggle a task checkbox if the click landed on one. Returns true if handled.
@@ -645,11 +768,19 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 placements.append((spec.region, host, h))
             }
 
+            let before = reservations
             reservations = placements.compactMap { pl in
                 let length = pl.region.upperBound - pl.region.lowerBound
                 guard pl.region.lowerBound >= 0, pl.region.lowerBound + length <= nstext.length else { return nil }
                 let source = nstext.substring(with: NSRange(location: pl.region.lowerBound, length: length))
                 return (region: pl.region, height: pl.h, source: source)
+            }
+            // A widget that's gone (a rule edited away, a fence now running over it)
+            // leaves its reserved, invisible styling on the text, and a restyle
+            // limited to what was edited wouldn't reach it: restyle everything once.
+            if before.contains(where: { old in !reservations.contains { $0.region == old.region && $0.source == old.source } }) {
+                needsFullRestyle = true
+                restyle()
             }
 
             // Phase 2: re-layout (heights changed), then position each overlay. The

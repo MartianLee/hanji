@@ -91,6 +91,8 @@ runChecks([
     ("IMEComposition", imeCompositionChecks),
     ("EditorReveal", editorRevealChecks),
     ("EditorBottomTyping", editorBottomTypingChecks),
+    ("IncrementalRestyle", incrementalRestyleChecks),
+    ("KeystrokeCost", keystrokeCostChecks),
     ("StyleCommit", styleCommitChecks),
     ("CommandRegistry2", commandRegistryChecks),
     ("PeriodicNotesPlugin", periodicNotesPluginChecks),

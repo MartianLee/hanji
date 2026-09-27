@@ -207,3 +207,119 @@ func editorBottomTypingChecks() {
     expect((returnSteps.max() ?? 0) - (returnSteps.min() ?? 0) <= 1,
            "every Return scrolls by the same line height (steps: \(returnSteps.map { Int($0) }))")
 }
+
+/// Restyling only what changed must give exactly what a full restyle gives. After
+/// each edit or caret move, the live editor's attributes are compared with a
+/// fresh editor that styled the same text, with the same caret, from scratch.
+func incrementalRestyleChecks() {
+    let doc = """
+    ---
+    title: Note
+    ---
+    # Heading
+    Some **bold** and `code` and a [[link]] and #tag.
+    - item one
+    - [ ] task
+    1. first
+    > quote
+    > [!note] callout
+    > inside
+    ```swift
+    let x = 1
+    ```
+    ---
+    Last paragraph.
+    """
+    guard let live = EditorHarness(doc) else { expect(false, "editor found"); return }
+    defer { live.close() }
+    func runs(_ tv: NSTextView) -> [String] {
+        guard let s = tv.textStorage else { return [] }
+        var out: [String] = []
+        s.enumerateAttributes(in: NSRange(location: 0, length: s.length)) { attrs, r, _ in
+            let keys = attrs.keys.map(\.rawValue).sorted()
+            out.append("\(r.location)+\(r.length) " + keys.map { k in "\(k)=\(String(describing: attrs[NSAttributedString.Key(k)]!))" }.joined(separator: ";"))
+        }
+        return out
+    }
+    func compare(_ step: String) {
+        live.pump(0.15)
+        guard let fresh = EditorHarness(live.text) else { expect(false, "fresh editor"); return }
+        defer { fresh.close() }
+        fresh.textView.setSelectedRange(live.textView.selectedRange())
+        fresh.pump(0.2)
+        fresh.textView.setSelectedRange(live.textView.selectedRange())   // refresh after the first layout
+        fresh.pump(0.2)
+        let a = runs(live.textView), b = runs(fresh.textView)
+        let firstDiff = zip(a, b).first { $0 != $1 }
+        expect(a == b, "after \(step): same attributes as a full restyle (first difference: \(firstDiff.map { "\($0.0) vs \($0.1)" } ?? "run count \(a.count) vs \(b.count)"))")
+    }
+    let ns = { live.textView.string as NSString }
+    func caretAfter(_ s: String) { let r = ns().range(of: s); live.caret(at: r.location + r.length) }
+
+    caretAfter("Some **bold**"); live.type(" more"); compare("typing in a paragraph")
+    caretAfter("- item one"); live.type("\n"); compare("Return in a list")
+    live.type("second"); compare("typing a list item")
+    caretAfter("# Heading"); compare("caret onto a heading")
+    caretAfter("- [ ] task"); compare("caret onto a task")
+    caretAfter("let x = 1"); live.type(" + 2"); compare("typing in code")
+    caretAfter("Last paragraph."); live.key("\u{7f}", 51); live.pump(); compare("delete")
+    caretAfter("1. first"); live.type("\n```"); compare("typing a fence")
+    live.key("\u{7f}", 51); live.key("\u{7f}", 51); live.key("\u{7f}", 51); live.pump(); compare("deleting the fence")
+    caretAfter("> inside"); live.type(" more"); compare("typing in a callout")
+    caretAfter("title: Note"); live.type("s"); compare("typing in frontmatter")
+    // A rule that stops being a rule (an opened fence now runs over it) must not
+    // keep the rule's reserved, invisible styling.
+    let rule = ns().range(of: "\n---\nLast").location + 1
+    live.caret(at: rule)
+    live.textView.insertText("```\n", replacementRange: live.textView.selectedRange())
+    compare("a fence swallowing the rule below")
+    live.textView.insertText("\n## Pasted\n- a\n- b\n**x**", replacementRange: live.textView.selectedRange())
+    compare("pasting several lines")
+    live.textView.undoManager?.undo(); compare("undo")
+
+    // Random edits and caret moves, compared after each one.
+    var seed: UInt64 = 0x1234ABCD   // this seed once caught a stale widget reservation
+    func next(_ n: Int) -> Int { seed = seed &* 6364136223846793005 &+ 1442695040888963407; return Int((seed >> 33) % UInt64(n)) }
+    let pieces = ["x", "**b**", "`c`", "[[L]]", "- ", "- [ ] ", "# ", "#tag ", "\n", "\n\n", "> ", "```", "---", "1. ", " "]
+    for step in 0..<30 {
+        let length = (live.textView.string as NSString).length
+        switch next(4) {
+        case 0:
+            live.caret(at: next(length + 1))
+            compare("random step \(step): caret move")
+        case 1:
+            let at = next(length + 1), cut = min(next(4), length - at)
+            live.textView.setSelectedRange(NSRange(location: at, length: max(0, cut)))
+            live.textView.insertText("", replacementRange: live.textView.selectedRange())
+            compare("random step \(step): delete")
+        default:
+            live.caret(at: next(length + 1))
+            live.textView.insertText(pieces[next(pieces.count)], replacementRange: live.textView.selectedRange())
+            compare("random step \(step): insert")
+        }
+    }
+}
+
+/// A keystroke in a long note restyles the paragraphs it touched, not the whole
+/// note. (Parsing still reads the whole note — cheap next to restyling, which
+/// was ~90% of the cost — so the time grows a little with length, not tenfold.)
+func keystrokeCostChecks() {
+    func median(lines n: Int) -> Double {
+        var doc: [String] = []
+        for i in 0..<n { doc += ["## Section \(i)", "Paragraph \(i) with **bold**, `code` and [[link]] #tag.", "- item", ""] }
+        guard let h = EditorHarness(doc.joined(separator: "\n")) else { return .infinity }
+        defer { h.close() }
+        let mid = (h.textView.string as NSString).length / 2
+        h.caret(at: mid); h.pump(0.3)
+        var times: [Double] = []
+        for ch in "typing" {
+            let t0 = Date(); h.key(String(ch), 0); times.append(Date().timeIntervalSince(t0))
+            h.pump(0.02)
+        }
+        return times.sorted()[times.count / 2]
+    }
+    let small = median(lines: 100), large = median(lines: 1000)
+    expect(large < 0.06, "a keystroke in a 4,000-line note takes under 60ms (debug build; took \(Int(large * 1000))ms)")
+    expect(large < small * 8 + 0.01,
+           "and far from ten times a short note's (\(Int(small * 1000))ms for 400 lines vs \(Int(large * 1000))ms for 4,000)")
+}

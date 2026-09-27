@@ -42,13 +42,13 @@ public enum LivePreviewStyler {
     /// exactly that, so AppKit scrolled to the caret's *estimated* position and the
     /// real layout then landed it thousands of points off screen. Style into a
     /// copy, then commit the difference.
-    public static func commit(_ styled: NSAttributedString, to storage: NSTextStorage) {
-        let full = NSRange(location: 0, length: storage.length)
-        guard styled.length == storage.length else {
-            storage.setAttributedString(styled); return
-        }
+    /// `styled` may be one stretch of the document starting at `offset` (a
+    /// paragraph-aligned slice restyled on its own); only that stretch is compared.
+    public static func commit(_ styled: NSAttributedString, to storage: NSTextStorage, at offset: Int = 0) {
+        guard offset >= 0, offset + styled.length <= storage.length else { return }
         var changes: [(range: NSRange, attrs: [NSAttributedString.Key: Any])] = []
-        styled.enumerateAttributes(in: full, options: []) { attrs, range, _ in
+        styled.enumerateAttributes(in: NSRange(location: 0, length: styled.length), options: []) { attrs, local, _ in
+            let range = NSRange(location: local.location + offset, length: local.length)
             var same = NSRange()
             let current = storage.attributes(at: range.location, longestEffectiveRange: &same, in: range)
             if same == range && NSDictionary(dictionary: current).isEqual(to: attrs) { return }

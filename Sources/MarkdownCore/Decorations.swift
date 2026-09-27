@@ -14,6 +14,19 @@ public struct DecorationSet: Equatable {
     }
 }
 
+extension DecorationSet {
+    /// The decorations inside `range`, cut to it and moved to start at 0 — for
+    /// restyling one stretch of a document on its own.
+    public func clipped(to range: Range<Int>) -> DecorationSet {
+        func clip(_ r: Range<Int>) -> Range<Int>? {
+            let lo = max(r.lowerBound, range.lowerBound), hi = min(r.upperBound, range.upperBound)
+            return lo < hi ? (lo - range.lowerBound)..<(hi - range.lowerBound) : nil
+        }
+        return DecorationSet(styles: styles.compactMap { run in clip(run.range).map { StyleRun(range: $0, style: run.style) } },
+                             hidden: hidden.compactMap(clip))
+    }
+}
+
 public enum Decorator {
     /// Pure: spans + caret/selection (UTF-16 offsets) -> style runs + marker ranges to hide.
     /// A span's markers are hidden unless the selection intersects the span's line.
