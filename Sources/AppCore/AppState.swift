@@ -74,6 +74,8 @@ public final class AppState: ObservableObject {
     /// writes. Until it lands the note is only provisionally clean, so anything
     /// else on disk is someone else's change (a conflict), not a reason to reload.
     private var autosavesInFlight: [URL: [String]] = [:]
+    /// Whether an autosave is still on its way to disk.
+    public var hasSavesInFlight: Bool { !autosavesInFlight.isEmpty }
     /// Autosaves that failed on the save queue, not yet applied on main.
     /// Only touched on `saveQueue`.
     private var autosaveFailures: [(file: MarkdownFile, text: String, previous: String, error: Error)] = []

@@ -268,6 +268,11 @@ final class RandomModel {
     // MARK: invariants
     func check(afterStep i: Int, discard: Bool) {
         guard failure == nil else { return }
+        // Judge a quiescent state: an autosave still in flight is provisionally
+        // clean with the old text on disk, which is fine mid-save (and on a slow
+        // CI runner it's still in flight when this runs).
+        let deadline = Date().addingTimeInterval(2)
+        while s.hasSavesInFlight && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.005)) }
         if fastWatcher { s.reloadTree(); s.notice = nil }
         let found = foundTokens()
         let lost = liveTokens.subtracting(found)
