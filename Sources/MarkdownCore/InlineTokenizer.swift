@@ -48,6 +48,15 @@ public enum InlineTokenizer {
             lineStart = lineEnd + 1
             lineIndex += 1
         }
+        // Tags come from the shared grammar (which already skips code), so the
+        // editor and the index agree on what a tag is.
+        let newlineUnit = newline
+        for tag in Tags.occurrences(in: text) {
+            var start = tag.range.lowerBound, end = tag.range.upperBound
+            while start > 0 && ns.character(at: start - 1) != newlineUnit { start -= 1 }
+            while end < length && ns.character(at: end) != newlineUnit { end += 1 }
+            result.append(MarkSpan(style: .tag, content: tag.range, markers: [], line: start..<end))
+        }
         return result
     }
 

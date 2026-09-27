@@ -243,6 +243,8 @@ public struct MarkdownEditorView: NSViewRepresentable {
     public var fontSize: CGFloat
     /// Called when a wiki/markdown link is clicked, with the raw link target.
     public var onOpenLink: ((String) -> Void)?
+    /// Called when a `#tag` is clicked, with the tag's name (no `#`).
+    public var onOpenTag: ((String) -> Void)?
     /// Called when the editor text view becomes first responder (user clicks or tabs into it).
     public var onFocus: (() -> Void)?
     /// False when `text` is a snapshot rather than the live buffer (an inactive
@@ -252,7 +254,9 @@ public struct MarkdownEditorView: NSViewRepresentable {
     public init(text: Binding<String>, renderers: RendererRegistry? = nil, vaultRoot: URL? = nil,
                 cursorOffset: Binding<Int?> = .constant(nil), fontSize: CGFloat = 15,
                 onOpenLink: ((String) -> Void)? = nil,
-                onFocus: (() -> Void)? = nil, isLive: Bool = true) {
+                onFocus: (() -> Void)? = nil, isLive: Bool = true,
+                onOpenTag: ((String) -> Void)? = nil) {
+        self.onOpenTag = onOpenTag
         self.isLive = isLive
         self._text = text
         self.renderers = renderers
@@ -295,6 +299,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         context.coordinator.renderers = renderers
         context.coordinator.vaultRoot = vaultRoot
         context.coordinator.onOpenLink = onOpenLink
+        context.coordinator.onOpenTag = onOpenTag
         context.coordinator.onFocus = onFocus
         textView.textLayoutManager?.delegate = context.coordinator
         textView.onClick = { [weak coordinator = context.coordinator] idx in
@@ -338,6 +343,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         var renderers: RendererRegistry?
         var vaultRoot: URL?
         var onOpenLink: ((String) -> Void)?
+        var onOpenTag: ((String) -> Void)?
         var onFocus: (() -> Void)?
         private var overlays: [String: NSHostingView<AnyView>] = [:]
         /// Full UTF-16 ranges (incl. fences) of fenced code blocks, kept fresh by
@@ -388,6 +394,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
             renderers = view.renderers
             vaultRoot = view.vaultRoot
             onOpenLink = view.onOpenLink
+            onOpenTag = view.onOpenTag
             onFocus = view.onFocus
         }
 
@@ -538,6 +545,12 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// the overlay). Returns true when handled (skip the default placement).
         public func handleClick(at index: Int) -> Bool {
             if toggleCheckbox(at: index) { return true }
+            // Clicking a #tag searches for it.
+            if let onOpenTag, let text = textView?.string,
+               let tag = Tags.occurrences(in: text).first(where: { $0.range.contains(index) }) {
+                onOpenTag(tag.name)
+                return true
+            }
             // Clicking a wiki/markdown link follows it (Obsidian-style).
             if let onOpenLink, let text = textView?.string,
                let ref = LinkParser.links(in: text).first(where: { $0.range.lowerBound <= index && index < $0.range.upperBound }) {

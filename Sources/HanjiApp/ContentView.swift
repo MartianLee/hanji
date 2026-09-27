@@ -463,7 +463,8 @@ struct ContentView: View {
                     cursorOffset: $appState.pendingCursorOffset, fontSize: CGFloat(appState.fontSize),
                     onOpenLink: { appState.openLink($0) },
                     onFocus: { appState.focusPane(pane.id) },
-                    isLive: isActivePane)
+                    isLive: isActivePane,
+                    onOpenTag: { uiState.search("#" + $0) })
                 .opacity(isActivePane ? 1 : 0.92)
             } else {
                 Text("Open a vault, then select a note")

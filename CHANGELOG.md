@@ -15,6 +15,9 @@ First public release.
   code, links & wikilinks, blockquotes, callouts, frontmatter, lists & tasks.
 - Rendered bullets (`•`) and clickable task checkboxes (☐ / ☑), centred on the
   text they label.
+- `#tags` are recognised on their own: drawn as pills, clickable to search for
+  the notes that carry them (a parent tag finds nested ones), and never taken
+  from code.
 - Numbered lists (`1. ` / `2) `); Return continues the list — same bullet and
   indent, numbers incrementing — and clears the marker on an empty item.
 - Fenced code blocks: full-width slab background + syntax highlighting

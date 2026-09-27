@@ -21,6 +21,13 @@ struct SearchPanelView: View {
     @State private var confirming = false
     @State private var lastResult: String?
 
+    /// A query someone asked for (a clicked `#tag`), taken once.
+    private func takeSearchRequest() {
+        guard let request = uiState.searchRequest else { return }
+        query = request
+        uiState.searchRequest = nil
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
@@ -108,6 +115,7 @@ struct SearchPanelView: View {
         }
         .onAppear {
             focused = true
+            takeSearchRequest()
             // Test/E2E hook: pre-fill a query for screenshot runs.
             if query.isEmpty, let q = ProcessInfo.processInfo.environment["HANJI_SEARCH"] {
                 query = q
@@ -120,6 +128,7 @@ struct SearchPanelView: View {
         }
         .onChange(of: appState.searchIndexUpdatedAt) { _, _ in runSearch() }
         .onChange(of: uiState.searchFocusToken) { _, _ in focused = true }
+        .onChange(of: uiState.searchRequest) { _, _ in takeSearchRequest() }
         .alert("Replace in vault?", isPresented: $confirming) {
             Button("Cancel", role: .cancel) { }
             Button("Replace All", role: .destructive) { applyReplace() }

@@ -139,6 +139,10 @@ public enum LivePreviewStyler {
         case .link:
             return [.foregroundColor: NSColor.linkColor,
                     .underlineStyle: NSUnderlineStyle.single.rawValue]
+        case .tag:
+            // A pill: accent text on a faint accent wash.
+            return [.foregroundColor: NSColor.controlAccentColor,
+                    .backgroundColor: NSColor.controlAccentColor.withAlphaComponent(0.14)]
         case .blockquote:
             let p = bodyParagraph()
             p.firstLineHeadIndent = 16

@@ -13,6 +13,7 @@ public enum SpanStyle: Equatable {
     case task(Bool)   // done?
     case codeBlock
     case callout
+    case tag          // `#tag` (see Tags.occurrences); no markers to hide
 }
 
 /// A recognized markdown construct, in UTF-16 code-unit offsets (NSRange-compatible).

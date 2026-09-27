@@ -190,7 +190,26 @@ public final class SearchIndex {
         guard !q.isEmpty else { return [] }
         struct Stored { let path: String; let title: String; let body: String; let score: Double }
         let stored: [Stored]
-        if q.count >= 3 {
+        if let tag = Self.singleTag(q) {
+            // Exactly one `#tag`: the notes that carry it (or a tag nested under
+            // it), from the tag table — not every note whose text has the letters.
+            let t = tag.lowercased()
+            let nested = t.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "%", with: "\\%")
+                .replacingOccurrences(of: "_", with: "\\_") + "/%"
+            stored = try dbQueue.read { db in
+                try Row.fetchAll(db, sql: """
+                    SELECT n.path AS path, n.title AS title, f.body AS body, 0.0 AS score
+                    FROM tag tg
+                    JOIN note n ON n.path = tg.path
+                    JOIN note_fts f ON f.path = tg.path
+                    WHERE tg.tag = ? OR tg.tag LIKE ? ESCAPE '\\'
+                    GROUP BY n.path
+                    ORDER BY n.title COLLATE NOCASE LIMIT ?
+                    """, arguments: [t, nested, limit])
+                .map { Stored(path: $0["path"], title: $0["title"], body: $0["body"], score: $0["score"]) }
+            }
+        } else if q.count >= 3 {
             let match = "\"" + q.replacingOccurrences(of: "\"", with: "\"\"") + "\""
             stored = try dbQueue.read { db in
                 try Row.fetchAll(db, sql: """
@@ -220,6 +239,13 @@ public final class SearchIndex {
         }
         return stored.map { SearchHit.make(path: $0.path, title: $0.title, body: $0.body,
                                            query: q, score: $0.score) }
+    }
+
+    /// The tag name when `query` is exactly one `#tag` and nothing else.
+    static func singleTag(_ query: String) -> String? {
+        let tags = Tags.occurrences(in: query)
+        guard tags.count == 1, tags[0].range == 0..<(query as NSString).length else { return nil }
+        return tags[0].name
     }
 
     // MARK: - Backlinks

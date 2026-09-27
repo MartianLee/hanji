@@ -29,6 +29,8 @@ to set everything up again.
   wikilinks, blockquotes, callouts, frontmatter — markers reveal on the line
   you're editing.
 - Rendered bullets (`•`) and clickable task checkboxes (☐ / ☑).
+- **`#tags`** drawn as pills (`#일기`, nested `#project/hanji`); click one to
+  list the notes that carry it. Tags in code aren't tags.
 - Bullet, task, and **numbered** lists continue on Return (numbers increment);
   Return on an empty item leaves the list, and Tab / ⇧Tab nests and un-nests it.
 - Fenced code blocks render as a full-width slab with **syntax highlighting**
@@ -133,8 +135,8 @@ v0.1 — early, and under active development.
   — please report anything off.
 - Performance/correctness debt being tracked: async search for very large
   vaults; a `field(path)` / `tag(path)` index for big query result sets; a one-time
-  full-vault read on vault open for iCloud vaults; `Tags.extract` should skip
-  fenced code blocks. Contributions welcome — see CONTRIBUTING.
+  full-vault read on vault open for iCloud vaults. Contributions welcome — see
+  CONTRIBUTING.
 
 ## License
 
