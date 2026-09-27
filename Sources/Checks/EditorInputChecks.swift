@@ -12,6 +12,8 @@ final class EditorHarness {
 
     var lineHeight: CGFloat
     var maxLineWidth: CGFloat?
+    var textFont = ""
+    var codeFont = ""
 
     init?(_ initial: String, cursorOffset initialOffset: Int? = nil, lineHeight: CGFloat = 1.3,
           maxLineWidth: CGFloat? = nil, width: CGFloat = 800) {
@@ -62,7 +64,8 @@ final class EditorHarness {
         hosting?.rootView = MarkdownEditorView(text: Binding(get: { self.text }, set: { self.text = $0 }),
                                                cursorOffset: Binding(get: { self.cursorOffset },
                                                                      set: { self.cursorOffset = $0 }),
-                                               lineHeight: lineHeight, maxLineWidth: maxLineWidth)
+                                               lineHeight: lineHeight, maxLineWidth: maxLineWidth,
+                                               textFont: textFont, codeFont: codeFont)
         pump(0.4)
     }
 
@@ -392,4 +395,52 @@ func editorAppearanceChecks() {
     expect(abs(tv.textContainerOrigin.x - (tv.bounds.width - 700) / 2) <= 12, "and stays centred when the window resizes")
     wide.maxLineWidth = nil; wide.rebuild()
     expect(tv.textContainerOrigin.x < 40, "turned off, the text uses the full width again (\(Int(tv.textContainerOrigin.x))pt)")
+}
+
+/// Settings ▸ Appearance fonts: the text font reaches body, headings, emphasis
+/// and new lines; the code font reaches code blocks and inline code; a font
+/// that isn't installed falls back to the system's.
+func editorFontChecks() {
+    let note = "# Title\n\nBody **bold** *slant* `snippet`.\n\n```\nlet x = 1\n```\n"
+    guard let h = EditorHarness(note, cursorOffset: (note as NSString).length) else { expect(false, "editor found"); return }
+    defer { h.close() }
+    h.pump(0.3)
+    func font(_ needle: String) -> NSFont? {
+        let i = (h.textView.string as NSString).range(of: needle).location
+        guard i != NSNotFound else { return nil }
+        return h.textView.textStorage?.attribute(.font, at: i + 1, effectiveRange: nil) as? NSFont
+    }
+    func bold(_ f: NSFont?) -> Bool { f?.fontDescriptor.symbolicTraits.contains(.bold) ?? false }
+    func italic(_ f: NSFont?) -> Bool { f?.fontDescriptor.symbolicTraits.contains(.italic) ?? false }
+    let system = NSFont.systemFont(ofSize: 15).familyName
+    let systemMono = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular).familyName
+    expectEqual(font("Body")?.familyName, system, "body text is the system font by default")
+    expectEqual(font("let x")?.familyName, systemMono, "code is the system monospace by default")
+
+    h.textFont = "Georgia"; h.codeFont = "Menlo"; h.rebuild()
+    expectEqual(font("Body")?.familyName, "Georgia", "body text uses the chosen text font")
+    expectEqual(font("Title")?.familyName, "Georgia", "so do headings")
+    expect(bold(font("Title")), "headings stay bold")
+    expectEqual(font("bold")?.familyName, "Georgia", "bold text keeps the family")
+    expect(bold(font("bold")), "and is bold")
+    expectEqual(font("slant")?.familyName, "Georgia", "italic text keeps the family")
+    expect(italic(font("slant")), "and is italic")
+    expectEqual((h.textView.typingAttributes[.font] as? NSFont)?.familyName, "Georgia", "a new line is typed in it")
+    expectEqual(font("let x")?.familyName, "Menlo", "code blocks use the chosen code font")
+    expectEqual(font("snippet")?.familyName, "Menlo", "so does inline code")
+    expectEqual(font("Body")?.pointSize, 15, "the font size setting still applies")
+
+    h.textFont = EditorFonts.systemSerif; h.rebuild()
+    expect(font("Body")?.fontName.contains("NewYork") ?? false,
+           "the system serif is New York (\(font("Body")?.fontName ?? "nil"))")
+    expect(bold(font("Title")) && font("Title")?.familyName == font("Body")?.familyName, "with New York bold headings")
+
+    h.textFont = "No Such Font 12345"; h.codeFont = "No Such Mono 12345"; h.rebuild()
+    expectEqual(font("Body")?.familyName, system, "a missing text font falls back to the system's")
+    expectEqual(font("let x")?.familyName, systemMono, "a missing code font falls back to the system monospace")
+
+    expect(EditorFonts.textFamilies.contains("Georgia"), "installed families are offered for text")
+    expect(!EditorFonts.textFamilies.contains { $0.hasPrefix(".") }, "without the system's hidden ones")
+    expect(EditorFonts.codeFamilies.contains("Menlo"), "monospaced families are offered for code")
+    expect(!EditorFonts.codeFamilies.contains("Georgia"), "proportional ones aren't")
 }

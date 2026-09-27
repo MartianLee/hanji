@@ -272,6 +272,9 @@ public struct MarkdownEditorView: NSViewRepresentable {
     public var lineHeight: CGFloat
     /// Readable line length: the text column's width, or nil for the full width.
     public var maxLineWidth: CGFloat?
+    /// Text and code fonts, as `EditorFonts` choices ("" = the system's).
+    public var textFont: String
+    public var codeFont: String
     /// Called when a wiki/markdown link is clicked, with the raw link target.
     public var onOpenLink: ((String) -> Void)?
     /// Called when a `#tag` is clicked, with the tag's name (no `#`).
@@ -285,6 +288,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
     public init(text: Binding<String>, renderers: RendererRegistry? = nil, vaultRoot: URL? = nil,
                 cursorOffset: Binding<Int?> = .constant(nil), fontSize: CGFloat = 15,
                 lineHeight: CGFloat = 1.3, maxLineWidth: CGFloat? = nil,
+                textFont: String = "", codeFont: String = "",
                 onOpenLink: ((String) -> Void)? = nil,
                 onFocus: (() -> Void)? = nil, isLive: Bool = true,
                 onOpenTag: ((String) -> Void)? = nil) {
@@ -297,6 +301,8 @@ public struct MarkdownEditorView: NSViewRepresentable {
         self.fontSize = fontSize
         self.lineHeight = lineHeight
         self.maxLineWidth = maxLineWidth
+        self.textFont = textFont
+        self.codeFont = codeFont
         self.onOpenLink = onOpenLink
         self.onFocus = onFocus
     }
@@ -304,6 +310,8 @@ public struct MarkdownEditorView: NSViewRepresentable {
     public func makeNSView(context: Context) -> NSScrollView {
         LivePreviewStyler.baseFontSize = fontSize
         LivePreviewStyler.lineHeightMultiple = lineHeight
+        LivePreviewStyler.textFont = textFont
+        LivePreviewStyler.codeFont = codeFont
         let textView = ClickableTextView(usingTextLayoutManager: true)
         textView.delegate = context.coordinator
         textView.isRichText = false
@@ -359,9 +367,12 @@ public struct MarkdownEditorView: NSViewRepresentable {
     public func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = nsView.documentView as? NSTextView else { return }
         context.coordinator.sync(with: self)
-        if LivePreviewStyler.baseFontSize != fontSize || LivePreviewStyler.lineHeightMultiple != lineHeight {
+        if LivePreviewStyler.baseFontSize != fontSize || LivePreviewStyler.lineHeightMultiple != lineHeight
+            || LivePreviewStyler.textFont != textFont || LivePreviewStyler.codeFont != codeFont {
             LivePreviewStyler.baseFontSize = fontSize
             LivePreviewStyler.lineHeightMultiple = lineHeight
+            LivePreviewStyler.textFont = textFont
+            LivePreviewStyler.codeFont = codeFont
             textView.font = LivePreviewStyler.baseFont
             context.coordinator.needsFullRestyle = true
             context.coordinator.refresh()

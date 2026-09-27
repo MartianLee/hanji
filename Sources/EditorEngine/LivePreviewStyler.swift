@@ -7,7 +7,11 @@ public enum LivePreviewStyler {
     /// User-adjustable editor font size (Settings ▸ Appearance ▸ Font size,
     /// Obsidian-style). Every text role scales from this.
     public static var baseFontSize: CGFloat = 15
-    public static var baseFont: NSFont { .systemFont(ofSize: baseFontSize) }
+    /// Text and code fonts (Settings ▸ Appearance), as `EditorFonts` choices.
+    public static var textFont = ""
+    public static var codeFont = ""
+    public static var baseFont: NSFont { EditorFonts.text(textFont, size: baseFontSize) }
+    static func codeFont(ofSize size: CGFloat) -> NSFont { EditorFonts.code(codeFont, size: size) }
 
     /// Hanging indent for an ordered item, measured rather than hard-coded so a
     /// wrapped line still lines up under the text at whatever font size the user
@@ -121,7 +125,7 @@ public enum LivePreviewStyler {
                 storage.addAttribute(.font, value: NSFontManager.shared.convert(current, toHaveTrait: .italicFontMask), range: sub)
             case .inlineCode:
                 let size = max(4, current.pointSize - 1)
-                storage.addAttributes([.font: NSFont.monospacedSystemFont(ofSize: size, weight: .regular),
+                storage.addAttributes([.font: codeFont(ofSize: size),
                                        .backgroundColor: NSColor.quaternaryLabelColor], range: sub)
             default:
                 break
@@ -139,14 +143,14 @@ public enum LivePreviewStyler {
             // Headings get breathing room above (more for higher levels).
             let p = bodyParagraph()
             p.paragraphSpacingBefore = [1: 16, 2: 12, 3: 10][level] ?? 8
-            return [.font: NSFont.boldSystemFont(ofSize: size),
+            return [.font: EditorFonts.boldText(textFont, size: size),
                     .paragraphStyle: p]
         case .bold:
             return [.font: NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)]
         case .italic:
             return [.font: NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)]
         case .inlineCode:
-            return [.font: NSFont.monospacedSystemFont(ofSize: baseFontSize - 1, weight: .regular),
+            return [.font: codeFont(ofSize: baseFontSize - 1),
                     .backgroundColor: NSColor.quaternaryLabelColor]
         case .link:
             return [.foregroundColor: NSColor.linkColor,
@@ -161,7 +165,7 @@ public enum LivePreviewStyler {
             p.headIndent = 16
             return [.foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: p]
         case .frontmatter:
-            return [.font: NSFont.monospacedSystemFont(ofSize: baseFontSize - 3, weight: .regular),
+            return [.font: codeFont(ofSize: baseFontSize - 3),
                     .foregroundColor: NSColor.tertiaryLabelColor]
         case .listItem:
             let p = bodyParagraph()
@@ -190,7 +194,7 @@ public enum LivePreviewStyler {
             // No head indent: code aligns with body text (an indent here read as
             // an unwanted leading space). Background comes from CodeBlockFragment
             // (full-width slab), not per-glyph backgroundColor.
-            return [.font: NSFont.monospacedSystemFont(ofSize: baseFontSize - 1, weight: .regular),
+            return [.font: codeFont(ofSize: baseFontSize - 1),
                     .paragraphStyle: p]
         case .callout:
             let p = bodyParagraph()

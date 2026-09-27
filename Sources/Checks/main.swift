@@ -94,6 +94,7 @@ runChecks([
     ("EditorBottomTyping", editorBottomTypingChecks),
     ("CodeSlabOnOpen", codeSlabOnOpenChecks),
     ("EditorAppearance", editorAppearanceChecks),
+    ("EditorFonts", editorFontChecks),
     ("IncrementalRestyle", incrementalRestyleChecks),
     ("KeystrokeCost", keystrokeCostChecks),
     ("StyleCommit", styleCommitChecks),

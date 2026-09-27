@@ -450,7 +450,8 @@ struct ContentView: View {
             TabBarView(pane: pane)
             if let tab = pane.tabs.first(where: { $0.id == pane.activeTabID }) {
                 let fileURL = isActivePane ? (appState.selectedFile?.url ?? tab.file.url) : tab.file.url
-                InlineTitleView(fileURL: fileURL, maxLineWidth: readableWidth, rename: { newName in
+                InlineTitleView(fileURL: fileURL, maxLineWidth: readableWidth,
+                                font: EditorFonts.boldText(appState.textFont, size: 28), rename: { newName in
                     _ = try? appState.rename(fileURL, to: newName)
                 }, enterBody: { appState.pendingCursorOffset = 0 })
                 if isActivePane, appState.externalConflict != nil {
@@ -478,6 +479,7 @@ struct ContentView: View {
                     renderers: appState.rendererRegistry, vaultRoot: appState.vaultRoot,
                     cursorOffset: $appState.pendingCursorOffset, fontSize: CGFloat(appState.fontSize),
                     lineHeight: CGFloat(appState.lineHeight), maxLineWidth: readableWidth,
+                    textFont: appState.textFont, codeFont: appState.codeFont,
                     onOpenLink: { appState.openLink($0) },
                     onFocus: { appState.focusPane(pane.id) },
                     isLive: isActivePane,
@@ -606,6 +608,8 @@ private struct InlineTitleView: View {
     let fileURL: URL
     /// Readable line length: sit in the body's centred column.
     let maxLineWidth: CGFloat?
+    /// The text font's bold, so the title matches the headings below it.
+    let font: NSFont
     let rename: (String) -> Void
     let enterBody: () -> Void
     @State private var title: String = ""
@@ -616,7 +620,7 @@ private struct InlineTitleView: View {
     var body: some View {
         TextField("Untitled", text: $title)
             .textFieldStyle(.plain)
-            .font(.system(size: 28, weight: .bold))
+            .font(Font(font as CTFont))
             .lineLimit(1)
             .focused($focused)
             .frame(maxWidth: maxLineWidth ?? .infinity, alignment: .leading)

@@ -61,6 +61,14 @@ public final class AppState: ObservableObject {
     @Published public var readableLineLength = false {
         didSet { defaults.set(readableLineLength, forKey: Self.readableKey) }
     }
+    /// Editor fonts (Settings ▸ Appearance), as `EditorFonts` choices: "" is the
+    /// system's (San Francisco / SF Mono), otherwise a family name.
+    @Published public var textFont = "" {
+        didSet { defaults.set(textFont, forKey: Self.textFontKey) }
+    }
+    @Published public var codeFont = "" {
+        didSet { defaults.set(codeFont, forKey: Self.codeFontKey) }
+    }
     /// The column width readable line length keeps.
     public static let readableLineWidth: Double = 700
     @Published public private(set) var panes: [Pane] = [Pane()]
@@ -103,6 +111,8 @@ public final class AppState: ObservableObject {
     private static let themeKey = "io.hanji.theme"
     private static let lineHeightKey = "io.hanji.lineHeight"
     private static let readableKey = "io.hanji.readableLineLength"
+    private static let textFontKey = "io.hanji.textFont"
+    private static let codeFontKey = "io.hanji.codeFont"
     private static func pinsKey(_ root: URL) -> String { "io.hanji.pinned.\(root.standardizedFileURL.path)" }
 
     public init(defaults: UserDefaults = .standard, autosaveInterval: TimeInterval = 0.8) {
@@ -119,6 +129,8 @@ public final class AppState: ObservableObject {
         let storedLineHeight = defaults.double(forKey: Self.lineHeightKey)
         if Self.lineHeightRange.contains(storedLineHeight) { lineHeight = storedLineHeight }
         readableLineLength = defaults.bool(forKey: Self.readableKey)
+        textFont = defaults.string(forKey: Self.textFontKey) ?? ""
+        codeFont = defaults.string(forKey: Self.codeFontKey) ?? ""
         activePaneID = panes.first?.id
         autosaveCancellable = $activeText
             .debounce(for: .seconds(autosaveInterval), scheduler: RunLoop.main)

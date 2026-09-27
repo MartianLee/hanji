@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import AppCore
+import EditorEngine
 
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
@@ -51,6 +52,20 @@ struct SettingsView: View {
             }
             .padding(.vertical, 4)
             Divider().padding(.vertical, 8)
+            fontSetting("Text font", "Everything but code: body text, headings and the note title.",
+                        selection: $appState.textFont,
+                        builtIn: [("System (San Francisco)", ""), ("Serif (New York)", EditorFonts.systemSerif)],
+                        families: Self.textFamilies,
+                        sample: EditorFonts.text(appState.textFont, size: 14),
+                        sampleText: "The quick brown fox · 다람쥐 헌 쳇바퀴에 타고파")
+            Divider().padding(.vertical, 8)
+            fontSetting("Code font", "Code blocks, inline code and frontmatter.",
+                        selection: $appState.codeFont,
+                        builtIn: [("System (SF Mono)", "")],
+                        families: Self.codeFamilies,
+                        sample: EditorFonts.code(appState.codeFont, size: 13),
+                        sampleText: "let total = items.count // 0O 1lI")
+            Divider().padding(.vertical, 8)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Theme").font(.headline)
                 Picker("Theme", selection: $appState.theme) {
@@ -95,6 +110,43 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(20)
         }
+    }
+
+    /// Installed families, listed once: the font manager is slow to ask and
+    /// they don't change while Settings is open.
+    private static let textFamilies = EditorFonts.textFamilies
+    private static let codeFamilies = EditorFonts.codeFamilies
+
+    /// A font menu (the system's own first, then every installed family) with a
+    /// line of sample text in the current choice.
+    private func fontSetting(_ title: String, _ caption: String, selection: Binding<String>,
+                             builtIn: [(String, String)], families: [String],
+                             sample: NSFont, sampleText: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title).font(.headline)
+                Spacer()
+                Picker(title, selection: selection) {
+                    ForEach(builtIn, id: \.1) { Text($0.0).tag($0.1) }
+                    // A family chosen earlier and since uninstalled: keep it
+                    // selectable so the menu shows what's stored (text falls back
+                    // to the system font meanwhile).
+                    if !EditorFonts.isAvailable(selection.wrappedValue) {
+                        Text("\(selection.wrappedValue) (not installed)").tag(selection.wrappedValue)
+                    }
+                    Divider()
+                    ForEach(families, id: \.self) { Text($0).tag($0) }
+                }
+                .labelsHidden()
+                .fixedSize()
+            }
+            Text(caption).font(.caption).foregroundStyle(.secondary)
+            Text(sampleText)
+                .font(Font(sample as CTFont))
+                .lineLimit(1)
+                .padding(.top, 2)
+        }
+        .padding(.vertical, 4)
     }
 
     /// Obsidian-style plugin toggles (applied live).
