@@ -46,6 +46,23 @@ public final class AppState: ObservableObject {
     @Published public var fontSize: Double = 15 {
         didSet { defaults.set(fontSize, forKey: Self.fontSizeKey) }
     }
+    /// Light, dark, or whatever the system uses (Settings ▸ Appearance ▸ Theme).
+    @Published public var theme: AppearanceTheme = .system {
+        didSet { defaults.set(theme.rawValue, forKey: Self.themeKey) }
+    }
+    /// Body line height as a multiple of the font's (Settings ▸ Appearance).
+    @Published public var lineHeight: Double = AppState.defaultLineHeight {
+        didSet { defaults.set(lineHeight, forKey: Self.lineHeightKey) }
+    }
+    public static let defaultLineHeight = 1.3
+    public static let lineHeightRange = 1.2...1.8
+    /// Keep the text in a centred column (Settings ▸ Appearance), like Obsidian's
+    /// "Readable line length"; off shows today's full width.
+    @Published public var readableLineLength = false {
+        didSet { defaults.set(readableLineLength, forKey: Self.readableKey) }
+    }
+    /// The column width readable line length keeps.
+    public static let readableLineWidth: Double = 700
     @Published public private(set) var panes: [Pane] = [Pane()]
     @Published public var activePaneID: UUID?
     public var activePane: Pane? { panes.first { $0.id == activePaneID } ?? panes.first }
@@ -83,6 +100,9 @@ public final class AppState: ObservableObject {
     private static let recentsKey = "io.hanji.recentVaults"
     private static let treeSortKey = "io.hanji.treeSort"
     private static let fontSizeKey = "io.hanji.fontSize"
+    private static let themeKey = "io.hanji.theme"
+    private static let lineHeightKey = "io.hanji.lineHeight"
+    private static let readableKey = "io.hanji.readableLineLength"
     private static func pinsKey(_ root: URL) -> String { "io.hanji.pinned.\(root.standardizedFileURL.path)" }
 
     public init(defaults: UserDefaults = .standard, autosaveInterval: TimeInterval = 0.8) {
@@ -95,6 +115,10 @@ public final class AppState: ObservableObject {
         }
         let storedSize = defaults.double(forKey: Self.fontSizeKey)
         if storedSize >= 10 && storedSize <= 30 { fontSize = storedSize }
+        if let raw = defaults.string(forKey: Self.themeKey), let t = AppearanceTheme(rawValue: raw) { theme = t }
+        let storedLineHeight = defaults.double(forKey: Self.lineHeightKey)
+        if Self.lineHeightRange.contains(storedLineHeight) { lineHeight = storedLineHeight }
+        readableLineLength = defaults.bool(forKey: Self.readableKey)
         activePaneID = panes.first?.id
         autosaveCancellable = $activeText
             .debounce(for: .seconds(autosaveInterval), scheduler: RunLoop.main)
@@ -1142,5 +1166,19 @@ public final class AppState: ObservableObject {
         externalConflict = nil
         conflictPaused = false
         flushPendingSave()                          // write my version to disk
+    }
+}
+
+/// Settings ▸ Appearance ▸ Theme.
+public enum AppearanceTheme: String, CaseIterable {
+    case system, light, dark
+
+    /// The appearance to force on the app, or nil to follow the system.
+    public var appearanceName: NSAppearance.Name? {
+        switch self {
+        case .system: return nil
+        case .light: return .aqua
+        case .dark: return .darkAqua
+        }
     }
 }

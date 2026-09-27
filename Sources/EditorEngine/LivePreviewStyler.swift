@@ -28,9 +28,12 @@ public enum LivePreviewStyler {
         [.font: baseFont, .foregroundColor: NSColor.textColor, .paragraphStyle: bodyParagraph()]
     }
 
+    /// Body line height (Settings ▸ Appearance ▸ Line height).
+    public static var lineHeightMultiple: CGFloat = 1.3
+
     static func bodyParagraph() -> NSMutableParagraphStyle {
         let p = NSMutableParagraphStyle()
-        p.lineHeightMultiple = 1.3
+        p.lineHeightMultiple = lineHeightMultiple
         p.paragraphSpacing = 6
         return p
     }

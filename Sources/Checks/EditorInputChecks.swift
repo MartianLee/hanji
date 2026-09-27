@@ -10,15 +10,22 @@ final class EditorHarness {
     let window: NSWindow
     let textView: NSTextView
 
-    init?(_ initial: String, cursorOffset initialOffset: Int? = nil) {
+    var lineHeight: CGFloat
+    var maxLineWidth: CGFloat?
+
+    init?(_ initial: String, cursorOffset initialOffset: Int? = nil, lineHeight: CGFloat = 1.3,
+          maxLineWidth: CGFloat? = nil, width: CGFloat = 800) {
         text = initial
         cursorOffset = initialOffset
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-                          styleMask: [.titled], backing: .buffered, defer: false)
+        self.lineHeight = lineHeight
+        self.maxLineWidth = maxLineWidth
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 600),
+                          styleMask: [.titled, .resizable], backing: .buffered, defer: false)
         var box: EditorHarness?
         let binding = Binding(get: { box?.text ?? initial }, set: { box?.text = $0 })
         let offset = Binding(get: { box?.cursorOffset ?? initialOffset }, set: { box?.cursorOffset = $0 })
-        let host = NSHostingView(rootView: MarkdownEditorView(text: binding, cursorOffset: offset))
+        let host = NSHostingView(rootView: MarkdownEditorView(text: binding, cursorOffset: offset,
+                                                              lineHeight: lineHeight, maxLineWidth: maxLineWidth))
         hosting = host
         window.contentView = host
         window.makeKeyAndOrderFront(nil)
@@ -50,13 +57,19 @@ final class EditorHarness {
 
     func caret(at offset: Int) { textView.setSelectedRange(NSRange(location: offset, length: 0)); pump() }
 
+    /// Hand the editor fresh parameters, as SwiftUI does when a setting changes.
+    func rebuild() {
+        hosting?.rootView = MarkdownEditorView(text: Binding(get: { self.text }, set: { self.text = $0 }),
+                                               cursorOffset: Binding(get: { self.cursorOffset },
+                                                                     set: { self.cursorOffset = $0 }),
+                                               lineHeight: lineHeight, maxLineWidth: maxLineWidth)
+        pump(0.4)
+    }
+
     /// Ask the editor to jump to `offset`, the way search results do.
     func jump(to offset: Int) {
         cursorOffset = offset
-        hosting?.rootView = MarkdownEditorView(text: Binding(get: { self.text }, set: { self.text = $0 }),
-                                               cursorOffset: Binding(get: { self.cursorOffset },
-                                                                     set: { self.cursorOffset = $0 }))
-        pump(0.4)
+        rebuild()
     }
 
     /// Is the caret inside the visible part of the document?
@@ -349,4 +362,34 @@ func codeSlabOnOpenChecks() {
     let code = pixel(atRightOf: frame(of: "let x = 1"))
     let plain = pixel(atRightOf: frame(of: "intro line"))
     expect(!code.isEmpty && code != plain, "the code line's slab is painted on open (code \(code) vs plain \(plain))")
+}
+
+
+/// Settings ▸ Appearance: line height applies to body text and to new lines, and
+/// readable line length keeps a centred column that follows the window.
+func editorAppearanceChecks() {
+    guard let h = EditorHarness("Body text here.\n\nMore body.", lineHeight: 1.6) else { expect(false, "editor found"); return }
+    defer { h.close() }
+    h.pump(0.3)
+    func multiple(at i: Int) -> CGFloat {
+        (h.textView.textStorage?.attribute(.paragraphStyle, at: i, effectiveRange: nil) as? NSParagraphStyle)?.lineHeightMultiple ?? -1
+    }
+    expectEqual(multiple(at: 2), 1.6, "body text uses the chosen line height")
+    expectEqual((h.textView.typingAttributes[.paragraphStyle] as? NSParagraphStyle)?.lineHeightMultiple, 1.6,
+                "and so does a new line")
+    h.lineHeight = 1.4; h.rebuild()
+    expectEqual(multiple(at: 2), 1.4, "changing it restyles the note")
+
+    guard let wide = EditorHarness(String(repeating: "word ", count: 400), maxLineWidth: 700, width: 1200) else { return }
+    defer { wide.close() }
+    wide.pump(0.3)
+    let tv = wide.textView
+    let container = tv.textLayoutManager?.textContainer?.size.width ?? 0
+    expect(abs(container - 700) <= 12, "the text column is the readable width (\(Int(container))pt)")
+    expect(abs(tv.textContainerOrigin.x - (tv.bounds.width - 700) / 2) <= 12,
+           "and centred (\(Int(tv.textContainerOrigin.x))pt in a \(Int(tv.bounds.width))pt view)")
+    wide.window.setContentSize(NSSize(width: 1000, height: 600)); wide.pump(0.3)
+    expect(abs(tv.textContainerOrigin.x - (tv.bounds.width - 700) / 2) <= 12, "and stays centred when the window resizes")
+    wide.maxLineWidth = nil; wide.rebuild()
+    expect(tv.textContainerOrigin.x < 40, "turned off, the text uses the full width again (\(Int(tv.textContainerOrigin.x))pt)")
 }

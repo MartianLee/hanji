@@ -439,13 +439,18 @@ struct ContentView: View {
         }
     }
 
+    /// Settings ▸ Appearance ▸ Readable line length: the column width, or nil.
+    private var readableWidth: CGFloat? {
+        appState.readableLineLength ? CGFloat(AppState.readableLineWidth) : nil
+    }
+
     @ViewBuilder private func paneView(_ pane: Pane) -> some View {
         let isActivePane = pane.id == appState.activePaneID
         VStack(spacing: 0) {
             TabBarView(pane: pane)
             if let tab = pane.tabs.first(where: { $0.id == pane.activeTabID }) {
                 let fileURL = isActivePane ? (appState.selectedFile?.url ?? tab.file.url) : tab.file.url
-                InlineTitleView(fileURL: fileURL, rename: { newName in
+                InlineTitleView(fileURL: fileURL, maxLineWidth: readableWidth, rename: { newName in
                     _ = try? appState.rename(fileURL, to: newName)
                 }, enterBody: { appState.pendingCursorOffset = 0 })
                 if isActivePane, appState.externalConflict != nil {
@@ -472,6 +477,7 @@ struct ContentView: View {
                     text: isActivePane ? $appState.activeText : .constant(tab.text),
                     renderers: appState.rendererRegistry, vaultRoot: appState.vaultRoot,
                     cursorOffset: $appState.pendingCursorOffset, fontSize: CGFloat(appState.fontSize),
+                    lineHeight: CGFloat(appState.lineHeight), maxLineWidth: readableWidth,
                     onOpenLink: { appState.openLink($0) },
                     onFocus: { appState.focusPane(pane.id) },
                     isLive: isActivePane,
@@ -598,6 +604,8 @@ struct ContentView: View {
 /// the open file changes.
 private struct InlineTitleView: View {
     let fileURL: URL
+    /// Readable line length: sit in the body's centred column.
+    let maxLineWidth: CGFloat?
     let rename: (String) -> Void
     let enterBody: () -> Void
     @State private var title: String = ""
@@ -611,7 +619,8 @@ private struct InlineTitleView: View {
             .font(.system(size: 28, weight: .bold))
             .lineLimit(1)
             .focused($focused)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: maxLineWidth ?? .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, 24)
             .padding(.top, 18)
             .padding(.bottom, 6)

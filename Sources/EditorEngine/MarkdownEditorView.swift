@@ -5,6 +5,25 @@ import ExtensionSDK
 
 /// NSTextView that lets a callback handle a click (used for task checkboxes).
 final class ClickableTextView: NSTextView {
+    /// Readable line length: keep the text in a centred column this wide (nil:
+    /// full width). The side insets follow the view's width.
+    var maxLineWidth: CGFloat? { didSet { if oldValue != maxLineWidth { updateColumn() } } }
+    /// Called when the column moves (resize, width change): overlays follow it.
+    var onColumnChange: (() -> Void)?
+    static let sideInset: CGFloat = 24
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        updateColumn()
+    }
+
+    private func updateColumn() {
+        let side = maxLineWidth.map { max(Self.sideInset, (bounds.width - $0) / 2) } ?? Self.sideInset
+        guard abs(textContainerInset.width - side) > 0.5 else { return }
+        textContainerInset = NSSize(width: side, height: textContainerInset.height)
+        onColumnChange?()
+    }
+
     var onClick: ((Int) -> Bool)?
     var onBecameFirstResponder: (() -> Void)?
     /// Whether an offset sits inside a fenced code block, answered by the coordinator
@@ -249,6 +268,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
     public var vaultRoot: URL?
     @Binding public var cursorOffset: Int?
     public var fontSize: CGFloat
+    /// Body line height, as a multiple (Settings ▸ Appearance).
+    public var lineHeight: CGFloat
+    /// Readable line length: the text column's width, or nil for the full width.
+    public var maxLineWidth: CGFloat?
     /// Called when a wiki/markdown link is clicked, with the raw link target.
     public var onOpenLink: ((String) -> Void)?
     /// Called when a `#tag` is clicked, with the tag's name (no `#`).
@@ -261,6 +284,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
     public init(text: Binding<String>, renderers: RendererRegistry? = nil, vaultRoot: URL? = nil,
                 cursorOffset: Binding<Int?> = .constant(nil), fontSize: CGFloat = 15,
+                lineHeight: CGFloat = 1.3, maxLineWidth: CGFloat? = nil,
                 onOpenLink: ((String) -> Void)? = nil,
                 onFocus: (() -> Void)? = nil, isLive: Bool = true,
                 onOpenTag: ((String) -> Void)? = nil) {
@@ -271,12 +295,15 @@ public struct MarkdownEditorView: NSViewRepresentable {
         self.vaultRoot = vaultRoot
         self._cursorOffset = cursorOffset
         self.fontSize = fontSize
+        self.lineHeight = lineHeight
+        self.maxLineWidth = maxLineWidth
         self.onOpenLink = onOpenLink
         self.onFocus = onFocus
     }
 
     public func makeNSView(context: Context) -> NSScrollView {
         LivePreviewStyler.baseFontSize = fontSize
+        LivePreviewStyler.lineHeightMultiple = lineHeight
         let textView = ClickableTextView(usingTextLayoutManager: true)
         textView.delegate = context.coordinator
         textView.isRichText = false
@@ -288,7 +315,9 @@ public struct MarkdownEditorView: NSViewRepresentable {
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.font = LivePreviewStyler.baseFont
         textView.typingAttributes = LivePreviewStyler.typingAttributes
-        textView.textContainerInset = NSSize(width: 24, height: 20)
+        textView.textContainerInset = NSSize(width: ClickableTextView.sideInset, height: 20)
+        textView.maxLineWidth = maxLineWidth
+        textView.onColumnChange = { [weak coordinator = context.coordinator] in coordinator?.columnDidMove() }
         textView.autoresizingMask = [.width]
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
@@ -330,12 +359,14 @@ public struct MarkdownEditorView: NSViewRepresentable {
     public func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = nsView.documentView as? NSTextView else { return }
         context.coordinator.sync(with: self)
-        if LivePreviewStyler.baseFontSize != fontSize {
+        if LivePreviewStyler.baseFontSize != fontSize || LivePreviewStyler.lineHeightMultiple != lineHeight {
             LivePreviewStyler.baseFontSize = fontSize
+            LivePreviewStyler.lineHeightMultiple = lineHeight
             textView.font = LivePreviewStyler.baseFont
             context.coordinator.needsFullRestyle = true
             context.coordinator.refresh()
         }
+        (textView as? ClickableTextView)?.maxLineWidth = maxLineWidth
         if textView.string != text {
             textView.string = text
             context.coordinator.needsFullRestyle = true
@@ -447,6 +478,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// (pinned to its bottom edge) scrolled down on Return and back up on the
         /// next key, shaking the lines at the bottom. Restyles only invalidate what
         /// changed (LivePreviewStyler.commit), so this re-lays out a few lines.
+        /// The text column moved (readable width, window resized): overlays are
+        /// placed from its origin, so place them again.
+        func columnDidMove() { scheduleWidgetUpdate() }
+
         private func settleLayoutBelowCaret() {
             // Not before the view is in a window: laying the note out at no width
             // is wasted work (and made fragments that kept that width).

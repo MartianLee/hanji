@@ -34,6 +34,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 @main
 struct HanjiApp: App {
+    /// Settings ▸ Appearance ▸ Theme, for the whole app (nil follows the system).
+    static func apply(_ theme: AppearanceTheme) {
+        NSApp.appearance = theme.appearanceName.flatMap(NSAppearance.init(named:))
+    }
+
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appState = AppState()
     @StateObject private var pluginManager = PluginManager()
@@ -55,8 +60,10 @@ struct HanjiApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     if phase != .active { appState.flushPendingSave() }
                 }
+                .onChange(of: appState.theme) { _, theme in Self.apply(theme) }
                 .onAppear {
                     appDelegate.appState = appState
+                    Self.apply(appState.theme)
                     NSApp.setActivationPolicy(.regular)
                     NSApp.activate(ignoringOtherApps: true)
                     guard !activated else { return }

@@ -32,6 +32,7 @@ struct SettingsView: View {
 
     /// Obsidian-style appearance settings.
     private var appearanceTab: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -49,10 +50,51 @@ struct SettingsView: View {
                 Slider(value: $appState.fontSize, in: 12...24, step: 1)
             }
             .padding(.vertical, 4)
+            Divider().padding(.vertical, 8)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Theme").font(.headline)
+                Picker("Theme", selection: $appState.theme) {
+                    Text("System").tag(AppearanceTheme.system)
+                    Text("Light").tag(AppearanceTheme.light)
+                    Text("Dark").tag(AppearanceTheme.dark)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+            .padding(.vertical, 4)
+            Divider().padding(.vertical, 8)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Line height").font(.headline)
+                    Spacer()
+                    Text(String(format: "%.2f", appState.lineHeight))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                    Button("Reset") { appState.lineHeight = AppState.defaultLineHeight }
+                        .disabled(appState.lineHeight == AppState.defaultLineHeight)
+                }
+                Text("Space between the lines of the editor\u{2019}s body text.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(value: $appState.lineHeight, in: AppState.lineHeightRange, step: 0.05)
+            }
+            .padding(.vertical, 4)
+            Divider().padding(.vertical, 8)
+            Toggle(isOn: $appState.readableLineLength) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Readable line length").font(.headline)
+                    Text("Keep the text in a centred column instead of spanning the window.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.switch)
+            .padding(.vertical, 4)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(20)
+        }
     }
 
     /// Obsidian-style plugin toggles (applied live).
