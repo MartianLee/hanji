@@ -15,11 +15,20 @@ public final class VaultWatcher {
         self.onChange = onChange
         self.debounce = debounce
 
-        var context = FSEventStreamContext()
-        context.info = Unmanaged.passUnretained(self).toOpaque()
+        // FSEvents calls back on `queue` with this context pointer. It points at a
+        // relay the stream owns (released with the stream), which holds the
+        // watcher weakly — not at the watcher itself: a callback racing the
+        // watcher's deinit would take a strong reference to an object mid-
+        // deallocation, which the runtime traps. The work hops to main, where
+        // `pending` lives.
+        var context = FSEventStreamContext(
+            version: 0, info: Unmanaged.passRetained(Relay(self)).toOpaque(), retain: nil,
+            release: { info in if let info { Unmanaged<Relay>.fromOpaque(info).release() } },
+            copyDescription: nil)
         let callback: FSEventStreamCallback = { _, info, _, _, _, _ in
             guard let info else { return }
-            Unmanaged<VaultWatcher>.fromOpaque(info).takeUnretainedValue().scheduleNotify()
+            let relay = Unmanaged<Relay>.fromOpaque(info).takeUnretainedValue()
+            DispatchQueue.main.async { relay.watcher?.scheduleNotify() }
         }
         stream = FSEventStreamCreate(nil, callback, &context,
                                      [root.path] as CFArray,
@@ -51,4 +60,9 @@ public final class VaultWatcher {
     }
 
     deinit { stop() }
+
+    private final class Relay {
+        weak var watcher: VaultWatcher?
+        init(_ watcher: VaultWatcher) { self.watcher = watcher }
+    }
 }

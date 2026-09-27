@@ -107,3 +107,25 @@ func saveChecksDiskFirstChecks() {
     expectEqual(try? String(contentsOf: a, encoding: .utf8), "theirs again", "which survives")
     expectEqual(s.externalConflict, "theirs again", "and is offered in the banner")
 }
+
+/// Watchers come and go (every vault switch) while files are changing; one being
+/// released mid-event must not crash (the runtime traps a strong reference taken
+/// to an object that's being deallocated).
+func watcherChurnChecks() {
+    let fm = FileManager.default
+    let dir = fm.temporaryDirectory.appendingPathComponent("mk-churn-\(UUID().uuidString)")
+    try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: dir) }
+    var fired = 0
+    for round in 0..<60 {
+        var watcher: VaultWatcher? = VaultWatcher(root: dir, debounce: 0.01) { fired += 1 }
+        for i in 0..<5 {
+            try? "\(round)-\(i)".write(to: dir.appendingPathComponent("f\(i).md"), atomically: true, encoding: .utf8)
+        }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        watcher = nil                                   // released while events are in flight
+        _ = watcher
+    }
+    RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+    expect(true, "no crash releasing watchers mid-event (\(fired) notifications)")
+}

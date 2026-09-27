@@ -24,6 +24,7 @@ runChecks([
     ("ModelRandom", probeRandomChecks),
     ("AutosaveRace", autosaveRaceChecks),
     ("SaveChecksDiskFirst", saveChecksDiskFirstChecks),
+    ("WatcherChurn", watcherChurnChecks),
     ("ConflictLatest", conflictLatestChecks),
     ("FileEdge", fileEdgeChecks),
     ("PluginLoop", pluginLoopChecks),
