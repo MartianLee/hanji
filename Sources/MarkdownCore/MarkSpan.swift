@@ -18,6 +18,12 @@ public enum SpanStyle: Equatable {
 
 /// A recognized markdown construct, in UTF-16 code-unit offsets (NSRange-compatible).
 public struct MarkSpan: Equatable {
+    /// The same span `delta` code units further along.
+    public func shifted(by delta: Int) -> MarkSpan {
+        func move(_ r: Range<Int>) -> Range<Int> { (r.lowerBound + delta)..<(r.upperBound + delta) }
+        return MarkSpan(style: style, content: move(content), markers: markers.map(move), line: move(line))
+    }
+
     public let style: SpanStyle
     public let content: Range<Int>      // visible content
     public let markers: [Range<Int>]    // syntax marker ranges (candidates to hide)

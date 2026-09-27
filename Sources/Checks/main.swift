@@ -30,6 +30,7 @@ runChecks([
     ("PluginLoop", pluginLoopChecks),
     ("WordCounter", wordCounterChecks),
     ("Tokenizer", tokenizerChecks),
+    ("TokenizerCache", tokenizerCacheChecks),
     ("Decoration", decorationChecks),
     ("Styler", stylerChecks),
     ("LinkTokenizer", linkTokenizerChecks),

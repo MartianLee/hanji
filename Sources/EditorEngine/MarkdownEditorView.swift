@@ -462,6 +462,8 @@ public struct MarkdownEditorView: NSViewRepresentable {
         private var styledCaretParagraph: NSRange?
         /// Restyle everything next time (first load, font size, text replaced).
         var needsFullRestyle = true
+        /// Spans and code blocks, remembered per line (see TokenizerCache).
+        private let tokenizer = TokenizerCache()
 
         /// Inline styling + caret-aware marker hiding (Live Preview) — for the
         /// paragraphs an edit or caret move touched, or the whole note when the
@@ -472,9 +474,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
         func restyle() {
             guard let textView, let storage = textView.textStorage else { return }
             let text = NSString(string: storage.string)
-            let regions = CodeBlockParser.regions(in: storage.string)
-            codeRegions = CodeBlockParser.codeRanges(in: storage.string)   // unclosed fences too
-            let spans = InlineTokenizer.spans(in: storage.string)
+            // Line-by-line cache: after an edit only changed lines are tokenized.
+            let spans = tokenizer.spans(in: storage.string)
+            let regions = tokenizer.codeBlockRegions
+            codeRegions = tokenizer.codeRanges                            // unclosed fences too
             let sel = textView.selectedRange()
             let selection = sel.location..<(sel.location + sel.length)
             let deco = Decorator.decorations(spans: spans, selection: selection)
@@ -738,7 +741,9 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
             var specs: [WidgetSpec] = []
             if let registry = renderers {
-                for region in CodeBlockParser.regions(in: textView.string) {
+                // The restyle just parsed this text; reuse its code blocks if unchanged.
+                let unchanged = styledText.map { $0.isEqual(to: textView.string) } ?? false
+                for region in unchanged ? tokenizer.codeBlockRegions : CodeBlockParser.regions(in: textView.string) {
                     guard let renderer = registry.renderer(for: region.language) else { continue }
                     if intersects(region.full, caret) { continue }
                     let bodyLen = max(0, region.body.upperBound - region.body.lowerBound)

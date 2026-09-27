@@ -11,46 +11,16 @@ public enum InlineTokenizer {
 
         var lineStart = 0
         var lineIndex = 0
-        var inFrontmatter = false
-        var inCodeBlock = false
-        var openFence: Fence?
-        var inCallout = false
+        var state = LineState()
         // Frontmatter needs its closing `---`: a lone `---` on the first line is a
         // rule, not the start of a note-long YAML block.
         let frontmatterCloses = Frontmatter.range(in: text) != nil
         while lineStart <= length {
             var lineEnd = lineStart
             while lineEnd < length && ns.character(at: lineEnd) != newline { lineEnd += 1 }
-            let lineRange = lineStart..<lineEnd
             let lineText = ns.substring(with: NSRange(location: lineStart, length: lineEnd - lineStart))
-            // Structure is judged without a CRLF line's trailing `\r`.
-            let bare = lineText.last == "\r" ? String(lineText.dropLast()) : lineText
-
-            if lineIndex == 0 && bare == "---" && frontmatterCloses {
-                inFrontmatter = true
-                result.append(MarkSpan(style: .frontmatter, content: lineRange, markers: [], line: lineRange))
-            } else if inFrontmatter {
-                result.append(MarkSpan(style: .frontmatter, content: lineRange, markers: [], line: lineRange))
-                if bare == "---" { inFrontmatter = false }
-            } else if inCodeBlock {
-                result.append(MarkSpan(style: .codeBlock, content: lineRange, markers: [], line: lineRange))
-                if openFence?.isClosed(by: lineText) == true { inCodeBlock = false }
-            } else if let fence = Fence.opening(lineText) {
-                inCodeBlock = true
-                openFence = fence
-                inCallout = false
-                result.append(MarkSpan(style: .codeBlock, content: lineRange, markers: [], line: lineRange))
-            } else if lineText.hasPrefix("> ") && (inCallout || String(lineText.dropFirst(2)).hasPrefix("[!")) {
-                inCallout = true
-                let markers = [lineStart..<(lineStart + 2)]
-                let content = (lineStart + 2)..<(lineStart + (lineText as NSString).length)
-                result.append(MarkSpan(style: .callout, content: content, markers: markers, line: lineRange))
-                scanInline(lineText as NSString, from: 2, lineStart: lineStart, lineRange: lineRange, into: &result)
-            } else {
-                inCallout = false
-                parseLine(lineText as NSString, lineStart: lineStart, lineRange: lineRange, into: &result)
-            }
-
+            tokenizeLine(lineText, at: lineStart, opensFrontmatter: lineIndex == 0 && frontmatterCloses,
+                         state: &state, into: &result)
             if lineEnd == length { break }
             lineStart = lineEnd + 1
             lineIndex += 1
@@ -65,6 +35,48 @@ public enum InlineTokenizer {
             result.append(MarkSpan(style: .tag, content: tag.range, markers: [], line: start..<end))
         }
         return result
+    }
+
+    /// What one line's tokenizing carries to the next: inside frontmatter, a code
+    /// fence (and which one closes it), or a callout.
+    public struct LineState: Hashable {
+        var inFrontmatter = false
+        var openFence: Fence?
+        var inCallout = false
+        public init() {}
+    }
+
+    /// One line's spans (tags aside), the line starting at `lineStart`; advances
+    /// `state` for the next line. `opensFrontmatter`: this is line 1 and the note
+    /// has a closed frontmatter block.
+    static func tokenizeLine(_ lineText: String, at lineStart: Int, opensFrontmatter: Bool,
+                             state: inout LineState, into result: inout [MarkSpan]) {
+        let lineRange = lineStart..<(lineStart + (lineText as NSString).length)
+        // Structure is judged without a CRLF line's trailing `\r`.
+        let bare = lineText.last == "\r" ? String(lineText.dropLast()) : lineText
+        if opensFrontmatter && bare == "---" {
+            state.inFrontmatter = true
+            result.append(MarkSpan(style: .frontmatter, content: lineRange, markers: [], line: lineRange))
+        } else if state.inFrontmatter {
+            result.append(MarkSpan(style: .frontmatter, content: lineRange, markers: [], line: lineRange))
+            if bare == "---" { state.inFrontmatter = false }
+        } else if let open = state.openFence {
+            result.append(MarkSpan(style: .codeBlock, content: lineRange, markers: [], line: lineRange))
+            if open.isClosed(by: lineText) { state.openFence = nil }
+        } else if let fence = Fence.opening(lineText) {
+            state.openFence = fence
+            state.inCallout = false
+            result.append(MarkSpan(style: .codeBlock, content: lineRange, markers: [], line: lineRange))
+        } else if lineText.hasPrefix("> ") && (state.inCallout || String(lineText.dropFirst(2)).hasPrefix("[!")) {
+            state.inCallout = true
+            let markers = [lineStart..<(lineStart + 2)]
+            let content = (lineStart + 2)..<lineRange.upperBound
+            result.append(MarkSpan(style: .callout, content: content, markers: markers, line: lineRange))
+            scanInline(lineText as NSString, from: 2, lineStart: lineStart, lineRange: lineRange, into: &result)
+        } else {
+            state.inCallout = false
+            parseLine(lineText as NSString, lineStart: lineStart, lineRange: lineRange, into: &result)
+        }
     }
 
     private static let hash = UInt16(UnicodeScalar("#").value)

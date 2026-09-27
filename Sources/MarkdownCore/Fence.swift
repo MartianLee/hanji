@@ -2,7 +2,7 @@ import Foundation
 
 /// A code fence line, as CommonMark defines it — the one rule every parser uses
 /// to decide where code starts and ends.
-public struct Fence: Equatable {
+public struct Fence: Hashable {
     public let marker: Character   // ` or ~
     public let length: Int
     public let info: String        // the language, on an opening fence
