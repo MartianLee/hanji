@@ -8,6 +8,8 @@ was built. Each feature went through a **design** doc (the spec) and an
   (`YYYY-MM-DD-hanji-<topic>-design.md` = spec, `…-<topic>.md` = plan).
   Start with [`design/2026-06-06-native-markdown-editor-design.md`](design/2026-06-06-native-markdown-editor-design.md)
   for the original architecture.
+- [`competitors.md`](competitors.md) — measured comparisons with other
+  editors (memory so far).
 - [`images/`](images/) — screenshots used in the README.
 
 These are point-in-time records — for current behavior, the code and
