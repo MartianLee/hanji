@@ -1,0 +1,83 @@
+import Foundation
+import AppCore
+import VaultKit
+import MKSearchKit
+
+private func vault(_ tag: String, _ files: [(String, String)]) -> URL {
+    let fm = FileManager.default
+    let v = fm.temporaryDirectory.appendingPathComponent("mk-\(tag)-\(UUID().uuidString)")
+    try? fm.createDirectory(at: v, withIntermediateDirectories: true)
+    for (n, t) in files { try? t.write(to: v.appendingPathComponent(n), atomically: true, encoding: .utf8) }
+    return v
+}
+private func cleanup(_ v: URL) {
+    try? FileManager.default.removeItem(at: SearchIndex.indexFileURL(forVault: v))
+    try? FileManager.default.removeItem(at: v)
+}
+private func pumpUntil(_ timeout: Double, _ done: () -> Bool) {
+    let end = Date().addingTimeInterval(timeout)
+    while !done() && Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.005)) }
+}
+
+/// A reload while an autosave is still in flight must not decide the note is
+/// clean and replace what was typed with the old disk text.
+func autosaveRaceChecks() {
+    let v = vault("race", [("A.md", "disk")])
+    let a = v.appendingPathComponent("A.md")
+    defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: a.path); cleanup(v) }
+    let s = AppState(defaults: UserDefaults(suiteName: "mk-race-\(UUID().uuidString)")!, autosaveInterval: 0.05)
+    s.openVault(at: v)
+    s.openNote(relativePath: "A.md")
+    try? FileManager.default.setAttributes([.immutable: true], ofItemAtPath: a.path)
+    s.activeText = "typed"
+    pumpUntil(1) { !s.isDirty }          // the autosave fired and optimistically marked it clean
+    s.reloadTree()                       // a watcher fire lands before the failure is reported
+    expectEqual(s.activeText, "typed", "the typing survives a reload during a failing autosave")
+    pumpUntil(1) { s.isDirty }
+    expect(s.isDirty, "and is dirty again once the failure is reported")
+}
+
+/// The conflict banner always offers the version that's on disk now.
+func conflictLatestChecks() {
+    let v = vault("latest", [("A.md", "v0")])
+    defer { cleanup(v) }
+    let a = v.appendingPathComponent("A.md")
+    let s = AppState(defaults: UserDefaults(suiteName: "mk-latest-\(UUID().uuidString)")!)
+    s.openVault(at: v)
+    s.openNote(relativePath: "A.md")
+    s.activeText = "mine"
+    try? "v1".write(to: a, atomically: true, encoding: .utf8); s.reloadTree()
+    try? "v2".write(to: a, atomically: true, encoding: .utf8); s.reloadTree()
+    expectEqual(s.externalConflict, "v2", "a later change on disk updates the conflict's version")
+    s.resolveConflictReloadingDisk()
+    expectEqual(s.activeText, "v2", "Reload from disk takes the latest version")
+}
+
+/// File-name and folder edge cases.
+func fileEdgeChecks() {
+    let fm = FileManager.default
+    let v = vault("edge", [("A.md", "a")])
+    defer { cleanup(v) }
+    try? fm.createDirectory(at: v.appendingPathComponent("Folder.md"), withIntermediateDirectories: true)
+    let s = AppState(defaults: UserDefaults(suiteName: "mk-edge-\(UUID().uuidString)")!)
+    s.openVault(at: v)
+    expect(!s.files.contains { $0.name == "Folder.md" }, "a folder named X.md isn't a note")
+
+    // A long (but legal) name must stay saveable: the temp file can't be longer.
+    let long = String(repeating: "n", count: 240)
+    s.openNote(relativePath: "A.md")
+    let renamed = try? s.rename(v.appendingPathComponent("A.md"), to: long)
+    expect(renamed != nil, "setup: a 240-character name is allowed")
+    s.activeText = "saved under a long name"
+    expect(s.flushPendingSave(), "a note with a long name saves")
+    expectEqual(try? String(contentsOf: v.appendingPathComponent(long + ".md"), encoding: .utf8),
+                "saved under a long name", "with its text on disk")
+
+    // Undoing "New folder" doesn't bin what was added to it since.
+    let folder = s.newFolder(name: "F")!
+    try? "from sync".write(to: folder.appendingPathComponent("External.md"), atomically: true, encoding: .utf8)
+    s.undoLastFileOperation()
+    expect(fm.fileExists(atPath: folder.appendingPathComponent("External.md").path),
+           "a folder that has gained notes isn't trashed by undo")
+    expect(s.notice != nil, "and the user is told why")
+}

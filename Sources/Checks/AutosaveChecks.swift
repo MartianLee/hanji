@@ -97,10 +97,11 @@ func conflictChecks() {
     let duringConflict = try? String(contentsOf: aURL, encoding: .utf8)
     expectEqual(duringConflict, "external v4", "autosave paused during conflict")
 
-    // A second watcher fire mid-conflict must NOT swap the banner's version.
+    // A second change mid-conflict updates the version the banner offers — a
+    // stale one would make "Reload" restore text that's already gone from disk.
     try? "external v4-newer".write(to: aURL, atomically: true, encoding: .utf8)
     s.reloadTree()
-    expectEqual(s.externalConflict, "external v4", "conflict version is stable across re-fires")
+    expectEqual(s.externalConflict, "external v4-newer", "the conflict tracks the latest disk version")
 
     // Resolve: keep mine → my buffer written over disk, conflict cleared.
     s.resolveConflictKeepingMine()

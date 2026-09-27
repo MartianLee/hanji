@@ -23,6 +23,17 @@ public struct OpenTab: Identifiable, Equatable {
         self.savedText = text
         self.externalConflict = nil
     }
+
+    /// The same note's state under a new tab identity — for showing it in a
+    /// second pane (a pin stays with the original tab).
+    init(copying other: OpenTab) {
+        self.id = UUID()
+        self.file = other.file
+        self.text = other.text
+        self.savedText = other.savedText
+        self.externalConflict = other.externalConflict
+        self.missingOnDisk = other.missingOnDisk
+    }
 }
 
 extension Array {

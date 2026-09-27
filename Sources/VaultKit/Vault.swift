@@ -20,6 +20,8 @@ public struct Vault {
                                      options: [.skipsHiddenFiles]) else { return [] }
         var out: [MarkdownFile] = []
         for case let url as URL in en where url.pathExtension.lowercased() == "md" {
+            // A folder named "X.md" is a folder.
+            guard (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory != true else { continue }
             out.append(MarkdownFile(url: url))
         }
         return out.sorted { $0.url.path < $1.url.path }
@@ -36,7 +38,9 @@ public struct Vault {
         let fm = FileManager.default
         let target = file.url.resolvingSymlinksInPath()
         let dir = target.deletingLastPathComponent()
-        let tmp = dir.appendingPathComponent(".\(target.lastPathComponent).tmp-\(UUID().uuidString)")
+        // Named independently of the note, so a long (legal) note name can't push
+        // the temp file past the 255-byte file-name limit and make it unsaveable.
+        let tmp = dir.appendingPathComponent(".hanji-\(UUID().uuidString).tmp")
         try Data(text.utf8).write(to: tmp)
         do {
             if fm.fileExists(atPath: target.path) {

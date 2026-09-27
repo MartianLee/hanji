@@ -59,6 +59,11 @@ public final class AppState: ObservableObject {
     @Published public private(set) var searchIndexUpdatedAt = Date()
     private let searchQueue = DispatchQueue(label: "io.hanji.searchindex", qos: .utility)
     private let saveQueue = DispatchQueue(label: "io.hanji.save", qos: .utility)
+    /// Notes with an autosave on the save queue. Until it lands, the note's
+    /// baseline is only provisionally clean, so reconciling it against disk would
+    /// take the old disk text for an external change and drop what was typed.
+    private var autosavesInFlight: [URL: Int] = [:]
+    private var reconcileDeferred = false
     /// Autosaves that failed on the save queue, not yet applied on main.
     /// Only touched on `saveQueue`.
     private var autosaveFailures: [(file: MarkdownFile, text: String, previous: String, error: Error)] = []
@@ -154,10 +159,16 @@ public final class AppState: ObservableObject {
             let isActivePane = pane.id == activePaneID
             for idx in pane.tabs.indices {
                 let isActiveTab = isActivePane && pane.tabs[idx].id == pane.activeTabID
+                if autosavesInFlight[pane.tabs[idx].file.url] != nil { reconcileDeferred = true; continue }
                 let baseline = isActiveTab ? savedText : pane.tabs[idx].savedText
                 guard let disk = try? vault.read(pane.tabs[idx].file), disk != baseline else { continue }
                 let conflicting = isActiveTab ? (externalConflict != nil) : (pane.tabs[idx].externalConflict != nil)
-                if conflicting { continue }
+                if conflicting {
+                    // Changed again while the banner is up: offer what's on disk now,
+                    // or "Reload" would restore a version that's already gone.
+                    if isActiveTab { externalConflict = disk } else { pane.tabs[idx].externalConflict = disk }
+                    continue
+                }
                 let dirty = isActiveTab ? isDirty : pane.tabs[idx].isDirty
                 if dirty {
                     if isActiveTab { conflictPaused = true; externalConflict = disk }
@@ -237,13 +248,32 @@ public final class AppState: ObservableObject {
     /// Copy the live working state into the active tab's snapshot.
     /// (`conflictPaused` is intentionally not stored — `hydrate` derives it from
     /// `externalConflict != nil`.)
+    /// Every tab showing this note — in any pane — gets the same state, so split
+    /// view never holds two diverging versions of one note.
     private func writeBackActive() {
         guard let pane = activePane, let id = pane.activeTabID,
-              let idx = pane.tabs.firstIndex(where: { $0.id == id }) else { return }
-        pane.tabs[idx].text = activeText
-        pane.tabs[idx].savedText = savedText
-        pane.tabs[idx].externalConflict = externalConflict
-        pane.tabs[idx].missingOnDisk = missingOnDisk
+              let file = pane.tabs.first(where: { $0.id == id })?.file else { return }
+        syncTabs(of: file) { tab in
+            tab.text = activeText
+            tab.savedText = savedText
+            tab.externalConflict = externalConflict
+            tab.missingOnDisk = missingOnDisk
+        }
+    }
+
+    private func syncTabs(of file: MarkdownFile, _ update: (inout OpenTab) -> Void) {
+        let target = file.url.standardizedFileURL
+        for pane in panes {
+            for idx in pane.tabs.indices where pane.tabs[idx].file.url.standardizedFileURL == target {
+                update(&pane.tabs[idx])
+            }
+        }
+    }
+
+    /// Another pane's tab for `file`, if it's open there.
+    private func openTab(for file: MarkdownFile, outside pane: Pane) -> OpenTab? {
+        panes.lazy.filter { $0.id != pane.id }.flatMap(\.tabs)
+            .first { self.urlSameFile($0.file.url, file.url) }
     }
 
     /// Load the working state from a tab snapshot.
@@ -274,10 +304,7 @@ public final class AppState: ObservableObject {
         guard tab.isDirty, let vault else { return true }
         guard tab.externalConflict == nil, !tab.missingOnDisk else { return false }
         guard write(tab.text, to: tab.file, with: vault) else { return false }
-        if let pane = panes.first(where: { $0.tabs.contains { $0.id == tab.id } }),
-           let idx = pane.tabs.firstIndex(where: { $0.id == tab.id }) {
-            pane.tabs[idx].savedText = tab.text
-        }
+        syncTabs(of: tab.file) { $0.savedText = tab.text }
         scheduleReindex()
         return true
     }
@@ -286,6 +313,17 @@ public final class AppState: ObservableObject {
         guard let pane = activePane else { return }
         if let existing = pane.tabs.first(where: { urlSameFile($0.file.url, file.url) }) {
             switchTab(existing.id); return
+        }
+        // Already open in the other pane: continue from that buffer, not the disk.
+        if let other = openTab(for: file, outside: pane) {
+            flushPendingSave()
+            writeBackActive()
+            let tab = OpenTab(copying: other)
+            objectWillChange.send()
+            pane.tabs.append(tab)
+            pane.activeTabID = tab.id
+            hydrate(from: tab)
+            return
         }
         // Read before touching the current buffer. A note that can't be decoded
         // (not UTF-8) must not open as an empty buffer — the first keystroke would
@@ -365,7 +403,10 @@ public final class AppState: ObservableObject {
         guard pane.tabs.isEmpty else { return }
         if panes.count > 1 {
             resignEditorFocus()   // the collapsing pane's editor view is about to be torn down
+            let wasActive = pane.id == activePaneID
             panes.removeAll { $0.id == pane.id }
+            // The other pane closing leaves the live buffer — what's being typed — alone.
+            guard wasActive else { return }
             let first = panes[0]
             activePaneID = first.id
             if let t = first.tabs.first(where: { $0.id == first.activeTabID }) { hydrate(from: t) }
@@ -392,7 +433,8 @@ public final class AppState: ObservableObject {
         resignEditorFocus()   // the single-pane editor is rebuilt into a fresh HSplitView; resign FR first
         flushPendingSave()
         writeBackActive()
-        guard let snapshot = cur.tabs.first(where: { $0.id == id }) else { return }
+        guard let original = cur.tabs.first(where: { $0.id == id }) else { return }
+        let snapshot = OpenTab(copying: original)   // its own identity (pin, close, move)
         let right = Pane(tabs: [snapshot], activeTabID: snapshot.id)
         panes.append(right)
         activePaneID = right.id
@@ -458,6 +500,14 @@ public final class AppState: ObservableObject {
         let target: Pane
         if hasNeighbour {
             target = panes[neighbourIndex]
+            if let existing = target.tabs.first(where: { urlSameFile($0.file.url, snapshot.file.url) }) {
+                // That pane already shows this note (in sync): just go to it.
+                target.activeTabID = existing.id
+                activePaneID = target.id
+                hydrate(from: existing)
+                closePaneIfEmpty(src)
+                return
+            }
             target.tabs.append(snapshot)
         } else {
             let newPane = Pane(tabs: [snapshot], activeTabID: snapshot.id)
@@ -524,14 +574,25 @@ public final class AppState: ObservableObject {
         let text = activeText
         let previous = savedText
         savedText = text
+        autosavesInFlight[file.url, default: 0] += 1
         saveQueue.async { [weak self] in
             do {
                 try vault.write(text, to: file)
-                DispatchQueue.main.async { self?.scheduleReindex() }
+                DispatchQueue.main.async { self?.scheduleReindex(); self?.autosaveLanded(file) }
             } catch {
                 self?.autosaveFailures.append((file, text, previous, error))
-                DispatchQueue.main.async { self?.applyAutosaveFailures() }
+                DispatchQueue.main.async { self?.applyAutosaveFailures(); self?.autosaveLanded(file) }
             }
+        }
+    }
+
+    /// An autosave finished (either way): reconcile anything that waited for it.
+    private func autosaveLanded(_ file: MarkdownFile) {
+        let left = (autosavesInFlight[file.url] ?? 1) - 1
+        autosavesInFlight[file.url] = left > 0 ? left : nil
+        if autosavesInFlight.isEmpty && reconcileDeferred {
+            reconcileDeferred = false
+            reconcileTabs()
         }
     }
 
@@ -726,6 +787,15 @@ public final class AppState: ObservableObject {
         let fm = FileManager.default
         switch op {
         case .created(let url), .copied(let url):
+            // A created folder that has gained notes since (a sync client, a move)
+            // isn't this operation's to throw away.
+            let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+            if isDir, let contents = try? fm.contentsOfDirectory(atPath: url.path),
+               contents.contains(where: { !$0.hasPrefix(".") }) {
+                notice = Notice(title: "Not undone",
+                                message: "\u{201C}\(url.lastPathComponent)\u{201D} has notes in it now, so Hanji left it in place.")
+                break
+            }
             _ = try? v.delete(url)                          // to Trash, still recoverable
         case .renamed(let from, let to), .moved(let from, let to):
             let followers = tabsFollowing(to)
@@ -988,7 +1058,8 @@ public final class AppState: ObservableObject {
 
     /// Conflict banner: discard my unsaved edits and take the on-disk version.
     public func resolveConflictReloadingDisk() {
-        guard let diskText = externalConflict else { return }
+        guard let recorded = externalConflict else { return }
+        let diskText = selectedFile.flatMap { try? vault?.read($0) } ?? recorded   // what's there now
         activeText = diskText
         savedText = diskText
         externalConflict = nil
