@@ -1,38 +1,69 @@
 import Foundation
 import VaultKit
 
-/// A saved snapshot of one open tab. The ACTIVE tab's live state lives in
-/// AppState's `selectedFile`/`activeText`/`savedText`/`externalConflict`
-/// working fields; this snapshot is written back on switch/close.
-public struct OpenTab: Identifiable, Equatable {
-    public let id: UUID
+/// One open note's working state. Every tab showing the note — in either pane —
+/// holds the same buffer, so a note can't have two diverging versions: what's
+/// typed in one pane is what the other shows. The active tab's buffer is
+/// mirrored by AppState's `activeText`/`savedText`/`externalConflict`/
+/// `missingOnDisk` working fields, which write straight through to it.
+public final class NoteBuffer {
     public var file: MarkdownFile
     public var text: String
+    /// Disk baseline; the note is dirty when `text` differs.
     public var savedText: String
+    /// The on-disk version waiting on the "changed on disk" banner.
     public var externalConflict: String?
-    /// The file vanished while this tab had unsaved edits; saving is paused until
+    /// The file vanished while the note had unsaved edits; saving is paused until
     /// the user saves it again or closes it (or the file comes back).
     public var missingOnDisk = false
-    /// Pinned tabs can't be closed until unpinned, and the vault reopens them.
-    public var isPinned = false
     public var isDirty: Bool { text != savedText }
-    public init(file: MarkdownFile, text: String) {
-        self.id = UUID()
+
+    init(file: MarkdownFile, text: String) {
         self.file = file
         self.text = text
         self.savedText = text
-        self.externalConflict = nil
+    }
+}
+
+/// A tab: its own identity and pin, showing a note's shared buffer. The note
+/// properties read and write that buffer.
+public struct OpenTab: Identifiable, Equatable {
+    public let id: UUID
+    public internal(set) var buffer: NoteBuffer
+    /// Pinned tabs can't be closed until unpinned, and the vault reopens them.
+    public var isPinned = false
+
+    public var file: MarkdownFile {
+        get { buffer.file } nonmutating set { buffer.file = newValue }
+    }
+    public var text: String {
+        get { buffer.text } nonmutating set { buffer.text = newValue }
+    }
+    public var savedText: String {
+        get { buffer.savedText } nonmutating set { buffer.savedText = newValue }
+    }
+    public var externalConflict: String? {
+        get { buffer.externalConflict } nonmutating set { buffer.externalConflict = newValue }
+    }
+    public var missingOnDisk: Bool {
+        get { buffer.missingOnDisk } nonmutating set { buffer.missingOnDisk = newValue }
+    }
+    public var isDirty: Bool { buffer.isDirty }
+
+    public init(file: MarkdownFile, text: String) {
+        self.id = UUID()
+        self.buffer = NoteBuffer(file: file, text: text)
     }
 
-    /// The same note's state under a new tab identity — for showing it in a
-    /// second pane (a pin stays with the original tab).
-    init(copying other: OpenTab) {
+    /// Another tab on the same note (a second pane): same buffer, its own
+    /// identity (the pin stays with the original tab).
+    init(sharing other: OpenTab) {
         self.id = UUID()
-        self.file = other.file
-        self.text = other.text
-        self.savedText = other.savedText
-        self.externalConflict = other.externalConflict
-        self.missingOnDisk = other.missingOnDisk
+        self.buffer = other.buffer
+    }
+
+    public static func == (a: OpenTab, b: OpenTab) -> Bool {
+        a.id == b.id && a.buffer === b.buffer && a.isPinned == b.isPinned
     }
 }
 

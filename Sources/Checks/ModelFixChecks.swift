@@ -81,3 +81,29 @@ func fileEdgeChecks() {
            "a folder that has gained notes isn't trashed by undo")
     expect(s.notice != nil, "and the user is told why")
 }
+
+/// A save never writes over a change it hasn't seen: if the file on disk no
+/// longer holds the version the note last saw, the save stops and the conflict
+/// banner comes up instead — whether the watcher has noticed yet or not.
+func saveChecksDiskFirstChecks() {
+    let v = vault("inflight", [("A.md", "disk"), ("B.md", "b")])
+    let a = v.appendingPathComponent("A.md")
+    defer { cleanup(v) }
+    let s = AppState(defaults: UserDefaults(suiteName: "mk-inflight-\(UUID().uuidString)")!, autosaveInterval: 0.05)
+    s.openVault(at: v)
+    s.openNote(relativePath: "A.md")
+    s.activeText = "mine"
+    try? "theirs".write(to: a, atomically: true, encoding: .utf8)   // before any watcher fire
+    pumpUntil(1) { s.externalConflict != nil }
+    expectEqual(try? String(contentsOf: a, encoding: .utf8), "theirs", "the autosave didn't write over it")
+    expectEqual(s.externalConflict, "theirs", "the conflict banner offers it")
+    expect(s.isDirty, "and my edit is still unsaved, not lost")
+
+    // Same for an explicit save (⌘S, switching notes).
+    s.resolveConflictReloadingDisk()
+    s.activeText = "mine again"
+    try? "theirs again".write(to: a, atomically: true, encoding: .utf8)
+    expect(!s.flushPendingSave(), "⌘S doesn't write over an unseen change")
+    expectEqual(try? String(contentsOf: a, encoding: .utf8), "theirs again", "which survives")
+    expectEqual(s.externalConflict, "theirs again", "and is offered in the banner")
+}
