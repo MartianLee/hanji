@@ -153,6 +153,10 @@ struct HanjiApp: App {
                 .keyboardShortcut("f", modifiers: [.command, .option, .shift])
             }
             CommandGroup(after: .sidebar) {
+                Button(uiState.leftSidebarVisible ? "Hide File Sidebar" : "Show File Sidebar") {
+                    uiState.leftSidebarVisible.toggle()
+                }
+                .keyboardShortcut("b", modifiers: .command)
                 Button("Toggle Right Sidebar") { uiState.rightSidebarVisible.toggle() }
                     .keyboardShortcut("b", modifiers: [.command, .option])
                 Button("Collapse All Folders") { uiState.expandedFolders = [] }

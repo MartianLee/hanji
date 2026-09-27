@@ -26,6 +26,10 @@ final class UIState: ObservableObject {
     }
     /// Whether the search panel shows its replace row (⌥⇧⌘F, or the toggle).
     @Published var replaceVisible = false
+    /// Left sidebar (files / search) visibility (⌘B); persisted, open by default.
+    @Published var leftSidebarVisible: Bool = UserDefaults.standard.object(forKey: "io.hanji.leftSidebar") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(leftSidebarVisible, forKey: "io.hanji.leftSidebar") }
+    }
     /// Right plugin sidebar (Backlinks/Calendar) visibility; persisted, closed by default.
     @Published var rightSidebarVisible: Bool = UserDefaults.standard.object(forKey: "io.hanji.rightSidebar") as? Bool ?? false {
         didSet { UserDefaults.standard.set(rightSidebarVisible, forKey: "io.hanji.rightSidebar") }

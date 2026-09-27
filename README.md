@@ -52,7 +52,8 @@ to set everything up again.
 - **Vault-wide find & replace (⌥⇧⌘F)**: literal match with a case toggle, a
   confirmation that states how many occurrences in how many notes, and one
   **⌥⌘Z** that reverts the entire batch.
-- **Backlinks** and **Calendar** side panels (collapsible, ⌥⌘B).
+- Show or hide the file sidebar with **⌘B**; **Backlinks** and **Calendar** side
+  panels on the right (collapsible, ⌥⌘B).
 - Settings: editor font size, recent vaults, and **live plugin toggles**.
 
 **Plugins / SDK (compile-time, Swift)**

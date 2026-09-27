@@ -46,7 +46,8 @@ First public release.
 - Vault-wide find & replace (⌥⇧⌘F): literal match with an optional case
   toggle, a confirmation showing how many occurrences in how many notes, and a
   single ⌥⌘Z that reverts the whole batch.
-- Backlinks panel and Calendar panel (right sidebar, collapsible ⌥⌘B).
+- ⌘B shows or hides the file sidebar; the Backlinks and Calendar panels sit in
+  the right sidebar (⌥⌘B).
 - Settings: editor font size, recent vaults, live plugin toggles.
 
 ### Plugins / SDK

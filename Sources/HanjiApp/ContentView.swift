@@ -34,9 +34,11 @@ struct ContentView: View {
         // Two columns until a plugin contributes a right-sidebar panel (and the
         // user hasn't collapsed it), then three.
         if pluginManager.sidebar.isEmpty || !uiState.rightSidebarVisible {
-            NavigationSplitView { fileListPane } detail: { editorPane }
+            NavigationSplitView(columnVisibility: leftColumn(threeColumn: false)) { fileListPane } detail: { editorPane }
         } else {
-            NavigationSplitView { fileListPane } content: { editorPane } detail: { sidebarPane }
+            NavigationSplitView(columnVisibility: leftColumn(threeColumn: true)) {
+                fileListPane
+            } content: { editorPane } detail: { sidebarPane }
         }
     }
 
@@ -58,6 +60,15 @@ struct ContentView: View {
         }
         .buttonStyle(.plain)
         .help(help)
+    }
+
+    /// The left column's visibility, driven by ⌘B (uiState.leftSidebarVisible) and
+    /// kept in step when the system's own sidebar button hides or shows it.
+    /// Hidden leaves the editor alone, or the editor and the right panel.
+    private func leftColumn(threeColumn: Bool) -> Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { uiState.leftSidebarVisible ? .all : (threeColumn ? .doubleColumn : .detailOnly) },
+            set: { uiState.leftSidebarVisible = !($0 == .detailOnly || ($0 == .doubleColumn && threeColumn)) })
     }
 
     @ViewBuilder private var fileListPane: some View {
