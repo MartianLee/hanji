@@ -362,7 +362,8 @@ func keystrokeCostChecks() {
         return times.sorted()[times.count / 2]
     }
     let small = median(lines: 100), large = median(lines: 1000)
-    expect(large < 0.06, "a keystroke in a 4,000-line note takes under 60ms (debug build; took \(Int(large * 1000))ms)")
+    let limit = 0.06 * Check.timeSlack
+    expect(large < limit, "a keystroke in a 4,000-line note takes under \(Int(limit * 1000))ms (debug build; took \(Int(large * 1000))ms)")
     expect(large < small * 8 + 0.01,
            "and far from ten times a short note's (\(Int(small * 1000))ms for 400 lines vs \(Int(large * 1000))ms for 4,000)")
 }

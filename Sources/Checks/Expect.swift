@@ -6,6 +6,12 @@ import Foundation
 enum Check {
     static var passed = 0
     static var failures: [String] = []
+    /// How much longer a timed check may take here than on a developer's Mac.
+    /// Hosted CI runners are shared VMs, several times slower and noisier (a
+    /// paste the M-series Macs the limits were set on do in 250ms took 1.0–1.5s
+    /// on GitHub's macos-15), so there the absolute limits are 3× looser. The
+    /// machine-independent guards (counters, growth ratios) aren't scaled.
+    static let timeSlack: Double = ProcessInfo.processInfo.environment["CI"] != nil ? 3 : 1
 }
 
 func expect(_ condition: @autoclosure () -> Bool, _ message: String,

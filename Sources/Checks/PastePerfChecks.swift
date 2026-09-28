@@ -8,12 +8,13 @@ import EditorEngine
 /// clipboard. What's timed is how long the app is blocked: the paste itself
 /// plus the restyle and widget pass it queues. Undoing the paste is timed too.
 ///
-/// Two guards. Absolute limits for the debug build the checks run in, about 4×
-/// what an M-series Mac measures today (best of 3: 50k pastes in ~235ms and
-/// undoes in ~35ms; 200k in ~990ms and ~65ms), so a slower CI machine passes
-/// and a real slowdown fails. And a scaling limit that holds on any machine:
-/// 4× the text may cost at most 8× the time — linear is 4×, and an accidental
-/// O(n²) (a restyle per line, a rescan per character) would be 16×.
+/// Two guards. Absolute limits for the debug build the checks run in, about 3×
+/// what an M-series Mac measures today (best of 3: 50k pastes in ~365ms and
+/// undoes in ~45ms; 200k in ~1.3s and ~185ms — tables and code blocks in it
+/// each become a widget), 3× more on CI (`Check.timeSlack`), so a real
+/// slowdown fails and a slow machine doesn't. And a scaling limit that holds on
+/// any machine: 4× the text may cost at most 8× the time — linear is 4×, and an
+/// accidental O(n²) (a restyle per line, a rescan per character) would be 16×.
 func pastePerfChecks() {
     let board = NSPasteboard(name: NSPasteboard.Name("io.hanji.checks.paste-\(UUID().uuidString)"))
     defer { board.releaseGlobally() }
@@ -81,11 +82,15 @@ func pastePerfChecks() {
         }
         let paste = pasteTimes.min()!, undo = undoTimes.min()!
         pasteBySize[size] = paste
+        if ProcessInfo.processInfo.environment["HANJI_PERF"] != nil {
+            print(String(format: "PERF paste %dk  %.0fms  undo %.0fms", size / 1000, paste * 1000, undo * 1000))
+        }
         expect(pastedRight, "\(size / 1000)k characters paste and undo exactly")
-        expect(paste < limits.paste,
-               "pasting \(size / 1000)k characters blocks for \(Int(paste * 1000))ms (limit \(Int(limits.paste * 1000))ms)")
-        expect(undo < limits.undo,
-               "undoing it blocks for \(Int(undo * 1000))ms (limit \(Int(limits.undo * 1000))ms)")
+        let pasteLimit = limits.paste * Check.timeSlack, undoLimit = limits.undo * Check.timeSlack
+        expect(paste < pasteLimit,
+               "pasting \(size / 1000)k characters blocks for \(Int(paste * 1000))ms (limit \(Int(pasteLimit * 1000))ms)")
+        expect(undo < undoLimit,
+               "undoing it blocks for \(Int(undo * 1000))ms (limit \(Int(undoLimit * 1000))ms)")
     }
     if let small = pasteBySize[50_000], let large = pasteBySize[200_000] {
         expect(large < small * 8,
