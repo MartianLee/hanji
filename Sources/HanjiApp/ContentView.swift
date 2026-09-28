@@ -324,8 +324,14 @@ struct ContentView: View {
                 Button("New Folder") { newFolder(in: node.url) }
                 Divider()
             }
-            if !node.isDirectory, let f = appState.files.first(where: { $0.url.standardizedFileURL == node.url.standardizedFileURL }) {
-                Button("Open in New Tab") { appState.open(f, newTab: true) }
+            if !node.isDirectory {
+                // Look the note up when the item is chosen, not here: SwiftUI builds
+                // every row's menu each time the view updates — every keystroke —
+                // and a lookup per row made typing crawl in a big vault.
+                Button("Open in New Tab") {
+                    let url = node.url.standardizedFileURL
+                    if let f = appState.files.first(where: { $0.url.standardizedFileURL == url }) { appState.open(f, newTab: true) }
+                }
                 Divider()
             }
             Button("Rename") { startRename(node) }
