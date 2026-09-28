@@ -100,6 +100,7 @@ runChecks([
     ("EditorFonts", editorFontChecks),
     ("EditorLinkCompletion", editorLinkCompletionChecks),
     ("EditorNestedFence", editorNestedFenceChecks),
+    ("PastePerf", pastePerfChecks),
     ("IncrementalRestyle", incrementalRestyleChecks),
     ("KeystrokeCost", keystrokeCostChecks),
     ("StyleCommit", styleCommitChecks),
