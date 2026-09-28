@@ -301,6 +301,7 @@ final class PassthroughHostingView: NSHostingView<AnyView> {
 /// (via the registered renderers) and images. Widgets reserve the height they need
 /// (measured via NSHostingView.fittingSize) and reveal raw source when edited.
 public struct MarkdownEditorView: NSViewRepresentable {
+
     @Binding public var text: String
     public var renderers: RendererRegistry?
     public var vaultRoot: URL?
@@ -431,10 +432,14 @@ public struct MarkdownEditorView: NSViewRepresentable {
             LivePreviewStyler.codeFont = codeFont
             textView.font = LivePreviewStyler.baseFont
             context.coordinator.needsFullRestyle = true
+            context.coordinator.widgetMeasures.removeAll()
             context.coordinator.refresh()
         }
         (textView as? ClickableTextView)?.maxLineWidth = maxLineWidth
-        if textView.string != text {
+        // NSString's comparison of the code units, not String's Unicode-aware one:
+        // this runs on every SwiftUI update of the editor — every keystroke — and
+        // String's `!=` walked a long note ten times slower.
+        if !(textView.string as NSString).isEqual(to: text) {
             textView.string = text
             context.coordinator.needsFullRestyle = true
             context.coordinator.refresh()
@@ -517,6 +522,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         }
 
         @objc private func widgetDidResize() {
+            widgetMeasures.removeAll()
             DispatchQueue.main.async { [weak self] in self?.updateWidgets() }
         }
 
@@ -540,6 +546,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         }
 
         func refresh() {
+            EditorMetrics.refreshes += 1
             restyle()
             settleLayoutBelowCaret()
             scheduleWidgetUpdate()
@@ -559,8 +566,14 @@ public struct MarkdownEditorView: NSViewRepresentable {
         private func settleLayoutBelowCaret() {
             // Not before the view is in a window: laying the note out at no width
             // is wasted work (and made fragments that kept that width).
-            guard let tv = textView, tv.window != nil, let tlm = tv.textLayoutManager else { return }
-            tlm.ensureLayout(for: tlm.documentRange)
+            guard let tv = textView, tv.window != nil, let tlm = tv.textLayoutManager,
+                  let tcs = tlm.textContentManager as? NSTextContentStorage else { return }
+            layOutNote(tlm, tcs)
+        }
+
+        /// Lay the whole note out.
+        private func layOutNote(_ tlm: NSTextLayoutManager, _ tcs: NSTextContentStorage) {
+            tlm.ensureLayout(for: tcs.documentRange)
         }
 
         /// Coalesce widget rebuilds: `updateWidgets` forces a full-document layout,
@@ -573,6 +586,17 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 self?.widgetUpdateScheduled = false
                 self?.updateWidgets()
             }
+        }
+
+        /// Whether the last restyle already covers the text and caret line as they
+        /// are. A keystroke reports the selection move before `textDidChange`,
+        /// against a paragraph that has since grown, so the selection hop found a
+        /// "new" caret line and restyled a second time for nothing.
+        private var isStyledAsShown: Bool {
+            guard !needsFullRestyle, let textView, let styledText, let styledCaretParagraph else { return false }
+            let current = textView.string as NSString
+            return current.length == styledText.length && current.isEqual(to: styledText as String)
+                && current.paragraphRange(for: textView.selectedRange()) == styledCaretParagraph
         }
 
         /// The text as of the last restyle, and the caret's paragraph then: what an
@@ -592,7 +616,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// paragraph on every keystroke made typing in a long note slow: 135ms a key
         /// at 4,000 lines in a release build, nearly all of it re-applying and
         /// re-comparing attributes nothing had changed.
-        func restyle() {
+        func restyle(also extra: [NSRange] = []) {
             guard let textView, let storage = textView.textStorage else { return }
             let text = NSString(string: storage.string)
             // Line-by-line cache: after an edit only changed lines are tokenized.
@@ -604,9 +628,17 @@ public struct MarkdownEditorView: NSViewRepresentable {
             let deco = Decorator.decorations(spans: spans, selection: selection)
             let caretParagraph = text.paragraphRange(for: sel)
             let everything = NSRange(location: 0, length: text.length)
-            let scopes = needsFullRestyle ? [everything]
+            var scopes = needsFullRestyle ? [everything]
                 : dirtyParagraphs(in: text, caret: caretParagraph, regions: regions) ?? [everything]
+            if scopes != [everything], !extra.isEmpty {
+                scopes = Self.merged(scopes + extra.compactMap { r -> NSRange? in
+                    let lo = min(max(0, r.location), text.length), hi = min(max(lo, NSMaxRange(r)), text.length)
+                    return text.paragraphRange(for: NSRange(location: lo, length: hi - lo))
+                })
+            }
             needsFullRestyle = false
+            if scopes == [everything] { EditorMetrics.fullRestyles += 1 }
+            EditorMetrics.restyledCharacters += scopes.reduce(0) { $0 + $1.length }
             for scope in scopes where scope.length > 0 {
                 restyle(scope, of: storage, text: text, deco: deco, regions: regions,
                         spans: spans, sel: sel, caret: selection)
@@ -651,14 +683,15 @@ public struct MarkdownEditorView: NSViewRepresentable {
             let edited = oldChanged.length > 0 || newChanged.length > 0
             var ranges = [caret]
             if edited {
-                let oldParas = old.paragraphRange(for: oldChanged)
-                let newParas = text.paragraphRange(for: newChanged)
+                let oldParas = Self.paragraphs(touching: oldChanged, in: old)
+                let newParas = Self.paragraphs(touching: newChanged, in: text)
                 if Self.isStructural(old.substring(with: oldParas)) || Self.isStructural(text.substring(with: newParas)) {
                     return nil
                 }
                 // An edit can change what's code away from itself: taking a list
                 // marker off turns the fence nested under it back into text.
-                if Self.codeMovedBeyond(old: styledCodeRanges, new: codeRegions, oldEdit: oldParas, newEdit: newParas) {
+                if Self.codeMovedBeyond(old: styledCodeRanges, new: codeRegions, oldEdit: oldParas, newEdit: newParas,
+                                        delta: text.length - old.length) {
                     return nil
                 }
                 ranges.append(newParas)
@@ -677,22 +710,37 @@ public struct MarkdownEditorView: NSViewRepresentable {
                     lo = min(lo, region.full.lowerBound); hi = max(hi, region.full.upperBound)
                 }
                 return text.paragraphRange(for: NSRange(location: lo, length: hi - lo))
-            }.sorted { $0.location < $1.location }
-            var merged: [NSRange] = []
-            for r in widened {
-                if let last = merged.last, r.location <= NSMaxRange(last) {
-                    merged[merged.count - 1] = NSUnionRange(last, r)
+            }
+            return Self.merged(widened)
+        }
+
+        /// Ranges sorted and overlapping or touching ones joined.
+        static func merged(_ ranges: [NSRange]) -> [NSRange] {
+            var out: [NSRange] = []
+            for r in ranges.sorted(by: { $0.location < $1.location }) {
+                if let last = out.last, r.location <= NSMaxRange(last) {
+                    out[out.count - 1] = NSUnionRange(last, r)
                 } else {
-                    merged.append(r)
+                    out.append(r)
                 }
             }
-            return merged
+            return out
+        }
+
+        /// The paragraphs a change touches, through the one its end sits in: Return
+        /// inserts a newline, and `paragraphRange(for:)` of that newline stops at
+        /// it — leaving out the line it split off, and the edit's length change
+        /// read off these ranges came out wrong (a code block below then looked
+        /// moved, and every Return restyled the whole note).
+        static func paragraphs(touching change: NSRange, in text: NSString) -> NSRange {
+            let paras = text.paragraphRange(for: change)
+            guard NSMaxRange(change) < text.length, NSMaxRange(change) >= NSMaxRange(paras) else { return paras }
+            return NSUnionRange(paras, text.paragraphRange(for: NSRange(location: NSMaxRange(change), length: 0)))
         }
 
         /// Whether the code ranges clear of an edit differ before and after it
-        /// (those after it shifted by the length change).
-        static func codeMovedBeyond(old: [Range<Int>], new: [Range<Int>], oldEdit: NSRange, newEdit: NSRange) -> Bool {
-            let delta = NSMaxRange(newEdit) - NSMaxRange(oldEdit)
+        /// (those after it shifted by `delta`, the text's length change).
+        static func codeMovedBeyond(old: [Range<Int>], new: [Range<Int>], oldEdit: NSRange, newEdit: NSRange, delta: Int) -> Bool {
             func clear(_ ranges: [Range<Int>], of edit: NSRange, shift: Int) -> [Range<Int>] {
                 ranges.compactMap { r in
                     if r.upperBound < edit.location { return r }
@@ -743,6 +791,13 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// length and would hold a rule's height open over ordinary prose until the
         /// widget pass caught up.
         private var reservations: [(region: Range<Int>, height: CGFloat, source: String)] = []
+        /// The text `reservations` were taken from, to carry them through an edit.
+        private var reservationsText: NSString?
+        /// Each widget's measured height at a width: a widget whose source hasn't
+        /// changed isn't re-rendered or re-measured (SwiftUI's fittingSize is the
+        /// expensive part of a widget pass). Cleared when a widget reports a new
+        /// size and when fonts change.
+        var widgetMeasures: [String: (width: CGFloat, height: CGFloat)] = [:]
 
         /// Put back the reservations inside `storage`, a stretch of `text` starting
         /// at `offset`.
@@ -882,59 +937,84 @@ public struct MarkdownEditorView: NSViewRepresentable {
             let nstext = textView.string as NSString
 
             var specs: [WidgetSpec] = []
+            // The restyle just parsed this text; reuse what it found if unchanged.
+            let unchanged = styledText.map { $0.isEqual(to: textView.string) } ?? false
             if let registry = renderers {
-                // The restyle just parsed this text; reuse its code blocks if unchanged.
-                let unchanged = styledText.map { $0.isEqual(to: textView.string) } ?? false
                 for region in unchanged ? tokenizer.codeBlockRegions : CodeBlockParser.regions(in: textView.string) {
                     guard let renderer = registry.renderer(for: region.language) else { continue }
                     if intersects(region.full, caret) { continue }
                     let body = region.bodyText(in: nstext)
-                    specs.append(WidgetSpec(key: "cb-\(region.full.lowerBound)-\(region.full.upperBound)-\(region.language)",
-                                            region: region.full, view: renderer.makeView(source: body)))
+                    specs.append(WidgetSpec(key: "cb-\(region.language)", region: region.full,
+                                            view: renderer.makeView(source: body)))
                 }
             }
             specs.append(contentsOf: imageWidgets(caret: caret, nstext: nstext))
             specs.append(contentsOf: hrWidgets(caret: caret, nstext: nstext))
             let inset = textView.textContainerInset.width
             let width = max(50, textView.bounds.width - inset * 2)
-            specs.append(contentsOf: tableWidgets(caret: caret, nstext: nstext, width: width))
+            specs.append(contentsOf: tableWidgets(caret: caret, nstext: nstext, width: width,
+                                                  codeRanges: unchanged ? tokenizer.codeRanges : nil))
             widgetRegions = specs.map(\.region)   // for click-to-reveal caret snapping
 
             var live: Set<String> = []
             var placements: [(region: Range<Int>, host: NSHostingView<AnyView>, h: CGFloat)] = []
 
             // Phase 1: host + measure (fittingSize) + reserve height in the text.
+            // A widget is known by its kind, its source and which of the same it
+            // is — not its offset, which every keystroke above it changes: keyed
+            // by offset, each key rebuilt every widget below it.
+            var seen: [String: Int] = [:]
+            storage.beginEditing()
             for spec in specs {
-                live.insert(spec.key)
+                let length = spec.region.upperBound - spec.region.lowerBound
+                guard spec.region.lowerBound >= 0, spec.region.lowerBound + length <= nstext.length else { continue }
+                let source = nstext.substring(with: NSRange(location: spec.region.lowerBound, length: length))
+                let identity = "\(spec.key)|\(source)"
+                let key = "\(identity)#\(seen[identity, default: 0])"
+                seen[identity, default: 0] += 1
+                live.insert(key)
                 let host: NSHostingView<AnyView>
-                if let existing = overlays[spec.key] { host = existing; host.rootView = spec.view }
-                else { host = PassthroughHostingView(rootView: spec.view); textView.addSubview(host); overlays[spec.key] = host }
-                host.frame.size.width = width
-                let h = min(max(20, host.fittingSize.height), spec.maxHeight)
+                let h: CGFloat
+                if let existing = overlays[key], let measured = widgetMeasures[key], measured.width == width {
+                    host = existing
+                    h = measured.height
+                } else {
+                    if let existing = overlays[key] { host = existing; host.rootView = spec.view }
+                    else {
+                        host = PassthroughHostingView(rootView: spec.view); textView.addSubview(host); overlays[key] = host
+                        EditorMetrics.widgetViewsCreated += 1
+                    }
+                    host.frame.size.width = width
+                    h = min(max(20, host.fittingSize.height), spec.maxHeight)
+                    widgetMeasures[key] = (width, h)
+                }
                 reserve(region: spec.region, height: h, in: storage)
                 placements.append((spec.region, host, h))
             }
+            storage.endEditing()
+            widgetMeasures = widgetMeasures.filter { live.contains($0.key) }
 
-            let before = reservations
+            let before = reservations, beforeText = reservationsText
             reservations = placements.compactMap { pl in
                 let length = pl.region.upperBound - pl.region.lowerBound
                 guard pl.region.lowerBound >= 0, pl.region.lowerBound + length <= nstext.length else { return nil }
                 let source = nstext.substring(with: NSRange(location: pl.region.lowerBound, length: length))
                 return (region: pl.region, height: pl.h, source: source)
             }
+            reservationsText = nstext.copy() as? NSString
             // A widget that's gone (a rule edited away, a fence now running over it)
-            // leaves its reserved, invisible styling on the text, and a restyle
-            // limited to what was edited wouldn't reach it: restyle everything once.
-            if before.contains(where: { old in !reservations.contains { $0.region == old.region && $0.source == old.source } }) {
-                needsFullRestyle = true
-                restyle()
-            }
+            // leaves its reserved, invisible styling on the text: restyle its lines.
+            // The reservations are carried through the edit since the last pass
+            // first — matched by offset, a widget below an edit looked gone on every
+            // keystroke, and each one restyled the whole note.
+            let gone = Self.goneReservations(before, in: beforeText, now: reservations, in: nstext)
+            if !gone.isEmpty { restyle(also: gone) }
 
             // Phase 2: re-layout (heights changed), then position each overlay. The
             // full-document ensureLayout also settles the caret's own line, so don't
             // skip it when there is nothing to place — without it the insertion point
             // is left unpainted after a restyle.
-            tlm.ensureLayout(for: tcs.documentRange)
+            layOutNote(tlm, tcs)
             if revealCaret {
                 revealCaret = false
                 textView.scrollRangeToVisible(textView.selectedRange())
@@ -972,8 +1052,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
                         .frame(maxHeight: 320)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 )
-                out.append(WidgetSpec(key: "img-\(ref.line.lowerBound)-\(ref.line.upperBound)",
-                                      region: ref.line, view: view))
+                out.append(WidgetSpec(key: "img", region: ref.line, view: view))
             }
             return out
         }
@@ -992,31 +1071,64 @@ public struct MarkdownEditorView: NSViewRepresentable {
                         .padding(.vertical, 10)
                         .background(Color(nsColor: .textBackgroundColor))
                 )
-                out.append(WidgetSpec(key: "hr-\(line.lowerBound)-\(line.upperBound)",
-                                      region: line, view: view))
+                out.append(WidgetSpec(key: "hr", region: line, view: view))
             }
             return out
         }
 
         /// Pipe tables drawn as a grid; like other widgets, the source comes back
         /// while the caret is anywhere in the table.
-        func tableWidgets(caret: Range<Int>, nstext: NSString, width: CGFloat) -> [WidgetSpec] {
-            TableParser.tables(in: nstext as String).compactMap { table in
+        func tableWidgets(caret: Range<Int>, nstext: NSString, width: CGFloat, codeRanges: [Range<Int>]?) -> [WidgetSpec] {
+            let tables = codeRanges.map { TableParser.tables(in: nstext as String, codeRanges: $0) } ?? TableParser.tables(in: nstext as String)
+            return tables.compactMap { table in
                 if intersects(table.range, caret) { return nil }
-                return WidgetSpec(key: "tbl-\(table.range.lowerBound)-\(table.range.upperBound)", region: table.range,
+                return WidgetSpec(key: "tbl", region: table.range,
                                   view: AnyView(TableWidgetView(table: table, width: width)),
                                   maxHeight: .greatestFiniteMagnitude)
             }
         }
 
+        /// The earlier reservations with no match now, carried through the edit
+        /// between the two texts: where each one's lines are now. One the edit
+        /// touched counts as gone (the widget pass re-measures it), and so does
+        /// one whose text or place no longer matches a current reservation.
+        static func goneReservations(_ before: [(region: Range<Int>, height: CGFloat, source: String)], in oldText: NSString?,
+                                     now: [(region: Range<Int>, height: CGFloat, source: String)], in newText: NSString) -> [NSRange] {
+            guard !before.isEmpty else { return [] }
+            guard let oldText else { return before.map { NSRange(location: $0.region.lowerBound, length: $0.region.count) } }
+            let (oldEdit, newEdit) = changedRanges(oldText, newText)
+            let delta = newText.length - oldText.length
+            let current = Set(now.map { "\($0.region.lowerBound)|\($0.region.upperBound)|\($0.source)" })
+            var gone: [NSRange] = []
+            for r in before {
+                let lo: Int, hi: Int, untouched: Bool
+                if r.region.upperBound <= oldEdit.location { (lo, hi, untouched) = (r.region.lowerBound, r.region.upperBound, true) }
+                else if r.region.lowerBound >= NSMaxRange(oldEdit) {
+                    (lo, hi, untouched) = (r.region.lowerBound + delta, r.region.upperBound + delta, true)
+                } else {
+                    lo = min(r.region.lowerBound, newEdit.location)
+                    hi = max(r.region.upperBound + delta, NSMaxRange(newEdit))
+                    untouched = false
+                }
+                if untouched && current.contains("\(lo)|\(hi)|\(r.source)") { continue }
+                gone.append(NSRange(location: lo, length: max(0, hi - lo)))
+            }
+            return gone
+        }
+
         /// Reserve `height` for a block: force the first line to that height and
         /// collapse the remaining lines; hide the source (the overlay covers it).
+        /// Nothing is written when the block already holds this reservation: every
+        /// attribute write throws away that stretch's layout, and rewriting every
+        /// widget on each pass cost ~100ms a keystroke in a widget-heavy note.
         private func reserve(region: Range<Int>, height: CGFloat, in storage: NSTextStorage) {
             let ns = storage.string as NSString
             let upper = min(region.upperBound, ns.length)
             guard region.lowerBound < upper else { return }
             var firstEnd = region.lowerBound
             while firstEnd < upper && ns.character(at: firstEnd) != 0x0A { firstEnd += 1 }
+            if Self.holdsReservation(storage, from: region.lowerBound, firstEnd: firstEnd, upper: upper, height: height) { return }
+            EditorMetrics.reservationWrites += 1
             let p = NSMutableParagraphStyle()
             p.minimumLineHeight = height
             p.maximumLineHeight = height
@@ -1032,6 +1144,25 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 storage.addAttribute(.paragraphStyle, value: NSParagraphStyle.default,
                                      range: NSRange(location: firstEnd + 1, length: upper - firstEnd - 1))
             }
+        }
+
+        /// Whether `storage` already carries the reservation `reserve` would write.
+        private static func holdsReservation(_ storage: NSTextStorage, from start: Int, firstEnd: Int, upper: Int,
+                                             height: CGFloat) -> Bool {
+            if firstEnd > start {
+                let attrs = storage.attributes(at: start, effectiveRange: nil)
+                guard let p = attrs[.paragraphStyle] as? NSParagraphStyle, p.minimumLineHeight == height,
+                      p.maximumLineHeight == height, (attrs[.foregroundColor] as? NSColor) == .clear else { return false }
+            }
+            if firstEnd < upper {
+                guard let font = storage.attribute(.font, at: firstEnd, effectiveRange: nil) as? NSFont,
+                      font.pointSize < 0.1 else { return false }
+            }
+            if firstEnd + 1 < upper {
+                guard (storage.attribute(.paragraphStyle, at: firstEnd + 1, effectiveRange: nil) as? NSParagraphStyle)
+                        == NSParagraphStyle.default else { return false }
+            }
+            return true
         }
 
         private func clearOverlays() {
@@ -1221,7 +1352,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
             // after AppKit has finished with the caret, and the marker reveal still
             // arrives in the same frame.
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.textView?.hasMarkedText() != true else { return }
+                guard let self, self.textView?.hasMarkedText() != true, !self.isStyledAsShown else { return }
                 self.refresh()
             }
         }

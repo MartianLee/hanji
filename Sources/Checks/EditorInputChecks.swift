@@ -44,8 +44,8 @@ final class EditorHarness {
 
     func pump(_ s: Double = 0.1) { RunLoop.main.run(until: Date().addingTimeInterval(s)) }
 
-    func key(_ chars: String, _ code: UInt16) {
-        window.sendEvent(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+    func key(_ chars: String, _ code: UInt16, _ modifiers: NSEvent.ModifierFlags = []) {
+        window.sendEvent(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0,
                                           windowNumber: window.windowNumber, context: nil, characters: chars,
                                           charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code)!)
     }
@@ -618,4 +618,42 @@ func editorCodeIndentChecks() {
     h.key("\r", 36); h.pump()
     h.textView.undoManager?.undo(); h.pump()
     expectEqual(h.text, nested, "one undo takes the new line and its indent back")
+}
+
+/// What a keystroke costs, in work rather than time (the same on any machine):
+/// in a note full of widgets — code blocks, rules, tables — typing, Return and
+/// moving the caret restyle only the lines they touch, build no new widget
+/// views, and refresh once. Typing above a widget used to make it look gone
+/// (widgets were matched by offset), which restyled the whole note and rebuilt
+/// every widget below on each key; Return, with a code block below, restyled
+/// everything too.
+func keystrokeWorkChecks() {
+    var lines: [String] = [], i = 0
+    while lines.count < 1000 {
+        lines += ["## Section \(i)", "Paragraph \(i) with **bold** and `code` text.", "- item", ""]
+        if i % 15 == 3 { lines += ["```swift", "let value = \(i)", "```", ""] }
+        if i % 21 == 7 { lines += ["---", ""] }
+        if i % 25 == 11 { lines += ["| a | b |", "|---|---|", "| \(i) | x |", ""] }
+        i += 1
+    }
+    let text = lines.joined(separator: "\n")
+    let length = (text as NSString).length
+    guard let h = EditorHarness(text) else { expect(false, "editor found"); return }
+    defer { h.close() }
+    let paragraph = (text as NSString).range(of: "Paragraph 20 with").location + 10
+    h.caret(at: paragraph); h.pump(0.5)
+    func work(_ label: String, _ action: () -> Void) {
+        EditorMetrics.reset()
+        action(); h.pump(0.2)
+        expectEqual(EditorMetrics.fullRestyles, 0, "\(label): no full restyle")
+        expect(EditorMetrics.restyledCharacters < length / 50,
+               "\(label): restyles only nearby lines (\(EditorMetrics.restyledCharacters) of \(length) characters)")
+        expectEqual(EditorMetrics.widgetViewsCreated, 0, "\(label): builds no widget views")
+    }
+    work("typing above widgets") { h.key("x", 0) }
+    expectEqual(EditorMetrics.refreshes, 1, "a keystroke refreshes once")
+    work("Return with a code block below") { h.key("\r", 36) }
+    work("moving the caret a line") { h.key("\u{F701}", 125) }
+    expect(EditorMetrics.reservationWrites < 10,
+           "and rewrites no widget heights that didn't change (\(EditorMetrics.reservationWrites) writes)")
 }
