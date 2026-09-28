@@ -492,6 +492,7 @@ struct ContentView: View {
                     cursorOffset: $appState.pendingCursorOffset, fontSize: CGFloat(appState.fontSize),
                     lineHeight: CGFloat(appState.lineHeight), maxLineWidth: readableWidth,
                     textFont: appState.textFont, codeFont: appState.codeFont,
+                    linkTargets: { appState.linkTargets },
                     // ⌘-click opens the link in a new tab, as in Obsidian.
                     onOpenLink: { appState.openLink($0, newTab: NSEvent.modifierFlags.contains(.command)) },
                     onFocus: { appState.focusPane(pane.id) },

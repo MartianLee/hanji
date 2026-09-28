@@ -290,6 +290,17 @@ public final class AppState: ObservableObject {
         }
     }
 
+    /// Every note a `[[` link can point at: vault-relative paths without `.md`
+    /// (what `openLink` resolves).
+    public var linkTargets: [String] {
+        guard let root = vaultRoot?.standardizedFileURL.path else { return [] }
+        return files.map { file in
+            let path = file.url.standardizedFileURL.path
+            let rel = path.hasPrefix(root + "/") ? String(path.dropFirst(root.count + 1)) : file.url.lastPathComponent
+            return rel.lowercased().hasSuffix(".md") ? String(rel.dropLast(3)) : rel
+        }
+    }
+
     /// Open the note a wiki/markdown link targets (filename base or vault-relative
     /// path, Obsidian-style, case-insensitive). No-op if nothing matches.
     public func openLink(_ target: String, newTab: Bool = false) {

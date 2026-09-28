@@ -46,6 +46,8 @@ to set everything up again.
 - **Tabs and split panes**: drag to reorder, drop a tab on either edge to split.
   **Pin** a tab (its context menu, File ▸ Pin Tab, or ⌘P) to keep it from
   closing; the vault reopens its pinned notes next time.
+- **`[[` link suggestions**: type `[[` and pick a note (↑/↓, Return or Tab);
+  the link is closed for you, and a name two notes share links by path.
 - **Back / forward**, as in Obsidian: opening a note shows it in the current tab,
   and each tab keeps its own history (⌥⌘← / ⌥⌘→, the toolbar arrows, or a
   mouse's back/forward buttons). A pinned tab, ⌘-click on a link, or

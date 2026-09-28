@@ -14,10 +14,12 @@ final class EditorHarness {
     var maxLineWidth: CGFloat?
     var textFont = ""
     var codeFont = ""
+    var linkTargets: [String] = []
 
     init?(_ initial: String, cursorOffset initialOffset: Int? = nil, lineHeight: CGFloat = 1.3,
-          maxLineWidth: CGFloat? = nil, width: CGFloat = 800) {
+          maxLineWidth: CGFloat? = nil, width: CGFloat = 800, linkTargets: [String] = []) {
         text = initial
+        self.linkTargets = linkTargets
         cursorOffset = initialOffset
         self.lineHeight = lineHeight
         self.maxLineWidth = maxLineWidth
@@ -27,7 +29,8 @@ final class EditorHarness {
         let binding = Binding(get: { box?.text ?? initial }, set: { box?.text = $0 })
         let offset = Binding(get: { box?.cursorOffset ?? initialOffset }, set: { box?.cursorOffset = $0 })
         let host = NSHostingView(rootView: MarkdownEditorView(text: binding, cursorOffset: offset,
-                                                              lineHeight: lineHeight, maxLineWidth: maxLineWidth))
+                                                              lineHeight: lineHeight, maxLineWidth: maxLineWidth,
+                                                              linkTargets: { linkTargets }))
         hosting = host
         window.contentView = host
         window.makeKeyAndOrderFront(nil)
@@ -65,7 +68,8 @@ final class EditorHarness {
                                                cursorOffset: Binding(get: { self.cursorOffset },
                                                                      set: { self.cursorOffset = $0 }),
                                                lineHeight: lineHeight, maxLineWidth: maxLineWidth,
-                                               textFont: textFont, codeFont: codeFont)
+                                               textFont: textFont, codeFont: codeFont,
+                                               linkTargets: { self.linkTargets })
         pump(0.4)
     }
 
@@ -443,4 +447,41 @@ func editorFontChecks() {
     expect(!EditorFonts.textFamilies.contains { $0.hasPrefix(".") }, "without the system's hidden ones")
     expect(EditorFonts.codeFamilies.contains("Menlo"), "monospaced families are offered for code")
     expect(!EditorFonts.codeFamilies.contains("Georgia"), "proportional ones aren't")
+}
+
+/// `[[` completion in the editor: Return or Tab takes a suggestion (↓ moves
+/// through them), Esc puts it away and Return is a newline again. A pick is one
+/// undo step; inside code there's nothing to complete.
+func editorLinkCompletionChecks() {
+    guard let h = EditorHarness("", linkTargets: ["Alpha", "Projects/Plan", "Beta"]) else {
+        expect(false, "editor found"); return
+    }
+    defer { h.close() }
+    let down = { h.key("\u{F701}", 125) }
+    let esc = { h.key("\u{1B}", 53) }
+    h.type("See [[al"); h.key("\r", 36); h.pump()
+    expectEqual(h.text, "See [[Alpha]]", "Return takes the top suggestion and closes the link")
+    expectEqual(h.textView.selectedRange().location, 13, "the caret lands after ]]")
+
+    h.type(" and [[")                         // an empty query lists notes by name
+    down(); h.key("\t", 48); h.pump()
+    expectEqual(h.text, "See [[Alpha]] and [[Beta]]", "↓ then Tab takes the second")
+
+    h.textView.undoManager?.undo(); h.pump()
+    expectEqual(h.text, "See [[Alpha]] and [[", "one undo takes the pick back")
+
+    h.type("pl"); esc(); h.key("\r", 36); h.pump()
+    expectEqual(h.text, "See [[Alpha]] and [[pl\n", "Esc puts the list away; Return is a newline again")
+
+    h.type("[[zzz"); h.key("\r", 36); h.pump()
+    expect(h.text.hasSuffix("[[zzz\n"), "with nothing to suggest, Return is a newline")
+
+    h.type("[[be"); h.key("\u{F700}", 126); h.key("\r", 36); h.pump()
+    expect(h.text.hasSuffix("[[Beta]]"), "↑ wraps around a one-item list")
+
+    guard let code = EditorHarness("```\n", cursorOffset: 4, linkTargets: ["Alpha"]) else { return }
+    defer { code.close() }
+    code.caret(at: 4)
+    code.type("[[al"); code.key("\r", 36); code.pump()
+    expectEqual(code.text, "```\n[[al\n", "inside a code block, [[ is just text")
 }

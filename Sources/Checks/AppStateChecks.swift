@@ -20,6 +20,15 @@ func appStateChecks() {
     state.save()
     let onDisk = (try? String(contentsOf: root.appendingPathComponent("a.md"), encoding: .utf8)) ?? ""
     expectEqual(onDisk, "changed", "save persists to disk")
+
+    // What a `[[` link can point at: every note, vault-relative, no `.md`.
+    try? fm.createDirectory(at: root.appendingPathComponent("Projects"), withIntermediateDirectories: true)
+    try? "p".write(to: root.appendingPathComponent("Projects/Plan.md"), atomically: true, encoding: .utf8)
+    state.reloadTree()
+    expectEqual(state.linkTargets.sorted(), ["Projects/Plan", "a"], "link targets are the vault's notes")
+    state.activeText = "[[Plan]]"
+    state.openLink("Projects/Plan")
+    expectEqual(state.selectedFile?.name, "Plan.md", "and a link written that way opens its note")
 }
 
 func appRecentsChecks() {

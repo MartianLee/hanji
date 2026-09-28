@@ -26,6 +26,20 @@ final class ClickableTextView: NSTextView {
 
     var onClick: ((Int) -> Bool)?
     var onBecameFirstResponder: (() -> Void)?
+    var onResignedFirstResponder: (() -> Void)?
+    /// Offered each key command (↑, Return, Esc, …) first; true means it was
+    /// handled — the `[[` suggestion list uses it while it's open.
+    var onCommand: ((Selector) -> Bool)?
+
+    override func doCommand(by selector: Selector) {
+        if onCommand?(selector) == true { return }
+        super.doCommand(by: selector)
+    }
+    override func resignFirstResponder() -> Bool {
+        let ok = super.resignFirstResponder()
+        if ok { onResignedFirstResponder?() }
+        return ok
+    }
     /// Whether an offset sits inside a fenced code block, answered by the coordinator
     /// (which keeps the regions fresh). Inside a fence a line like `- name: foo` is
     /// code, not a list, so Return and Tab must behave as they do in any editor.
@@ -275,6 +289,9 @@ public struct MarkdownEditorView: NSViewRepresentable {
     /// Text and code fonts, as `EditorFonts` choices ("" = the system's).
     public var textFont: String
     public var codeFont: String
+    /// Notes a `[[` link can point at (vault-relative paths without `.md`),
+    /// asked for when the suggestion list opens.
+    public var linkTargets: (() -> [String])?
     /// Called when a wiki/markdown link is clicked, with the raw link target.
     public var onOpenLink: ((String) -> Void)?
     /// Called when a `#tag` is clicked, with the tag's name (no `#`).
@@ -292,6 +309,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 cursorOffset: Binding<Int?> = .constant(nil), fontSize: CGFloat = 15,
                 lineHeight: CGFloat = 1.3, maxLineWidth: CGFloat? = nil,
                 textFont: String = "", codeFont: String = "",
+                linkTargets: (() -> [String])? = nil,
                 onOpenLink: ((String) -> Void)? = nil,
                 onFocus: (() -> Void)? = nil, isLive: Bool = true,
                 onOpenTag: ((String) -> Void)? = nil,
@@ -308,6 +326,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         self.maxLineWidth = maxLineWidth
         self.textFont = textFont
         self.codeFont = codeFont
+        self.linkTargets = linkTargets
         self.onOpenLink = onOpenLink
         self.onFocus = onFocus
     }
@@ -365,6 +384,14 @@ public struct MarkdownEditorView: NSViewRepresentable {
             coordinator?.isInCodeRegion(offset) ?? false
         }
         textView.onBecameFirstResponder = { [weak coordinator = context.coordinator] in coordinator?.onFocus?() }
+        textView.onResignedFirstResponder = { [weak coordinator = context.coordinator] in coordinator?.closeLinkCompletion() }
+        textView.onCommand = { [weak coordinator = context.coordinator] selector in
+            coordinator?.handleLinkCompletionCommand(selector) ?? false
+        }
+        // The suggestion list follows its link when the note scrolls.
+        scroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(context.coordinator, selector: #selector(Coordinator.clipViewDidScroll),
+                                               name: NSView.boundsDidChangeNotification, object: scroll.contentView)
         context.coordinator.refresh()
         return scroll
     }
@@ -448,7 +475,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
             DispatchQueue.main.async { [weak self] in self?.refresh() }
         }
 
-        deinit { NotificationCenter.default.removeObserver(self) }
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+            linkPopup.close()
+        }
 
         /// Take the latest values SwiftUI handed the view — `parent` included: it
         /// carries the text binding, which in split view changes as focus moves
@@ -957,6 +987,81 @@ public struct MarkdownEditorView: NSViewRepresentable {
             a.lowerBound <= b.upperBound && b.lowerBound <= a.upperBound
         }
 
+        // MARK: [[ link completion
+
+        private let linkPopup = LinkCompletionPopup()
+        /// The link being completed, as of the last update.
+        private var linkContext: LinkCompletion.Context?
+        /// Where Esc put the list away: it stays away until the caret leaves
+        /// that link.
+        private var dismissedLinkStart: Int?
+
+        /// Open, refresh or close the suggestion list for where the caret is now.
+        func updateLinkCompletion() {
+            guard let textView, parent.isLive, textView.window?.firstResponder === textView,
+                  let targets = parent.linkTargets,
+                  textView.selectedRange().length == 0,
+                  let context = LinkCompletion.context(in: textView.string as NSString,
+                                                       caret: textView.selectedRange().location),
+                  !isInCodeRegion(context.queryRange.location)
+            else { return closeLinkCompletion() }
+            if dismissedLinkStart == context.queryRange.location { return closeLinkCompletion(keepDismissal: true) }
+            let items = LinkCompletion.suggestions(for: context.query, notes: targets())
+            guard !items.isEmpty, let window = textView.window else { return closeLinkCompletion() }
+            linkContext = context
+            linkPopup.onPick = { [weak self] in self?.acceptLink($0) }
+            linkPopup.show(items, below: linkAnchor(context), in: window)
+        }
+
+        func closeLinkCompletion(keepDismissal: Bool = false) {
+            linkContext = nil
+            if !keepDismissal { dismissedLinkStart = nil }
+            linkPopup.close()
+        }
+
+        /// Screen point under the `[[` the list hangs from.
+        private func linkAnchor(_ context: LinkCompletion.Context) -> NSPoint {
+            guard let textView else { return .zero }
+            let start = NSRange(location: max(0, context.queryRange.location - 2), length: 0)
+            let rect = textView.firstRect(forCharacterRange: start, actualRange: nil)
+            return NSPoint(x: rect.minX, y: rect.minY)
+        }
+
+        @objc func clipViewDidScroll() {
+            guard let linkContext, linkPopup.isOpen, let window = textView?.window else { return }
+            linkPopup.show(linkPopup.model.items, below: linkAnchor(linkContext), in: window)
+        }
+
+        /// Keys while the list is open: ↑/↓ choose, Return/Tab take, Esc closes.
+        func handleLinkCompletionCommand(_ selector: Selector) -> Bool {
+            guard linkPopup.isOpen, let context = linkContext else { return false }
+            switch selector {
+            case #selector(NSResponder.moveDown(_:)): linkPopup.move(1)
+            case #selector(NSResponder.moveUp(_:)): linkPopup.move(-1)
+            case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertTab(_:)):
+                guard let pick = linkPopup.selection else { return false }
+                acceptLink(pick)
+            case #selector(NSResponder.cancelOperation(_:)):
+                dismissedLinkStart = context.queryRange.location
+                closeLinkCompletion(keepDismissal: true)
+            default:
+                return false
+            }
+            return true
+        }
+
+        /// Replace the link being typed with `suggestion`, as one undoable edit.
+        private func acceptLink(_ suggestion: LinkCompletion.Suggestion) {
+            guard let textView, let context = linkContext else { return }
+            let edit = LinkCompletion.accept(suggestion, in: context)
+            closeLinkCompletion()
+            // Its own undo step, not merged into the typing around it.
+            textView.breakUndoCoalescing()
+            textView.insertText(edit.text, replacementRange: edit.range)
+            textView.breakUndoCoalescing()
+            textView.setSelectedRange(NSRange(location: edit.caret, length: 0))
+        }
+
         // MARK: NSTextLayoutManagerDelegate — code blocks get a slab background.
 
         public func textLayoutManager(_ textLayoutManager: NSTextLayoutManager,
@@ -999,8 +1104,9 @@ public struct MarkdownEditorView: NSViewRepresentable {
             // jamo gets re-styled mid-composition and the text jumps and flickers.
             // Committing the composition sends another textDidChange, and that one
             // styles the finished text.
-            guard !textView.hasMarkedText() else { return }
+            guard !textView.hasMarkedText() else { updateLinkCompletion(); return }
             refresh()
+            updateLinkCompletion()
         }
 
         private var lastCaretParagraph: NSRange?
@@ -1010,6 +1116,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
             // within a line must not restyle the whole document (it re-laid out
             // everything and flickered).
             guard let textView else { return }
+            updateLinkCompletion()
             // Not mid-composition: the selection moves with every jamo, and a
             // restyle would pull the marked text out from under the input method.
             // Committing the composition sends textDidChange, which restyles.
