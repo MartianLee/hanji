@@ -31,7 +31,7 @@ swift run Checks <Group>    # run one group, e.g. `swift run Checks LinkParser`
 Add a test by writing a `func myChecks()` (using `expect`/`expectEqual`) in a
 `Sources/Checks/*.swift` file and registering `("MyGroup", myChecks)` in
 `Sources/Checks/main.swift`. **Every change should keep `swift run Checks` green**
-(currently 1293 assertions / 145 groups). Prefer pure, headless tests; UI behavior
+(currently 1294 assertions / 145 groups). Prefer pure, headless tests; UI behavior
 that needs a window (e.g. drawing) is verified by screenshot during review.
 
 Changing the editor's restyle, layout or widget pass (`MarkdownEditorView`'s

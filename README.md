@@ -22,6 +22,42 @@ extension model written in **Swift** rather than JS. It reads the vault config
 already sitting in your folder (periodic notes, templates) instead of asking you
 to set everything up again.
 
+## Performance
+
+Typing stays fast in long notes, including ones full of code blocks and tables.
+A keystroke restyles only the lines it reached. The parser picks up from the
+edit and stops as soon as it's back in step with what it read last time.
+Rendered blocks (code, tables, rules) keep their measured size instead of being
+rebuilt.
+
+Measured on an Apple M5 Pro, macOS 26, release build. Each figure is the median
+of 15 keystrokes in the middle of the note, timed from the key press until the
+note is restyled and laid out.
+
+| Note | Size | Keystroke | Return |
+|---|---:|---:|---:|
+| 4,000 lines: headings, prose, lists | 110 KB | 15 ms | 16 ms |
+| 4,000 lines: the same plus code blocks, tables, rules | 100 KB | 18 ms | 19 ms |
+| 20,000 lines: headings, prose, lists | 560 KB | 62 ms | 62 ms |
+| 20,000 lines: the same plus code blocks, tables, rules | 510 KB | 78 ms | 80 ms |
+
+Pasting (⌘V) is timed until everything pasted is styled and rendered.
+
+| Pasted | Paste | Undo |
+|---|---:|---:|
+| 50,000 characters of mixed markdown | 0.33 s | 0.05 s |
+| 200,000 characters of mixed markdown | 1.2 s | 0.18 s |
+
+`swift run Checks` fails when:
+- a keystroke in a 4,000-line note takes over 60 ms (in the debug build);
+- a keystroke restyles more than 2% of the note, or rebuilds a rendered block;
+- a paste goes over its time limit, or its time grows faster than linearly with
+  its size.
+
+To reproduce the tables:
+`swift build -c release --product Checks && HANJI_PERF=1 .build/release/Checks EditorPerf`
+(and `PastePerf`).
+
 ## Features
 
 **Editing (Live Preview)**
