@@ -34,7 +34,9 @@ to set everything up again.
 - Bullet, task, and **numbered** lists continue on Return (numbers increment);
   Return on an empty item leaves the list, and Tab / ⇧Tab nests and un-nests it.
 - Fenced code blocks render as a full-width slab with **syntax highlighting**
-  (Swift, JS/TS, Python, JSON, shell + a C-like fallback).
+  (Swift, JS/TS, Python, JSON, shell + a C-like fallback). A block nested in a
+  list item (the `    ```swift` under `- ` that GitHub READMEs use) is code
+  too, its slab starting under the item's text.
 - Inline images, **mermaid** diagrams, and horizontal rules render in place.
 - Editable inline file title; clicking a `[[wikilink]]` or `[text](note.md)`
   opens the target note.

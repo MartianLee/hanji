@@ -147,6 +147,9 @@ final class CodeBlockFragment: NSTextLayoutFragment {
     }
     /// The delegate's estimate, for when the container can't tell yet.
     var fallbackWidth: CGFloat = 0
+    /// Where the slab starts: 0 for a top-level block, the code's own indent
+    /// for one nested in a list item (it sits under the item's text).
+    @objc var slabInset: CGFloat = 0
 
     /// TextKit 2 clips fragment drawing to this rect, so expand it to the full
     /// code column — otherwise the slab is cut to each line's glyph width.
@@ -169,7 +172,8 @@ final class CodeBlockFragment: NSTextLayoutFragment {
         // line heights otherwise leave a hairline antialiased seam at the join.
         // The block's last line keeps its exact height (rounded bottom corner).
         let extra: CGFloat = roundsBottom ? 0 : 1
-        let rect = CGRect(x: -point.x, y: 0, width: width, height: layoutFragmentFrame.height + extra)
+        let rect = CGRect(x: -point.x + slabInset, y: 0, width: max(0, width - slabInset),
+                          height: layoutFragmentFrame.height + extra)
         let radius: CGFloat = 8
         let path = CGMutablePath()
         let tl: CGFloat = roundsTop ? radius : 0
@@ -551,6 +555,8 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// edit or a caret move is measured against, to restyle only what it touched.
         private var styledText: NSString?
         private var styledCaretParagraph: NSRange?
+        /// The code ranges as of the last restyle.
+        private var styledCodeRanges: [Range<Int>] = []
         /// Restyle everything next time (first load, font size, text replaced).
         var needsFullRestyle = true
         /// Spans and code blocks, remembered per line (see TokenizerCache).
@@ -584,6 +590,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
             markerLines = markerPlacements(spans: spans, sel: sel, text: text)
             styledText = text
             styledCaretParagraph = caretParagraph
+            styledCodeRanges = codeRegions
             // The next line typed is body text until restyled: give it the body
             // metrics now (NSTextView otherwise carries whatever it picked up, e.g.
             // a rule's reserved height or no paragraph style at all).
@@ -625,6 +632,11 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 if Self.isStructural(old.substring(with: oldParas)) || Self.isStructural(text.substring(with: newParas)) {
                     return nil
                 }
+                // An edit can change what's code away from itself: taking a list
+                // marker off turns the fence nested under it back into text.
+                if Self.codeMovedBeyond(old: styledCodeRanges, new: codeRegions, oldEdit: oldParas, newEdit: newParas) {
+                    return nil
+                }
                 ranges.append(newParas)
             }
             // The caret's old paragraph, carried through the edit (one overlapping
@@ -653,6 +665,20 @@ public struct MarkdownEditorView: NSViewRepresentable {
             return merged
         }
 
+        /// Whether the code ranges clear of an edit differ before and after it
+        /// (those after it shifted by the length change).
+        static func codeMovedBeyond(old: [Range<Int>], new: [Range<Int>], oldEdit: NSRange, newEdit: NSRange) -> Bool {
+            let delta = NSMaxRange(newEdit) - NSMaxRange(oldEdit)
+            func clear(_ ranges: [Range<Int>], of edit: NSRange, shift: Int) -> [Range<Int>] {
+                ranges.compactMap { r in
+                    if r.upperBound < edit.location { return r }
+                    if r.lowerBound > NSMaxRange(edit) { return (r.lowerBound + shift)..<(r.upperBound + shift) }
+                    return nil
+                }
+            }
+            return clear(old, of: oldEdit, shift: delta) != clear(new, of: newEdit, shift: 0)
+        }
+
         /// Where two texts differ: the common prefix and suffix trimmed off, as a
         /// range in each.
         static func changedRanges(_ old: NSString, _ new: NSString) -> (old: NSRange, new: NSRange) {
@@ -675,7 +701,8 @@ public struct MarkdownEditorView: NSViewRepresentable {
         static func isStructural(_ lines: String) -> Bool {
             (lines as NSString).components(separatedBy: "\n").contains { raw in
                 let line = raw.hasSuffix("\r") ? String(raw.dropLast()) : raw
-                return Fence.opening(line) != nil || line.trimmingCharacters(in: .whitespaces) == "---"
+                // Any indent: a fence nested in a list item runs on too.
+                return Fence.opening(line, inList: true) != nil || line.trimmingCharacters(in: .whitespaces) == "---"
                     || line.hasPrefix(">")
             }
         }
@@ -837,8 +864,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 for region in unchanged ? tokenizer.codeBlockRegions : CodeBlockParser.regions(in: textView.string) {
                     guard let renderer = registry.renderer(for: region.language) else { continue }
                     if intersects(region.full, caret) { continue }
-                    let bodyLen = max(0, region.body.upperBound - region.body.lowerBound)
-                    let body = nstext.substring(with: NSRange(location: region.body.lowerBound, length: bodyLen))
+                    let body = region.bodyText(in: nstext)
                     specs.append(WidgetSpec(key: "cb-\(region.full.lowerBound)-\(region.full.upperBound)-\(region.language)",
                                             region: region.full, view: renderer.makeView(source: body)))
                 }
@@ -977,6 +1003,24 @@ public struct MarkdownEditorView: NSViewRepresentable {
             return NSTextRange(location: start, end: end)
         }
 
+        /// How far in a code block's slab starts: the x of its fence's first
+        /// character when the fence is nested in a list item (indented 4+
+        /// columns), else 0 — a top-level block's slab spans the column as before.
+        private func slabInset(forBlockAt offset: Int) -> CGFloat {
+            guard let text = textView?.string as NSString?, offset < text.length else { return 0 }
+            var x: CGFloat = 0, columns = 0, i = offset
+            let space = (" " as NSString).size(withAttributes: [.font: LivePreviewStyler.codeFont(ofSize: LivePreviewStyler.baseFontSize - 1)]).width
+            let tabStop: CGFloat = 28   // NSParagraphStyle's default tab stops
+            while i < text.length {
+                let c = text.character(at: i)
+                if c == 0x20 { x += space; columns += 1 }
+                else if c == 0x09 { x = (floor(x / tabStop) + 1) * tabStop; columns = (columns / 4 + 1) * 4 }
+                else { break }
+                i += 1
+            }
+            return columns > 3 ? x : 0
+        }
+
         /// Whether an offset falls inside a fenced code block (fences included).
         /// `codeRegions` is kept fresh by restyle().
         func isInCodeRegion(_ offset: Int) -> Bool {
@@ -1081,6 +1125,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
                     let fragment = CodeBlockFragment(textElement: textElement, range: textElement.elementRange)
                     fragment.roundsTop = start <= region.lowerBound
                     fragment.roundsBottom = end >= region.upperBound
+                    fragment.slabInset = slabInset(forBlockAt: region.lowerBound)
                     // Container width from the view bounds (reliable post-layout;
                     // the TLM's container can report 0 during the delegate call).
                     if let tv = textView {

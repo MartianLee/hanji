@@ -9,6 +9,7 @@ public enum HRParser {
         let ns = text as NSString
         var out: [Range<Int>] = []
         var openFence: Fence?
+        var inList = false
         var pos = 0
         var lineIndex = 0
         var skipUntilFrontmatterClose = false
@@ -24,11 +25,17 @@ public enum HRParser {
             } else if skipUntilFrontmatterClose {
                 if trimmed == "---" { skipUntilFrontmatterClose = false }
             } else if let open = openFence {
-                if open.isClosed(by: content) { openFence = nil }
-            } else if let fence = Fence.opening(content) {
-                openFence = fence
-            } else if isRule(content) {
-                out.append(lineRange.location..<(lineRange.location + (content as NSString).length))
+                if open.isClosed(by: content) {
+                    openFence = nil
+                    inList = ListContext.after(content, inList: inList)
+                }
+            } else {
+                if let fence = Fence.opening(content, inList: inList) {
+                    openFence = fence
+                } else if isRule(content) {
+                    out.append(lineRange.location..<(lineRange.location + (content as NSString).length))
+                }
+                inList = ListContext.after(content, inList: inList)
             }
 
             pos = lineRange.location + lineRange.length

@@ -485,3 +485,39 @@ func editorLinkCompletionChecks() {
     code.type("[[al"); code.key("\r", 36); code.pump()
     expectEqual(code.text, "```\n[[al\n", "inside a code block, [[ is just text")
 }
+
+/// A code block nested in a list item looks like one: code font, and a slab
+/// that starts at the block's indent (a top-level block's still spans the
+/// column). Taking the list marker away turns it back into text, although the
+/// edit is lines above it.
+func editorNestedFenceChecks() {
+    let note = "- item\n\n    ```swift\n    Player.all()\n    ```\n\n```\ntop()\n```\n"
+    guard let h = EditorHarness(note, cursorOffset: 0) else { expect(false, "editor found"); return }
+    defer { h.close() }
+    h.pump(0.3)
+    func font(_ needle: String) -> NSFont? {
+        let i = (h.textView.string as NSString).range(of: needle).location
+        return i == NSNotFound ? nil : h.textView.textStorage?.attribute(.font, at: i, effectiveRange: nil) as? NSFont
+    }
+    expect(font("Player")?.isFixedPitch == true, "nested code is in the code font")
+    func slab(_ needle: String) -> (inset: CGFloat, fragment: Bool) {
+        guard let tlm = h.textView.textLayoutManager, let tcs = tlm.textContentManager,
+              case let i = (h.textView.string as NSString).range(of: needle).location, i != NSNotFound,
+              let loc = tcs.location(tcs.documentRange.location, offsetBy: i),
+              let fragment = tlm.textLayoutFragment(for: loc) else { return (-1, false) }
+        let inset = fragment.responds(to: NSSelectorFromString("slabInset"))
+            ? (fragment.value(forKey: "slabInset") as? CGFloat) ?? -1 : -1
+        return (inset, String(describing: type(of: fragment)).contains("CodeBlock"))
+    }
+    let nested = slab("Player"), top = slab("top()")
+    expect(nested.fragment && top.fragment, "both blocks draw a slab")
+    expect(nested.inset > 10, "the nested slab starts at its indent (\(nested.inset)pt)")
+    expectEqual(top.inset, 0, "a top-level slab starts at the margin")
+
+    h.textView.setSelectedRange(NSRange(location: 0, length: 2))
+    h.textView.insertText("", replacementRange: NSRange(location: 0, length: 2))
+    h.pump(0.3)
+    expect(font("Player")?.isFixedPitch == false, "without the list item, the indented fence is text again")
+    h.textView.undoManager?.undo(); h.pump(0.3)
+    expect(font("Player")?.isFixedPitch == true, "and code once the marker is back")
+}

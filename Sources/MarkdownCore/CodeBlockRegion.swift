@@ -4,8 +4,29 @@ public struct CodeBlockRegion: Equatable {
     public let language: String        // "" if none
     public let body: Range<Int>        // inner text (between fences), UTF-16
     public let full: Range<Int>        // whole block incl fences
-    public init(language: String, body: Range<Int>, full: Range<Int>) {
-        self.language = language; self.body = body; self.full = full
+    /// Columns the opening fence is indented by (a block inside a list item).
+    public let indent: Int
+    public init(language: String, body: Range<Int>, full: Range<Int>, indent: Int = 0) {
+        self.language = language; self.body = body; self.full = full; self.indent = indent
+    }
+
+    /// The code itself, as a renderer should see it: without the indent a
+    /// block nested in a list item carries (up to the fence's own, per line).
+    /// A top-level fence indented 1–3 spaces keeps its body as written.
+    public func bodyText(in text: NSString) -> String {
+        let raw = text.substring(with: NSRange(location: body.lowerBound, length: max(0, body.upperBound - body.lowerBound)))
+        guard indent > 3 else { return raw }
+        return raw.components(separatedBy: "\n").map { line -> String in
+            var column = 0
+            var rest = Substring(line)
+            while let c = rest.first, c == " " || c == "\t" {
+                let next = c == "\t" ? (column / 4 + 1) * 4 : column + 1
+                guard next <= indent else { break }
+                column = next
+                rest = rest.dropFirst()
+            }
+            return String(rest)
+        }.joined(separator: "\n")
     }
 }
 
@@ -14,31 +35,7 @@ public enum CodeBlockParser {
     /// line (optionally followed by a language) and closes on a bare fence of the
     /// same marker at least as long.
     public static func regions(in text: String) -> [CodeBlockRegion] {
-        var out: [CodeBlockRegion] = []
-        let ns = text as NSString
-        let length = ns.length
-        let newline = UInt16(UnicodeScalar("\n").value)
-
-        var lineStart = 0
-        var open: (fenceStart: Int, bodyStart: Int, fence: Fence)? = nil
-        while lineStart <= length {
-            var lineEnd = lineStart
-            while lineEnd < length && ns.character(at: lineEnd) != newline { lineEnd += 1 }
-            let line = ns.substring(with: NSRange(location: lineStart, length: lineEnd - lineStart))
-            if let o = open {
-                if o.fence.isClosed(by: line) {
-                    let bodyEnd = lineStart > o.bodyStart ? lineStart - 1 : o.bodyStart
-                    out.append(CodeBlockRegion(language: o.fence.info, body: o.bodyStart..<bodyEnd, full: o.fenceStart..<lineEnd))
-                    open = nil
-                }
-            } else if let fence = Fence.opening(line) {
-                let bodyStart = (lineEnd == length) ? lineEnd : lineEnd + 1
-                open = (fenceStart: lineStart, bodyStart: bodyStart, fence: fence)
-            }
-            if lineEnd == length { break }
-            lineStart = lineEnd + 1
-        }
-        return out
+        scan(text).regions
     }
 
     /// Everything that is code, as the tokenizer styles it: every closed block,
@@ -47,20 +44,43 @@ public enum CodeBlockParser {
     /// block, so "am I in code?" questions (list keys, tags, checkboxes) use this;
     /// only rendering a block needs `regions` and its closing fence.
     public static func codeRanges(in text: String) -> [Range<Int>] {
-        let closed = regions(in: text).map(\.full)
+        let (regions, openStart) = scan(text)
+        return regions.map(\.full) + (openStart.map { [$0..<(text as NSString).length] } ?? [])
+    }
+
+    /// Closed blocks, and where a fence still open at the end starts.
+    private static func scan(_ text: String) -> (regions: [CodeBlockRegion], openStart: Int?) {
+        var out: [CodeBlockRegion] = []
         let ns = text as NSString
+        let length = ns.length
         let newline = UInt16(UnicodeScalar("\n").value)
-        var lineStart = closed.last?.upperBound ?? 0
-        if lineStart > 0 { lineStart += 1 }   // past the closing fence's newline
-        while lineStart < ns.length {
+
+        var lineStart = 0
+        var open: (fenceStart: Int, bodyStart: Int, fence: Fence)? = nil
+        var inList = false
+        while lineStart <= length {
             var lineEnd = lineStart
-            while lineEnd < ns.length && ns.character(at: lineEnd) != newline { lineEnd += 1 }
-            if Fence.opening(ns.substring(with: NSRange(location: lineStart, length: lineEnd - lineStart))) != nil {
-                return closed + [lineStart..<ns.length]
+            while lineEnd < length && ns.character(at: lineEnd) != newline { lineEnd += 1 }
+            let line = ns.substring(with: NSRange(location: lineStart, length: lineEnd - lineStart))
+            if let o = open {
+                if o.fence.isClosed(by: line) {
+                    let bodyEnd = lineStart > o.bodyStart ? lineStart - 1 : o.bodyStart
+                    out.append(CodeBlockRegion(language: o.fence.info, body: o.bodyStart..<bodyEnd,
+                                               full: o.fenceStart..<lineEnd, indent: o.fence.indent))
+                    open = nil
+                    inList = ListContext.after(line, inList: inList)
+                }
+            } else {
+                if let fence = Fence.opening(line, inList: inList) {
+                    let bodyStart = (lineEnd == length) ? lineEnd : lineEnd + 1
+                    open = (fenceStart: lineStart, bodyStart: bodyStart, fence: fence)
+                }
+                inList = ListContext.after(line, inList: inList)
             }
+            if lineEnd == length { break }
             lineStart = lineEnd + 1
         }
-        return closed
+        return (out, open?.fenceStart)
     }
 
     /// Fenced code (unclosed fences included) and inline code spans, as sorted,

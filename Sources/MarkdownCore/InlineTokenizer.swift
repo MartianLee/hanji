@@ -38,11 +38,13 @@ public enum InlineTokenizer {
     }
 
     /// What one line's tokenizing carries to the next: inside frontmatter, a code
-    /// fence (and which one closes it), or a callout.
+    /// fence (and which one closes it), a callout, or a list item (see
+    /// `ListContext`: where a fence may sit deeper).
     public struct LineState: Hashable {
         var inFrontmatter = false
         var openFence: Fence?
         var inCallout = false
+        var inList = false
         public init() {}
     }
 
@@ -62,19 +64,25 @@ public enum InlineTokenizer {
             if bare == "---" { state.inFrontmatter = false }
         } else if let open = state.openFence {
             result.append(MarkSpan(style: .codeBlock, content: lineRange, markers: [], line: lineRange))
-            if open.isClosed(by: lineText) { state.openFence = nil }
-        } else if let fence = Fence.opening(lineText) {
+            if open.isClosed(by: lineText) {
+                state.openFence = nil
+                state.inList = ListContext.after(bare, inList: state.inList)
+            }
+        } else if let fence = Fence.opening(lineText, inList: state.inList) {
             state.openFence = fence
             state.inCallout = false
+            state.inList = ListContext.after(bare, inList: state.inList)
             result.append(MarkSpan(style: .codeBlock, content: lineRange, markers: [], line: lineRange))
         } else if lineText.hasPrefix("> ") && (state.inCallout || String(lineText.dropFirst(2)).hasPrefix("[!")) {
             state.inCallout = true
+            state.inList = false
             let markers = [lineStart..<(lineStart + 2)]
             let content = (lineStart + 2)..<lineRange.upperBound
             result.append(MarkSpan(style: .callout, content: content, markers: markers, line: lineRange))
             scanInline(lineText as NSString, from: 2, lineStart: lineStart, lineRange: lineRange, into: &result)
         } else {
             state.inCallout = false
+            state.inList = ListContext.after(bare, inList: state.inList)
             parseLine(lineText as NSString, lineStart: lineStart, lineRange: lineRange, into: &result)
         }
     }

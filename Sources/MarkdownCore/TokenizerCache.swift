@@ -20,14 +20,16 @@ public final class TokenizerCache {
         let opensFrontmatter: Bool
         let state: InlineTokenizer.LineState
         /// The fence as `CodeBlockParser` sees it (it doesn't know frontmatter),
-        /// which decides where tags aren't.
+        /// which decides where tags aren't, and its list context.
         let parserFence: Fence?
+        let parserInList: Bool
     }
     private struct Entry {
         let spans: [MarkSpan]        // at line offset 0, tags aside
         let tags: [MarkSpan]
         let state: InlineTokenizer.LineState
         let parserFence: Fence?
+        let parserInList: Bool
     }
     private var entries: [Key: Entry] = [:]
 
@@ -49,7 +51,8 @@ public final class TokenizerCache {
         used.reserveCapacity(entries.capacity)
         var state = InlineTokenizer.LineState()
         var parserFence: Fence?
-        var openRegion: (fenceStart: Int, bodyStart: Int, info: String)?
+        var parserInList = false
+        var openRegion: (fenceStart: Int, bodyStart: Int, fence: Fence)?
         var lineStart = 0
         var lineIndex = 0
         while lineStart <= length {
@@ -57,7 +60,7 @@ public final class TokenizerCache {
             while lineEnd < length && ns.character(at: lineEnd) != newline { lineEnd += 1 }
             let line = ns.substring(with: NSRange(location: lineStart, length: lineEnd - lineStart))
             let key = Key(line: line, opensFrontmatter: lineIndex == 0 && frontmatter != nil,
-                          state: state, parserFence: parserFence)
+                          state: state, parserFence: parserFence, parserInList: parserInList)
             let entry: Entry
             if let hit = entries[key] { entry = hit } else { entry = tokenize(key); entries[key] = entry }
             used.append(key)
@@ -69,14 +72,16 @@ public final class TokenizerCache {
             }
             // Code blocks, as the parser draws them.
             if parserFence == nil, let opened = entry.parserFence {
-                openRegion = (lineStart, lineEnd == length ? lineEnd : lineEnd + 1, opened.info)
+                openRegion = (lineStart, lineEnd == length ? lineEnd : lineEnd + 1, opened)
             } else if parserFence != nil, entry.parserFence == nil, let o = openRegion {
                 let bodyEnd = lineStart > o.bodyStart ? lineStart - 1 : o.bodyStart
-                regions.append(CodeBlockRegion(language: o.info, body: o.bodyStart..<bodyEnd, full: o.fenceStart..<lineEnd))
+                regions.append(CodeBlockRegion(language: o.fence.info, body: o.bodyStart..<bodyEnd,
+                                               full: o.fenceStart..<lineEnd, indent: o.fence.indent))
                 openRegion = nil
             }
             state = entry.state
             parserFence = entry.parserFence
+            parserInList = entry.parserInList
 
             if lineEnd == length { break }
             lineStart = lineEnd + 1
@@ -102,16 +107,23 @@ public final class TokenizerCache {
         // parser's fences, including this line's own fence), not in inline code.
         let lineRange = 0..<(key.line as NSString).length
         var parserFence = key.parserFence
+        var parserInList = key.parserInList
         var inCode = parserFence != nil
         if let open = parserFence {
-            if open.isClosed(by: key.line) { parserFence = nil }
-        } else if let fence = Fence.opening(key.line) {
-            parserFence = fence
-            inCode = true
+            if open.isClosed(by: key.line) {
+                parserFence = nil
+                parserInList = ListContext.after(key.line, inList: parserInList)
+            }
+        } else {
+            if let fence = Fence.opening(key.line, inList: parserInList) {
+                parserFence = fence
+                inCode = true
+            }
+            parserInList = ListContext.after(key.line, inList: parserInList)
         }
         let tags = inCode ? [] : Tags.occurrences(in: key.line).map {
             MarkSpan(style: .tag, content: $0.range, markers: [], line: lineRange)
         }
-        return Entry(spans: spans, tags: tags, state: state, parserFence: parserFence)
+        return Entry(spans: spans, tags: tags, state: state, parserFence: parserFence, parserInList: parserInList)
     }
 }
