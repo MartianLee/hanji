@@ -1,18 +1,104 @@
 import Foundation
+import MarkdownCore
 
-/// A GFM pipe table: a header row, a delimiter row (`|---|:--:|`) and the body
-/// rows under it.
-public struct MarkdownTable: Equatable {
-    public enum Alignment: Equatable { case none, left, center, right }
-    /// From the header row's start to the last row's end (its newline excluded), UTF-16.
-    public let range: Range<Int>
-    public let alignments: [Alignment]
-    /// Cell text, trimmed, with `\|` unescaped — still markdown (see `TableParser.runs`).
-    public let header: [String]
-    /// Each row padded or cut to the header's column count.
-    public let rows: [[String]]
-    public init(range: Range<Int>, alignments: [Alignment], header: [String], rows: [[String]]) {
-        self.range = range; self.alignments = alignments; self.header = header; self.rows = rows
+// Frozen copies of the parsers as they were before their fast paths, the reference
+// the ParserEquivalence check holds the fast versions to. Do not edit.
+
+
+/// Finds horizontal-rule lines (`---`, `***`, `___`, 3+ repeats, up to 3 leading
+/// spaces) so the editor can render them as drawn dividers. Skips a leading
+/// frontmatter block (only when it has a closing delimiter) and fenced code.
+enum LegacyHRParser {
+    /// UTF-16 line ranges (excluding the newline) of every horizontal rule.
+    static func lines(in text: String) -> [Range<Int>] {
+        let ns = text as NSString
+        var out: [Range<Int>] = []
+        var openFence: Fence?
+        var inList = false
+        var pos = 0
+        var lineIndex = 0
+        var skipUntilFrontmatterClose = false
+
+        while pos < ns.length {
+            let lineRange = ns.lineRange(for: NSRange(location: pos, length: 0))
+            var content = ns.substring(with: lineRange)
+            while content.last?.isNewline == true { content.removeLast() }   // "\r\n" is one Character
+            let trimmed = content.trimmingCharacters(in: .whitespaces)
+
+            if lineIndex == 0, trimmed == "---", hasFrontmatterClose(ns, after: lineRange) {
+                skipUntilFrontmatterClose = true
+            } else if skipUntilFrontmatterClose {
+                if trimmed == "---" { skipUntilFrontmatterClose = false }
+            } else if let open = openFence {
+                if open.isClosed(by: content) {
+                    openFence = nil
+                    inList = ListContext.after(content, inList: inList)
+                }
+            } else {
+                if let fence = Fence.opening(content, inList: inList) {
+                    openFence = fence
+                } else if isRule(content) {
+                    out.append(lineRange.location..<(lineRange.location + (content as NSString).length))
+                }
+                inList = ListContext.after(content, inList: inList)
+            }
+
+            pos = lineRange.location + lineRange.length
+            lineIndex += 1
+            if lineRange.length == 0 { break }
+        }
+        return out
+    }
+
+    private static func isRule(_ line: String) -> Bool {
+        var s = Substring(line)
+        var leading = 0
+        while s.first == " " { s.removeFirst(); leading += 1 }
+        guard leading <= 3 else { return false }
+        while s.last == " " { s.removeLast() }
+        guard let mark = s.first, "-*_".contains(mark), s.count >= 3 else { return false }
+        return s.allSatisfy { $0 == mark }
+    }
+
+    private static func hasFrontmatterClose(_ ns: NSString, after openLine: NSRange) -> Bool {
+        var pos = openLine.location + openLine.length
+        while pos < ns.length {
+            let lineRange = ns.lineRange(for: NSRange(location: pos, length: 0))
+            var content = ns.substring(with: lineRange)
+            while content.last?.isNewline == true { content.removeLast() }   // "\r\n" is one Character
+            if content.trimmingCharacters(in: .whitespaces) == "---" { return true }
+            pos = lineRange.location + lineRange.length
+            if lineRange.length == 0 { break }
+        }
+        return false
+    }
+}
+
+enum LegacyImageParser {
+    /// Own-line image references: `![[path]]` (embed) or `![alt](path)`.
+    static func images(in text: String) -> [ImageRef] {
+        var out: [ImageRef] = []
+        let ns = text as NSString
+        let nl = UInt16(UnicodeScalar("\n").value)
+        var start = 0
+        while start <= ns.length {
+            var end = start
+            while end < ns.length && ns.character(at: end) != nl { end += 1 }
+            let raw = ns.substring(with: NSRange(location: start, length: end - start))
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("![["), line.hasSuffix("]]") {
+                var inner = String(line.dropFirst(3).dropLast(2))
+                if let bar = inner.firstIndex(of: "|") { inner = String(inner[..<bar]) }
+                inner = inner.trimmingCharacters(in: .whitespaces)
+                if !inner.isEmpty { out.append(ImageRef(path: inner, line: start..<end)) }
+            } else if line.hasPrefix("!["), line.hasSuffix(")"), let p = line.range(of: "](") {
+                let path = String(line[p.upperBound...].dropLast())
+                if !path.isEmpty { out.append(ImageRef(path: path, line: start..<end)) }
+            }
+            if end == ns.length { break }
+            start = end + 1
+        }
+        return out
     }
 }
 
@@ -20,19 +106,12 @@ public struct MarkdownTable: Equatable {
 /// header depends on the line *below* it (the delimiter row), which the
 /// line-by-line tokenizer cache can't see — hence a block pass of its own, like
 /// `HRParser`. Fenced code (unclosed fences included) and frontmatter hold no tables.
-public enum TableParser {
+enum LegacyTableParser {
     /// Every table in `text`, in document order.
-    public static func tables(in text: String) -> [MarkdownTable] {
-        tables(in: text, codeRanges: CodeBlockParser.codeRanges(in: text))
-    }
-
-    /// `tables(in:)` with the note's code ranges (`CodeBlockParser.codeRanges`)
-    /// already known — the editor's tokenizer has them — so the note isn't
-    /// scanned for fences again.
-    public static func tables(in text: String, codeRanges: [Range<Int>]) -> [MarkdownTable] {
+    static func tables(in text: String) -> [MarkdownTable] {
         guard text.contains("|") else { return [] }
         let ns = text as NSString
-        let excluded = codeRanges + (Frontmatter.range(in: text).map { [$0] } ?? [])
+        let excluded = CodeBlockParser.codeRanges(in: text) + (Frontmatter.range(in: text).map { [$0] } ?? [])
         // Lines: start offset, and text without its `\n` / `\r\n`.
         var lines: [(start: Int, text: String)] = []
         let newline = UInt16(UnicodeScalar("\n").value)
@@ -40,10 +119,7 @@ public enum TableParser {
         while start <= ns.length {
             var end = start
             while end < ns.length && ns.character(at: end) != newline { end += 1 }
-            // A line without `|` can't be a table row: keep its place, not its text.
-            var pipe = false
-            for k in start..<end where ns.character(at: k) == 0x7C { pipe = true; break }
-            var line = pipe ? ns.substring(with: NSRange(location: start, length: end - start)) : ""
+            var line = ns.substring(with: NSRange(location: start, length: end - start))
             if line.hasSuffix("\r") { line.removeLast() }
             lines.append((start, line))
             if end == ns.length { break }
@@ -88,7 +164,7 @@ public enum TableParser {
 
     /// A row's cells: one outer `|` on each side dropped, split on the pipes that
     /// aren't escaped, each cell trimmed and its `\|` unescaped.
-    public static func cells(_ line: String) -> [String] {
+    static func cells(_ line: String) -> [String] {
         let units = Array(line.trimmingCharacters(in: .whitespaces).utf16)
         let pipe = UInt16(UnicodeScalar("|").value), backslash = UInt16(UnicodeScalar("\\").value)
         var lo = 0, hi = units.count
@@ -112,7 +188,7 @@ public enum TableParser {
 
     /// The column alignments a delimiter row sets (`---`, `:--`, `:-:`, `--:`), or
     /// nil when `line` isn't one.
-    public static func delimiter(_ line: String) -> [MarkdownTable.Alignment]? {
+    static func delimiter(_ line: String) -> [MarkdownTable.Alignment]? {
         guard leadingSpaces(line) <= 3 else { return nil }
         var out: [MarkdownTable.Alignment] = []
         for cell in cells(line) {
@@ -127,7 +203,7 @@ public enum TableParser {
     /// A cell's markdown as styled runs, markers dropped: `**b** and [[note|alias]]`
     /// → "b" (bold), " and ", "alias" (link). Block syntax means nothing in a cell,
     /// so only inline styles count.
-    public static func runs(_ cell: String) -> [CellRun] {
+    static func runs(_ cell: String) -> [CellRun] {
         let ns = cell as NSString
         guard ns.length > 0 else { return [] }
         var hidden = [Bool](repeating: false, count: ns.length)
@@ -165,7 +241,7 @@ public enum TableParser {
     /// `available` space: as wished when they fit, else narrow columns keep
     /// theirs and the wide ones share the rest equally (so one long cell
     /// wraps instead of squeezing every column).
-    public static func columnWidths(ideal: [Double], available: Double) -> [Double] {
+    static func columnWidths(ideal: [Double], available: Double) -> [Double] {
         guard ideal.reduce(0, +) > available else { return ideal }
         var widths = ideal
         var remaining = available
@@ -195,20 +271,4 @@ public enum TableParser {
     private static func leadingSpaces(_ line: String) -> Int {
         line.prefix { $0 == " " }.count
     }
-}
-
-/// A stretch of a table cell's text sharing one inline style.
-public struct CellRun: Equatable {
-    public struct Style: OptionSet, Hashable {
-        public let rawValue: Int
-        public init(rawValue: Int) { self.rawValue = rawValue }
-        public static let bold = Style(rawValue: 1)
-        public static let italic = Style(rawValue: 2)
-        public static let code = Style(rawValue: 4)
-        public static let link = Style(rawValue: 8)
-        public static let tag = Style(rawValue: 16)
-    }
-    public let text: String
-    public let style: Style
-    public init(text: String, style: Style) { self.text = text; self.style = style }
 }

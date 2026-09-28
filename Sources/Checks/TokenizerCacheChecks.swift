@@ -13,7 +13,7 @@ func tokenizerCacheChecks() {
                  "    ```swift", "\t```", "  continued", "    code #x", "        ```", "\t- nested"]
     let cache = TokenizerCache()
     var text = (0..<60).map { _ in lines[next(lines.count)] }.joined(separator: "\n")
-    for round in 0..<300 {
+    for round in 0..<1500 {
         let expected = InlineTokenizer.spans(in: text)
         let got = cache.spans(in: text)
         if got != expected {
@@ -24,18 +24,29 @@ func tokenizerCacheChecks() {
             expect(false, "round \(round): cached code blocks match the parser")
             return
         }
-        // Edit: replace, insert or delete a line, or type into one.
+        // Edit: replace, insert or delete a line, type into one, or change the
+        // text at a random character (a newline added or taken away, a paste of
+        // several lines) — the edits the splice has to get right.
         var ls = text.components(separatedBy: "\n")
         let i = next(ls.count)
-        switch next(4) {
+        switch next(7) {
         case 0: ls[i] = lines[next(lines.count)]
         case 1: ls.insert(lines[next(lines.count)], at: i)
         case 2: if ls.count > 1 { ls.remove(at: i) }
-        default: ls[i] += ["x", " ", "`", "*", "#", "]"][next(6)]
+        case 3: ls[i] += ["x", " ", "`", "*", "#", "]"][next(6)]
+        default: break
         }
         text = ls.joined(separator: "\n")
+        if next(7) >= 4 {
+            var u = Array(text.utf16)
+            let at = next(u.count + 1)
+            let cut = min(u.count - at, next(3) == 0 ? next(40) : next(2))
+            let paste = ["\n", "", "x", "```\n", "\n- ", "---\n", "\n\n", (0..<next(4)).map { _ in lines[next(lines.count)] }.joined(separator: "\n")][next(8)]
+            u.replaceSubrange(at..<(at + cut), with: Array(paste.utf16))
+            text = String(decoding: u, as: UTF16.self)
+        }
     }
-    expect(true, "300 rounds of edits: cached spans always match")
+    expect(true, "1,500 rounds of edits: cached spans always match")
 
     // Code block regions come out of the same pass.
     let doc = "a\n```js\nx\n```\nb\n~~~\nopen"

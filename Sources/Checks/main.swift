@@ -8,6 +8,7 @@ runChecks([
     ("TabHistory", tabHistoryChecks),
     ("LinkCompletion", linkCompletionChecks),
     ("NestedFence", nestedFenceChecks),
+    ("ParserEquivalence", parserEquivalenceChecks),
     ("PaneProxy", paneProxyChecks),
     ("PaneSplit", paneSplitChecks),
     ("TabReorder", tabReorderChecks),

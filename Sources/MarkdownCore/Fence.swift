@@ -59,6 +59,33 @@ public enum ListContext {
         return isItem(line)
     }
 
+    /// `after(_:inList:)` for the line `ns[start..<end]`, without building it.
+    public static func after(_ ns: NSString, from start: Int, to end: Int, inList: Bool) -> Bool {
+        var i = start
+        while i < end, ns.character(at: i) == 0x20 || ns.character(at: i) == 0x09 { i += 1 }
+        guard i < end, ns.character(at: i) != 0x0D else { return inList }
+        let item = isItem(ns, from: start, to: end)
+        return i > start ? inList || item : item
+    }
+
+    /// `isItem(_:)` for the line `ns[start..<end]`.
+    public static func isItem(_ ns: NSString, from start: Int, to end: Int) -> Bool {
+        var i = start
+        while i < end, ns.character(at: i) == 0x20 || ns.character(at: i) == 0x09 { i += 1 }
+        guard i < end else { return false }
+        func spaceAfter(_ j: Int) -> Bool { j + 1 < end && ns.character(at: j + 1) == 0x20 }
+        let c = ns.character(at: i)
+        if c == 0x2D || c == 0x2A || c == 0x2B { return spaceAfter(i) }
+        var digits = 0
+        while i < end, ns.character(at: i) >= 0x30, ns.character(at: i) <= 0x39 {
+            digits += 1
+            if digits > 9 { return false }
+            i += 1
+        }
+        guard digits > 0, i < end, ns.character(at: i) == 0x2E || ns.character(at: i) == 0x29 else { return false }
+        return spaceAfter(i)
+    }
+
     /// `ListIndent.isListItem`, answered on the line's UTF-16 without building
     /// anything: this runs on every line of every parse (the check group
     /// NestedFence holds the two to the same answers).

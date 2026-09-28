@@ -16,6 +16,16 @@ public enum ImageParser {
         while start <= ns.length {
             var end = start
             while end < ns.length && ns.character(at: end) != nl { end += 1 }
+            // Only a line whose first non-blank is `!` can be an image; skip the
+            // rest without building them (any non-ASCII lead is checked properly,
+            // as trimming counts more than spaces and tabs as blank).
+            var first = start
+            while first < end, ns.character(at: first) == 0x20 || ns.character(at: first) == 0x09 { first += 1 }
+            if first < end, ns.character(at: first) != 0x21, ns.character(at: first) < 0x80 {
+                if end == ns.length { break }
+                start = end + 1
+                continue
+            }
             let raw = ns.substring(with: NSRange(location: start, length: end - start))
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("![["), line.hasSuffix("]]") {
