@@ -467,8 +467,11 @@ public struct MarkdownEditorView: NSViewRepresentable {
         var onFocus: (() -> Void)?
         private var overlays: [String: NSHostingView<AnyView>] = [:]
         /// Full UTF-16 ranges (incl. fences) of fenced code blocks, kept fresh by
-        /// restyle() for the layout-fragment background fill.
-        private var codeRegions: [Range<Int>] = []
+        /// restyle() for the layout-fragment background fill. Sorted and disjoint.
+        private var codeRegions: [Range<Int>] = [] { didSet { slabInsets.removeAll() } }
+        /// `slabInset(forBlockAt:)` by block start, for the regions above: every
+        /// line of a block asks when it's laid out.
+        private var slabInsets: [Int: CGFloat] = [:]
         /// UTF-16 ranges currently shown as rendered widgets (code renderers,
         /// images, HR), kept fresh by updateWidgets() so a click on one snaps the
         /// caret to the block start instead of a hit-test guess on collapsed text.
@@ -1216,7 +1219,9 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// character when the fence is nested in a list item (indented 4+
         /// columns), else 0 — a top-level block's slab spans the column as before.
         private func slabInset(forBlockAt offset: Int) -> CGFloat {
-            guard let text = textView?.string as NSString?, offset < text.length else { return 0 }
+            if let known = slabInsets[offset] { return known }
+            // The storage's own string: `textView.string` copies the whole note.
+            guard let text = textView?.textStorage?.mutableString, offset < text.length else { return 0 }
             var x: CGFloat = 0, columns = 0, i = offset
             let space = (" " as NSString).size(withAttributes: [.font: LivePreviewStyler.codeFont(ofSize: LivePreviewStyler.baseFontSize - 1)]).width
             let tabStop: CGFloat = 28   // NSParagraphStyle's default tab stops
@@ -1227,13 +1232,25 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 else { break }
                 i += 1
             }
+            slabInsets[offset] = columns > 3 ? x : 0
             return columns > 3 ? x : 0
         }
 
         /// Whether an offset falls inside a fenced code block (fences included).
         /// `codeRegions` is kept fresh by restyle().
         func isInCodeRegion(_ offset: Int) -> Bool {
-            codeRegions.contains { $0.contains(offset) }
+            codeRegion(containing: offset) != nil
+        }
+
+        /// The code block holding `offset`, by binary search: each line asks when
+        /// it's laid out, and a scan per line was quadratic in a long note.
+        private func codeRegion(containing offset: Int) -> Range<Int>? {
+            var low = 0, high = codeRegions.count
+            while low < high {
+                let mid = (low + high) / 2
+                if codeRegions[mid].upperBound <= offset { low = mid + 1 } else { high = mid }
+            }
+            return low < codeRegions.count && codeRegions[low].contains(offset) ? codeRegions[low] : nil
         }
 
         private func intersects(_ a: Range<Int>, _ b: Range<Int>) -> Bool {
@@ -1330,7 +1347,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
                     f.markerCharIndex = placement.charIndex
                     return f
                 }
-                if let region = codeRegions.first(where: { $0.contains(start) }) {
+                if let region = codeRegion(containing: start) {
                     let fragment = CodeBlockFragment(textElement: textElement, range: textElement.elementRange)
                     fragment.roundsTop = start <= region.lowerBound
                     fragment.roundsBottom = end >= region.upperBound
