@@ -214,6 +214,15 @@ func editorBottomTypingChecks() {
     h.caret(at: end); tv.scrollRangeToVisible(NSRange(location: end, length: 0)); h.pump(0.4)
     var ys: [CGFloat] = [clip.documentVisibleRect.minY]
     var returnSteps: [CGFloat] = []
+    // Every height the view takes while typing, including ones AppKit corrects
+    // straight away: off the pixel grid, AppKit rounds it and the two disagree
+    // by up to a pixel — a whole point on a 1× screen, where the view jumped.
+    var heights: [CGFloat] = []
+    tv.postsFrameChangedNotifications = true
+    let observer = NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: tv, queue: nil) { _ in
+        heights.append(tv.frame.height)
+    }
+    defer { NotificationCenter.default.removeObserver(observer) }
     for ch in "abc\ndef\nghi jkl\nmno\n" {
         let before = clip.documentVisibleRect.minY
         if ch == "\n" { h.key("\r", 36) } else { h.key(String(ch), 0) }
@@ -224,6 +233,9 @@ func editorBottomTypingChecks() {
     }
     let backwards = zip(ys, ys.dropFirst()).filter { $1 < $0 - 0.5 }.count
     expectEqual(backwards, 0, "typing at the bottom never scrolls back up (scroll positions: \(ys.map { Int($0) }))")
+    let scale = h.window.backingScaleFactor
+    let offGrid = heights.filter { abs(($0 * scale).rounded() - $0 * scale) > 0.001 }
+    expect(offGrid.isEmpty, "the view's height stays on the pixel grid (\(heights.count) heights, off it: \(offGrid))")
     expect((returnSteps.max() ?? 0) - (returnSteps.min() ?? 0) <= 1,
            "every Return scrolls by the same line height (steps: \(returnSteps.map { Int($0) }))")
 }

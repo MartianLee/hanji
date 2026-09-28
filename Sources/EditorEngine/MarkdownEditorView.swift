@@ -578,9 +578,13 @@ public struct MarkdownEditorView: NSViewRepresentable {
         private func layOutNote(_ tlm: NSTextLayoutManager, _ tcs: NSTextContentStorage) {
             tlm.ensureLayout(for: tcs.documentRange)
             guard let textView else { return }
-            let height = max(tlm.usageBoundsForTextContainer.maxY + textView.textContainerInset.height * 2,
-                             textView.enclosingScrollView?.contentSize.height ?? 0)
-            if abs(textView.frame.height - height) > 0.5 {
+            // Rounded up to whole pixels, as AppKit sizes it: left fractional, the
+            // two disagreed by up to a pixel — a whole point on a 1× screen — and
+            // typing at the end of a note nudged the view up and down by it.
+            let scale = textView.window?.backingScaleFactor ?? 1
+            let used = tlm.usageBoundsForTextContainer.maxY + textView.textContainerInset.height * 2
+            let height = max((used * scale).rounded(.up) / scale, textView.enclosingScrollView?.contentSize.height ?? 0)
+            if abs(textView.frame.height - height) > 0.01 {
                 textView.setFrameSize(NSSize(width: textView.frame.width, height: height))
             }
         }
