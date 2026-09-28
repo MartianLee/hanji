@@ -46,6 +46,10 @@ to set everything up again.
 - **Tabs and split panes**: drag to reorder, drop a tab on either edge to split.
   **Pin** a tab (its context menu, File ▸ Pin Tab, or ⌘P) to keep it from
   closing; the vault reopens its pinned notes next time.
+- **Back / forward**, as in Obsidian: opening a note shows it in the current tab,
+  and each tab keeps its own history (⌥⌘← / ⌥⌘→, the toolbar arrows, or a
+  mouse's back/forward buttons). A pinned tab, ⌘-click on a link, or
+  "Open in New Tab" in the file tree opens a new tab instead.
 - Full file tree: sort, multi-select, drag-and-drop, rename, trash, undo, import.
 - **Command palette (⌘P)**, **quick switcher (⌘O)**, **global search (⇧⌘F)** over
   a persistent SQLite FTS5 index (Korean-friendly trigram tokenizer).

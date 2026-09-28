@@ -30,7 +30,7 @@ func autosaveChecks() {
     guard let a = s.files.first(where: { $0.name == "A.md" }),
           let b = s.files.first(where: { $0.name == "B.md" }) else { expect(false, "files found"); return }
 
-    s.open(a)
+    s.open(a, newTab: true)
     expectEqual(s.savedText, "alpha original", "baseline captured on open")
     expect(!s.isDirty, "freshly opened note is clean")
     s.activeText = "alpha edited"
@@ -42,12 +42,12 @@ func autosaveChecks() {
     expectEqual(onDisk, "alpha edited", "flush wrote to disk")
 
     s.activeText = "alpha edited again"
-    s.open(b)
+    s.open(b, newTab: true)
     expectEqual(s.savedText, "beta original", "B baseline loaded")
     let aAfterSwitch = try? String(contentsOf: vault.appendingPathComponent("A.md"), encoding: .utf8)
     expectEqual(aAfterSwitch, "alpha edited again", "switching saved A's edit")
 
-    s.open(a)
+    s.open(a, newTab: true)
     expect(!s.isDirty, "reopened clean")
     s.flushPendingSave()
     expect(!s.isDirty, "still clean after no-op flush")
@@ -70,7 +70,7 @@ func conflictChecks() {
 
     let s = newState(vault)
     guard let a = s.files.first(where: { $0.name == "A.md" }) else { expect(false, "A found"); return }
-    s.open(a)
+    s.open(a, newTab: true)
 
     // Clean buffer + external change → silent reload.
     try? "external v2".write(to: aURL, atomically: true, encoding: .utf8)

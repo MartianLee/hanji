@@ -5,6 +5,7 @@ runChecks([
     ("MetadataIndex", metadataIndexChecks),
     ("AppState", appStateChecks),
     ("Tabs", tabChecks),
+    ("TabHistory", tabHistoryChecks),
     ("PaneProxy", paneProxyChecks),
     ("PaneSplit", paneSplitChecks),
     ("TabReorder", tabReorderChecks),

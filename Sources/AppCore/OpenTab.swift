@@ -32,6 +32,10 @@ public struct OpenTab: Identifiable, Equatable {
     public internal(set) var buffer: NoteBuffer
     /// Pinned tabs can't be closed until unpinned, and the vault reopens them.
     public var isPinned = false
+    /// The notes this tab showed before its current one (most recent last), and
+    /// the ones back navigation stepped away from, for forward.
+    public internal(set) var back: [NavigationEntry] = []
+    public internal(set) var forward: [NavigationEntry] = []
 
     public var file: MarkdownFile {
         get { buffer.file } nonmutating set { buffer.file = newValue }
@@ -65,6 +69,12 @@ public struct OpenTab: Identifiable, Equatable {
     public static func == (a: OpenTab, b: OpenTab) -> Bool {
         a.id == b.id && a.buffer === b.buffer && a.isPinned == b.isPinned
     }
+}
+
+/// A step in a tab's history: a note and where its caret was.
+public struct NavigationEntry: Equatable {
+    public var url: URL
+    public var caret: Int
 }
 
 extension Array {

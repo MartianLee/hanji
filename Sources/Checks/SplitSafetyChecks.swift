@@ -18,7 +18,7 @@ func splitSafetyChecks() {
     func tab(_ pane: Int, _ name: String) -> OpenTab? { s.panes[safe: pane]?.tabs.first { $0.file.name == name } }
 
     // 1. The other pane closing itself doesn't touch the live buffer.
-    s.openNote(relativePath: "A.md"); s.openNote(relativePath: "B.md")
+    s.openNote(relativePath: "A.md", newTab: true); s.openNote(relativePath: "B.md", newTab: true)
     s.moveTabToSide(tab(0, "B.md")!.id, .right)
     s.focusPane(s.panes[0].id)
     s.activeText = "a + typed"
@@ -44,10 +44,10 @@ func splitSafetyChecks() {
     s.togglePin(tab(1, "A.md")!.id)
 
     // Opening a note that the other pane already has continues from its buffer.
-    s.openNote(relativePath: "C.md")
+    s.openNote(relativePath: "C.md", newTab: true)
     s.activeText = "c edited"
     s.focusPane(s.panes[0].id)
-    s.openNote(relativePath: "C.md")
+    s.openNote(relativePath: "C.md", newTab: true)
     expectEqual(s.activeText, "c edited", "opening C in the other pane shows the same text")
 
     // Moving a tab into a pane that already shows that note doesn't duplicate it.
@@ -71,7 +71,7 @@ func splitCloseAndDedupeChecks() {
     let s = AppState(defaults: UserDefaults(suiteName: "mk-dedupe-\(UUID().uuidString)")!)
     s.openVault(at: vault)
 
-    s.openNote(relativePath: "A.md")
+    s.openNote(relativePath: "A.md", newTab: true)
     s.splitRight()
     s.activeText = "v2 from the right pane"
     s.closeTab(s.activeTabID!)
@@ -81,7 +81,7 @@ func splitCloseAndDedupeChecks() {
     s.activeText = "a + unsaved"
     try? fm.moveItem(at: vault.appendingPathComponent("A.md"), to: vault.appendingPathComponent("Moved.md"))
     s.reloadTree()
-    s.openNote(relativePath: "Moved.md")
+    s.openNote(relativePath: "Moved.md", newTab: true)
     _ = try? s.rename(vault.appendingPathComponent("Moved.md"), to: "A")
     let aTabs = s.tabs.filter { $0.file.name == "A.md" }
     expectEqual(aTabs.count, 1, "one tab per note after renaming it back")

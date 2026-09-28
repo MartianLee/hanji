@@ -50,9 +50,9 @@ func periodicPluginModuleChecks() {
     // Previous / next from the open periodic note.
     try? "plain".write(to: vault.appendingPathComponent("Ideas.md"), atomically: true, encoding: .utf8)
     appState.reloadTree()
-    appState.openNote(relativePath: "Ideas.md")
+    appState.openNote(relativePath: "Ideas.md", newTab: true)
     expect(command("periodic.next")?.isAvailable() == false, "next isn't offered on an ordinary note")
-    appState.openNote(relativePath: "Daily/2026-06-09.md")
+    appState.openNote(relativePath: "Daily/2026-06-09.md", newTab: true)
     expect(command("periodic.next")?.isAvailable() == true, "next is offered on a daily note")
     command("periodic.next")?.run()
     expectEqual(appState.selectedFile?.name, "2026-06-20.md", "next jumps to the closest later note")

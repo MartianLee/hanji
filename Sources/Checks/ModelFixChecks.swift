@@ -27,7 +27,7 @@ func autosaveRaceChecks() {
     defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: a.path); cleanup(v) }
     let s = AppState(defaults: UserDefaults(suiteName: "mk-race-\(UUID().uuidString)")!, autosaveInterval: 0.05)
     s.openVault(at: v)
-    s.openNote(relativePath: "A.md")
+    s.openNote(relativePath: "A.md", newTab: true)
     try? FileManager.default.setAttributes([.immutable: true], ofItemAtPath: a.path)
     s.activeText = "typed"
     pumpUntil(1) { !s.isDirty }          // the autosave fired and optimistically marked it clean
@@ -44,7 +44,7 @@ func conflictLatestChecks() {
     let a = v.appendingPathComponent("A.md")
     let s = AppState(defaults: UserDefaults(suiteName: "mk-latest-\(UUID().uuidString)")!)
     s.openVault(at: v)
-    s.openNote(relativePath: "A.md")
+    s.openNote(relativePath: "A.md", newTab: true)
     s.activeText = "mine"
     try? "v1".write(to: a, atomically: true, encoding: .utf8); s.reloadTree()
     try? "v2".write(to: a, atomically: true, encoding: .utf8); s.reloadTree()
@@ -65,7 +65,7 @@ func fileEdgeChecks() {
 
     // A long (but legal) name must stay saveable: the temp file can't be longer.
     let long = String(repeating: "n", count: 240)
-    s.openNote(relativePath: "A.md")
+    s.openNote(relativePath: "A.md", newTab: true)
     let renamed = try? s.rename(v.appendingPathComponent("A.md"), to: long)
     expect(renamed != nil, "setup: a 240-character name is allowed")
     s.activeText = "saved under a long name"
@@ -91,7 +91,7 @@ func saveChecksDiskFirstChecks() {
     defer { cleanup(v) }
     let s = AppState(defaults: UserDefaults(suiteName: "mk-inflight-\(UUID().uuidString)")!, autosaveInterval: 0.05)
     s.openVault(at: v)
-    s.openNote(relativePath: "A.md")
+    s.openNote(relativePath: "A.md", newTab: true)
     s.activeText = "mine"
     try? "theirs".write(to: a, atomically: true, encoding: .utf8)   // before any watcher fire
     pumpUntil(1) { s.externalConflict != nil }

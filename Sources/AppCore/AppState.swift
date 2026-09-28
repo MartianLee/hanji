@@ -292,7 +292,7 @@ public final class AppState: ObservableObject {
 
     /// Open the note a wiki/markdown link targets (filename base or vault-relative
     /// path, Obsidian-style, case-insensitive). No-op if nothing matches.
-    public func openLink(_ target: String) {
+    public func openLink(_ target: String, newTab: Bool = false) {
         guard let root = vaultRoot else { return }
         var t = target.trimmingCharacters(in: .whitespaces)
         if let hash = t.firstIndex(of: "#") { t = String(t[..<hash]) }   // drop heading anchor
@@ -308,7 +308,7 @@ public final class AppState: ObservableObject {
         }
         if let match = files.first(where: { relBase($0.url) == wanted
             || $0.url.deletingPathExtension().lastPathComponent.lowercased() == wanted }) {
-            open(match)
+            open(match, newTab: newTab)
         }
     }
 
@@ -349,6 +349,7 @@ public final class AppState: ObservableObject {
         missingOnDisk = tab.missingOnDisk
         conflictPaused = (tab.externalConflict != nil) || tab.missingOnDisk
         pendingCursorOffset = 0
+        liveCaret = 0
     }
 
     private func clearActive() {
@@ -382,10 +383,21 @@ public final class AppState: ObservableObject {
         return true
     }
 
-    public func open(_ file: MarkdownFile) {
+    /// Open a note, Obsidian-style: in the current tab, which remembers the note
+    /// it showed for Back — or in a new tab when asked, or when the current tab
+    /// is pinned. A note already open in this pane just brings its tab forward.
+    public func open(_ file: MarkdownFile, newTab: Bool = false) {
         guard let pane = activePane else { return }
         if let existing = pane.tabs.first(where: { urlSameFile($0.file.url, file.url) }) {
             switchTab(existing.id); return
+        }
+        if !newTab, let idx = pane.tabs.firstIndex(where: { $0.id == pane.activeTabID }), !pane.tabs[idx].isPinned {
+            let leaving = here(pane.tabs[idx])
+            guard show(file, inTabAt: idx, of: pane) else { return }
+            pane.tabs[idx].back.append(leaving)
+            if pane.tabs[idx].back.count > Self.historyLimit { pane.tabs[idx].back.removeFirst() }
+            pane.tabs[idx].forward.removeAll()
+            return
         }
         // Already open in the other pane: show the same note (its buffer).
         if let shared = openBuffers().first(where: { urlSameFile($0.file.url, file.url) }) {
@@ -401,17 +413,130 @@ public final class AppState: ObservableObject {
         // Read before touching the current buffer. A note that can't be decoded
         // (not UTF-8) must not open as an empty buffer — the first keystroke would
         // autosave over the original bytes.
-        guard let text = try? vault?.read(file) else {
-            notice = Notice(title: "Couldn\u{2019}t open note",
-                            message: "Hanji couldn\u{2019}t read \u{201C}\(file.name)\u{201D} as UTF-8 text, so it left the note closed rather than risk overwriting it.")
-            return
-        }
+        guard let text = readForOpening(file) else { return }
         flushPendingSave()
         let tab = OpenTab(file: file, text: text)
         objectWillChange.send()
         pane.tabs.append(tab)
         pane.activeTabID = tab.id
         hydrate(from: tab)
+    }
+
+    /// A note's text for opening, or nil (and the user told) when it can't be
+    /// read. A note that can't be decoded (not UTF-8) must not open as an empty
+    /// buffer — the first keystroke would autosave over the original bytes.
+    private func readForOpening(_ file: MarkdownFile) -> String? {
+        if let text = try? vault?.read(file) { return text }
+        notice = Notice(title: "Couldn\u{2019}t open note",
+                        message: "Hanji couldn\u{2019}t read \u{201C}\(file.name)\u{201D} as UTF-8 text, so it left the note closed rather than risk overwriting it.")
+        return nil
+    }
+
+    // MARK: Back / forward
+
+    /// How many notes a tab remembers behind it.
+    static let historyLimit = 100
+    /// Where the live editor's caret is; the editor reports each move, so Back
+    /// can return to it.
+    private var liveCaret = 0
+    public func caretMoved(to offset: Int) { liveCaret = offset }
+
+    private var activeTabIndex: Int? {
+        activePane.flatMap { pane in pane.tabs.firstIndex { $0.id == pane.activeTabID } }
+    }
+    /// A pinned tab keeps its note, so it doesn't step through history either.
+    public var canGoBack: Bool {
+        activeTabIndex.map { !activePane!.tabs[$0].isPinned && !activePane!.tabs[$0].back.isEmpty } ?? false
+    }
+    public var canGoForward: Bool {
+        activeTabIndex.map { !activePane!.tabs[$0].isPinned && !activePane!.tabs[$0].forward.isEmpty } ?? false
+    }
+    public func goBack() { step(back: true) }
+    public func goForward() { step(back: false) }
+
+    /// The live tab's note and caret, as a history entry.
+    private func here(_ tab: OpenTab) -> NavigationEntry {
+        NavigationEntry(url: tab.file.url, caret: min(max(liveCaret, 0), (activeText as NSString).length))
+    }
+
+    /// One step back or forward in the active tab's history. Notes deleted since
+    /// are skipped; a note that's open in another tab of this pane brings that
+    /// tab forward instead (a pane shows each note once).
+    private func step(back: Bool) {
+        guard let pane = activePane, let idx = activeTabIndex, !pane.tabs[idx].isPinned else { return }
+        while let entry = back ? pane.tabs[idx].back.popLast() : pane.tabs[idx].forward.popLast() {
+            guard let file = files.first(where: { urlSameFile($0.url, entry.url) }) else { continue }
+            func putBack() {
+                if back { pane.tabs[idx].back.append(entry) } else { pane.tabs[idx].forward.append(entry) }
+            }
+            if let other = pane.tabs.first(where: { $0.id != pane.activeTabID && urlSameFile($0.file.url, file.url) }) {
+                putBack()
+                switchTab(other.id)
+                return
+            }
+            let leaving = here(pane.tabs[idx])
+            guard show(file, inTabAt: idx, of: pane) else { putBack(); return }
+            if back { pane.tabs[idx].forward.append(leaving) } else { pane.tabs[idx].back.append(leaving) }
+            let caret = min(entry.caret, (activeText as NSString).length)
+            pendingCursorOffset = caret
+            liveCaret = caret
+            return
+        }
+        objectWillChange.send()   // entries were dropped: the buttons may change
+    }
+
+    /// Show `file` in place of the note in the active pane's tab at `idx`. The
+    /// note it leaves is saved first; if that can't happen (a conflict or a
+    /// missing file waiting on the user, a failed write), the tab stays where it
+    /// is — unless another tab still shows that note, which keeps it open.
+    private func show(_ file: MarkdownFile, inTabAt idx: Int, of pane: Pane) -> Bool {
+        let current = pane.tabs[idx]
+        let buffer: NoteBuffer
+        if let open = openBuffers().first(where: { urlSameFile($0.file.url, file.url) }) {
+            buffer = open
+        } else {
+            guard let text = readForOpening(file) else { return false }
+            buffer = NoteBuffer(file: file, text: text)
+        }
+        let stillShown = panes.contains { p in p.tabs.contains { $0.id != current.id && $0.buffer === current.buffer } }
+        if stillShown {
+            flushPendingSave()
+        } else {
+            if externalConflict != nil {
+                notice = Notice(title: "Resolve the conflict first",
+                                message: "\u{201C}\(current.file.name)\u{201D} changed on disk while it had unsaved edits. Choose \u{201C}Reload from disk\u{201D} or \u{201C}Keep my edits\u{201D} in the note before leaving it.")
+                return false
+            }
+            if missingOnDisk {
+                notice = Notice(title: "This note was removed on disk",
+                                message: "\u{201C}\(current.file.name)\u{201D} was moved or deleted outside Hanji while it had unsaved edits. Choose \u{201C}Save again\u{201D} or \u{201C}Close without saving\u{201D} in the note before leaving it.")
+                return false
+            }
+            guard flushPendingSave() else { return false }
+        }
+        objectWillChange.send()
+        pane.tabs[idx].buffer = buffer
+        hydrate(from: pane.tabs[idx])
+        return true
+    }
+
+    /// After a rename or move of `old` (a note, or a folder of them), point every
+    /// tab's history at the new place.
+    private func retargetHistory(from old: URL, to new: URL) {
+        let base = old.resolvingSymlinksInPath().path
+        func moved(_ entry: NavigationEntry) -> NavigationEntry {
+            let path = entry.url.resolvingSymlinksInPath().path
+            var e = entry
+            if path == base { e.url = new }
+            else if path.hasPrefix(base + "/") { e.url = new.appendingPathComponent(String(path.dropFirst(base.count + 1))) }
+            return e
+        }
+        for pane in panes {
+            for i in pane.tabs.indices {
+                pane.tabs[i].back = pane.tabs[i].back.map(moved)
+                pane.tabs[i].forward = pane.tabs[i].forward.map(moved)
+            }
+        }
     }
 
     /// Make an already-open tab active.
@@ -827,7 +952,7 @@ public final class AppState: ObservableObject {
               let paths = defaults.stringArray(forKey: Self.pinsKey(root)), !paths.isEmpty else { return }
         for rel in paths {
             guard let url = urlInsideVault(rel), FileManager.default.fileExists(atPath: url.path) else { continue }
-            openNote(relativePath: rel)
+            openNote(relativePath: rel, newTab: true)
             if let idx = pane.tabs.firstIndex(where: { $0.file.url.standardizedFileURL == url.standardizedFileURL }) {
                 pane.tabs[idx].isPinned = true
             }
@@ -998,7 +1123,7 @@ public final class AppState: ObservableObject {
         guard let v = vault, let url = try? v.createNote(inFolder: folder, name: name) else { return nil }
         record(.created(url))
         reloadTree()
-        if let f = files.first(where: { $0.url.standardizedFileURL == url.standardizedFileURL }) { open(f) }
+        if let f = files.first(where: { $0.url.standardizedFileURL == url.standardizedFileURL }) { open(f, newTab: true) }
         return url
     }
 
@@ -1024,6 +1149,7 @@ public final class AppState: ObservableObject {
         if newURL.standardizedFileURL != url.standardizedFileURL {
             record(.renamed(from: url, to: newURL))
             retarget(followers, to: newURL)
+            retargetHistory(from: url, to: newURL)
         }
         reloadTree()
         return newURL
@@ -1040,6 +1166,7 @@ public final class AppState: ObservableObject {
         if newURL.standardizedFileURL != url.standardizedFileURL {
             record(.moved(from: url, to: newURL))
             retarget(followers, to: newURL)
+            retargetHistory(from: url, to: newURL)
         }
         reloadTree()
         return newURL
@@ -1132,12 +1259,12 @@ public final class AppState: ObservableObject {
         pendingCursorOffset = cursorOffset
     }
 
-    public func openNote(relativePath: String) {
+    public func openNote(relativePath: String, newTab: Bool = false) {
         guard let root = vaultRoot else { return }
         let target = root.appendingPathComponent(relativePath).standardizedFileURL
-        if let f = files.first(where: { $0.url.standardizedFileURL == target }) { open(f); return }
+        if let f = files.first(where: { $0.url.standardizedFileURL == target }) { open(f, newTab: newTab); return }
         if let v = vault { files = (try? v.markdownFiles()) ?? files }
-        if let f = files.first(where: { $0.url.standardizedFileURL == target }) { open(f) }
+        if let f = files.first(where: { $0.url.standardizedFileURL == target }) { open(f, newTab: newTab) }
     }
 
     /// Missing-note banner, "Save again": write the note back where it was.

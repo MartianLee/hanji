@@ -28,7 +28,7 @@ func metadataQueryingChecks() {
     // activeNotePath publishes the vault-relative path of the open note.
     var received: [String?] = []
     let sub = host.editor.activeNotePath.sink { received.append($0) }
-    appState.open(appState.files.first(where: { $0.name == "Source.md" })!)
+    appState.open(appState.files.first(where: { $0.name == "Source.md" })!, newTab: true)
     expect(received.contains("Source.md"), "activeNotePath publishes the open note's relative path")
     sub.cancel()
 }

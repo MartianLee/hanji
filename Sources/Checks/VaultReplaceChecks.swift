@@ -50,7 +50,7 @@ func vaultReplaceChecks() {
     expectEqual(state.canUndoFileOperation, undoDepthBefore, "no-op records no undo entry")
 
     // An open tab must show the replacement, not overwrite it on the next autosave.
-    state.open(state.files.first { $0.name == "a.md" }!)
+    state.open(state.files.first { $0.name == "a.md" }!, newTab: true)
     expectEqual(state.activeText, "alpha TODO beta TODO", "open note loaded")
     _ = state.replaceInVault(find: "TODO", with: "DONE", caseSensitive: true)
     expectEqual(state.activeText, "alpha DONE beta DONE", "open tab refreshed from disk")

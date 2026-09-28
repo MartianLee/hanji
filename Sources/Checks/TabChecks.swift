@@ -27,14 +27,14 @@ func tabChecks() {
     guard let a = s.files.first(where: { $0.name == "A.md" }),
           let b = s.files.first(where: { $0.name == "B.md" }) else { expect(false, "files"); return }
 
-    s.open(a)
+    s.open(a, newTab: true)
     expectEqual(s.tabs.count, 1, "one tab after opening A")
     expectEqual(s.selectedFile?.name, "A.md", "A active")
-    s.open(b)
+    s.open(b, newTab: true)
     expectEqual(s.tabs.count, 2, "two tabs")
     expectEqual(s.selectedFile?.name, "B.md", "B active")
 
-    s.open(a)
+    s.open(a, newTab: true)
     expectEqual(s.tabs.count, 2, "no duplicate tab")
     expectEqual(s.selectedFile?.name, "A.md", "A re-activated")
 
@@ -54,7 +54,7 @@ func tabChecks() {
     expect(s.tabs.isEmpty, "no tabs left")
     expect(s.activeTabID == nil && s.selectedFile == nil && s.activeText == "", "cleared active state")
 
-    s.open(a)
+    s.open(a, newTab: true)
     _ = try? s.rename(a.url, to: "Renamed")
     expectEqual(s.tabs.count, 1, "rename keeps a single tab")
     expectEqual(s.selectedFile?.name, "Renamed.md", "active file renamed in place")
@@ -68,7 +68,7 @@ func paneProxyChecks() {
     guard let a = s.files.first(where: { $0.name == "A.md" }) else { expect(false, "files"); return }
     expectEqual(s.panes.count, 1, "starts with one pane")
     expect(s.activePaneID != nil, "active pane set")
-    s.open(a)
+    s.open(a, newTab: true)
     expectEqual(s.tabs.count, 1, "tabs proxy reflects active pane")
     expectEqual(s.panes.first?.tabs.count, 1, "active pane holds the tab")
     expectEqual(s.activeTabID, s.panes.first?.activeTabID, "activeTabID proxy matches pane")
@@ -80,7 +80,7 @@ func tabReloadChecks() {
     let s = tabState(vault)
     guard let a = s.files.first(where: { $0.name == "A.md" }),
           let b = s.files.first(where: { $0.name == "B.md" }) else { expect(false, "files"); return }
-    s.open(a); s.open(b)   // A inactive (clean, flushed), B active
+    s.open(a, newTab: true); s.open(b, newTab: true)   // A inactive (clean, flushed), B active
 
     // External edit to an inactive, clean tab → silent reload into its snapshot.
     try? "alpha external".write(to: vault.appendingPathComponent("A.md"), atomically: true, encoding: .utf8)
@@ -111,8 +111,8 @@ func paneMoveBufferChecks() {
     let s = tabState(vault)
     guard let a = s.files.first(where: { $0.name == "A.md" }),
           let b = s.files.first(where: { $0.name == "B.md" }) else { expect(false, "files"); return }
-    s.open(a)                       // tab A active, text "alpha"
-    s.open(b)                       // tab B active, text "beta"
+    s.open(a, newTab: true)                       // tab A active, text "alpha"
+    s.open(b, newTab: true)                       // tab B active, text "beta"
     s.activeText = "beta EDITED"    // simulate typing into the live (active) B
     let bID = s.activeTabID!
     s.moveTabToSide(bID, .right)
@@ -137,7 +137,7 @@ func tabReorderChecks() {
     guard let a = s.files.first(where: { $0.name == "A.md" }),
           let b = s.files.first(where: { $0.name == "B.md" }),
           let c = s.files.first(where: { $0.name == "C.md" }) else { expect(false, "files"); return }
-    s.open(a); s.open(b); s.open(c)   // order [A,B,C], C active
+    s.open(a, newTab: true); s.open(b, newTab: true); s.open(c, newTab: true)   // order [A,B,C], C active
     let pane = s.panes.first!
     let aID = s.tabs.first(where: { $0.file.name == "A.md" })!.id
     let bID = s.tabs.first(where: { $0.file.name == "B.md" })!.id
@@ -184,7 +184,7 @@ func paneMoveTabLiveBufferChecks() {
     guard let a = s.files.first(where: { $0.name == "A.md" }),
           let b = s.files.first(where: { $0.name == "B.md" }),
           let c = s.files.first(where: { $0.name == "C.md" }) else { expect(false, "files"); return }
-    s.open(a); s.open(b); s.open(c)           // pane0 [A,B,C], C live
+    s.open(a, newTab: true); s.open(b, newTab: true); s.open(c, newTab: true)           // pane0 [A,B,C], C live
     let aID = s.tabs.first(where: { $0.file.name == "A.md" })!.id
     s.activeText = "gamma EDITED"             // unsaved edit in the live tab C
     s.moveTabToSide(aID, .right)
@@ -203,7 +203,7 @@ func paneMoveTabLiveBufferChecks() {
     let s2 = tabState(vault2)
     guard let a2 = s2.files.first(where: { $0.name == "A.md" }),
           let b2 = s2.files.first(where: { $0.name == "B.md" }) else { expect(false, "files"); return }
-    s2.open(a2); s2.open(b2)                  // pane0 [A,B], B live
+    s2.open(a2, newTab: true); s2.open(b2, newTab: true)                  // pane0 [A,B], B live
     s2.moveTabToSide(s2.activeTabID!, .right) // panes [[A],[B]], right pane live with B
     s2.activeText = "beta EDITED"             // unsaved edit in the live (right) B
     let a2ID = s2.panes.first!.tabs.first!.id
@@ -222,7 +222,7 @@ func paneSplitChecks() {
     guard let a = s.files.first(where: { $0.name == "A.md" }),
           let c = s.files.first(where: { $0.name == "C.md" }) else { expect(false, "files"); return }
 
-    s.open(a)
+    s.open(a, newTab: true)
     s.splitRight()
     expectEqual(s.panes.count, 2, "split creates a second pane")
     expect(s.isSplit, "isSplit true")
@@ -231,7 +231,7 @@ func paneSplitChecks() {
     expectEqual(s.panes.count, 2, "second splitRight is a no-op")
 
     // Open targets the active (right) pane.
-    s.open(c)
+    s.open(c, newTab: true)
     expectEqual(s.panes.last?.tabs.count, 2, "C opened in the right pane")
     expectEqual(s.panes.first?.tabs.count, 1, "left pane unchanged")
 
@@ -260,7 +260,7 @@ func paneMoveTabChecks() {
           let b = s.files.first(where: { $0.name == "B.md" }) else { expect(false, "files"); return }
 
     // Two tabs in one pane; move B to the right → new right pane with B.
-    s.open(a); s.open(b)
+    s.open(a, newTab: true); s.open(b, newTab: true)
     let bID = s.tabs.first(where: { $0.file.name == "B.md" })!.id
     s.moveTabToSide(bID, .right)
     expectEqual(s.panes.count, 2, "moving a tab right creates a second pane")
@@ -284,7 +284,7 @@ func paneMoveTabChecks() {
     defer { tabCleanup(vault2) }
     let s2 = tabState(vault2)
     let a2 = s2.files.first(where: { $0.name == "A.md" })!
-    s2.open(a2)
+    s2.open(a2, newTab: true)
     expect(!s2.canMoveTab(s2.activeTabID!, .right), "canMoveTab false for a lone tab (right)")
     expect(!s2.canMoveTab(s2.activeTabID!, .left), "canMoveTab false for a lone tab (left)")
     s2.moveTabToSide(s2.activeTabID!, .right)
@@ -298,7 +298,7 @@ func paneMoveTabChecks() {
     guard let a3 = s3.files.first(where: { $0.name == "A.md" }),
           let b3 = s3.files.first(where: { $0.name == "B.md" }),
           let c3 = s3.files.first(where: { $0.name == "C.md" }) else { expect(false, "files"); return }
-    s3.open(a3); s3.open(b3)                    // pane0 [A,B], B active
+    s3.open(a3, newTab: true); s3.open(b3, newTab: true)                    // pane0 [A,B], B active
     s3.moveTabToSide(s3.activeTabID!, .left)
     expectEqual(s3.panes.count, 2, "moving a tab left creates a second pane")
     expectEqual(s3.panes.first?.tabs.map { $0.file.name }, ["B.md"], "the new pane is the left one")
@@ -306,7 +306,7 @@ func paneMoveTabChecks() {
     expectEqual(s3.activePaneID, s3.panes.first?.id, "the new left pane is focused")
 
     // Merge into an existing neighbour while the source pane survives.
-    s3.open(c3)                                 // opens in the active (left) pane → [B,C]
+    s3.open(c3, newTab: true)                                 // opens in the active (left) pane → [B,C]
     s3.moveTabToSide(s3.activeTabID!, .right)   // C → right pane, left keeps B
     expectEqual(s3.panes.count, 2, "merging into a neighbour keeps two panes")
     expectEqual(s3.panes.first?.tabs.map { $0.file.name }, ["B.md"], "source pane survives with its other tab")

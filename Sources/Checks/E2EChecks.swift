@@ -101,7 +101,7 @@ func e2eChecks() {
     try? "before".write(to: extReloadNote, atomically: true, encoding: .utf8)
     appState.reloadTree()
     if let ext = appState.files.first(where: { $0.name == "Ext.md" }) {
-        appState.open(ext)
+        appState.open(ext, newTab: true)
         expectEqual(appState.activeText, "before", "E2E: opened external note")
         try? "after (external)".write(to: extReloadNote, atomically: true, encoding: .utf8)
         appState.reloadTree()
@@ -111,7 +111,7 @@ func e2eChecks() {
         expect(false, "E2E: Ext.md indexed")
     }
     // Restore the open note to Plan.md so subsequent steps behave as before.
-    if let plan = appState.files.first(where: { $0.name == "Plan.md" }) { appState.open(plan) }
+    if let plan = appState.files.first(where: { $0.name == "Plan.md" }) { appState.open(plan, newTab: true) }
 
     // 5. ⌘O quick-switcher logic finds it by fuzzy name.
     let hit = FuzzyFilter.filter("plan", appState.files, key: { $0.name }).first

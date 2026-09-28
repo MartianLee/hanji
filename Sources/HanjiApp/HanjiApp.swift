@@ -68,6 +68,15 @@ struct HanjiApp: App {
                     NSApp.activate(ignoringOtherApps: true)
                     guard !activated else { return }
                     activated = true
+                    // A mouse's back/forward buttons step through the tab's history,
+                    // as in Obsidian and browsers.
+                    _ = NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { [weak appState] event in
+                        switch event.buttonNumber {
+                        case 3: appState?.goBack(); return nil
+                        case 4: appState?.goForward(); return nil
+                        default: return event
+                        }
+                    }
                     let h = Host(appState: appState, pluginManager: pluginManager)
                     host = h   // retain for the app's lifetime
                     h.renderers.register(CardRenderer())
@@ -170,6 +179,13 @@ struct HanjiApp: App {
                 Button("Expand All Folders") { uiState.expandedFolders = Self.allFolders(in: appState.tree) }
             }
             CommandMenu("Go") {
+                Button("Back") { appState.goBack() }
+                    .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+                    .disabled(!appState.canGoBack)
+                Button("Forward") { appState.goForward() }
+                    .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+                    .disabled(!appState.canGoForward)
+                Divider()
                 Button("Command Palette") { uiState.palette = .commands }
                     .keyboardShortcut("p", modifiers: .command)
                 Button("Quick Switcher") { uiState.palette = .files }

@@ -16,10 +16,10 @@ func unreadableNoteChecks() {
 
     let state = AppState(defaults: UserDefaults(suiteName: "mk-unread-\(UUID().uuidString)")!)
     state.openVault(at: root)
-    state.open(state.files.first { $0.name == "fine.md" }!)
+    state.open(state.files.first { $0.name == "fine.md" }!, newTab: true)
     expectEqual(state.activeText, "fine", "a readable note opens")
 
-    state.open(state.files.first { $0.name == "legacy.md" }!)
+    state.open(state.files.first { $0.name == "legacy.md" }!, newTab: true)
     expectEqual(state.selectedFile?.name, "fine.md", "an undecodable note doesn't become the open note")
     expectEqual(state.activeText, "fine", "the current buffer is left alone")
     expectEqual(state.activePane?.tabs.count, 1, "no tab is opened for it")

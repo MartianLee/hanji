@@ -324,6 +324,10 @@ struct ContentView: View {
                 Button("New Folder") { newFolder(in: node.url) }
                 Divider()
             }
+            if !node.isDirectory, let f = appState.files.first(where: { $0.url.standardizedFileURL == node.url.standardizedFileURL }) {
+                Button("Open in New Tab") { appState.open(f, newTab: true) }
+                Divider()
+            }
             Button("Rename") { startRename(node) }
             Button("Duplicate") { _ = appState.duplicate(node.url) }
             Button("Move to\u{2026}") { treeSelection = [node.url]; uiState.palette = .moveTo }
@@ -428,6 +432,14 @@ struct ContentView: View {
             statusBar
         }
         .toolbar {
+            ToolbarItemGroup(placement: .navigation) {
+                Button { appState.goBack() } label: { Image(systemName: "chevron.left") }
+                    .help("Back (⌥⌘←)")
+                    .disabled(!appState.canGoBack)
+                Button { appState.goForward() } label: { Image(systemName: "chevron.right") }
+                    .help("Forward (⌥⌘→)")
+                    .disabled(!appState.canGoForward)
+            }
             ToolbarItem { Button("Save", action: appState.save) }
             ToolbarItem {
                 Button { uiState.rightSidebarVisible.toggle() } label: {
@@ -480,10 +492,12 @@ struct ContentView: View {
                     cursorOffset: $appState.pendingCursorOffset, fontSize: CGFloat(appState.fontSize),
                     lineHeight: CGFloat(appState.lineHeight), maxLineWidth: readableWidth,
                     textFont: appState.textFont, codeFont: appState.codeFont,
-                    onOpenLink: { appState.openLink($0) },
+                    // ⌘-click opens the link in a new tab, as in Obsidian.
+                    onOpenLink: { appState.openLink($0, newTab: NSEvent.modifierFlags.contains(.command)) },
                     onFocus: { appState.focusPane(pane.id) },
                     isLive: isActivePane,
-                    onOpenTag: { uiState.search("#" + $0) })
+                    onOpenTag: { uiState.search("#" + $0) },
+                    onCaretMove: { appState.caretMoved(to: $0) })
                 .opacity(isActivePane ? 1 : 0.92)
             } else {
                 Text("Open a vault, then select a note")

@@ -131,7 +131,7 @@ func appStateSearchChecks() {
     expectEqual(hits.first?.path, "n.md", "vault open indexes existing notes")
 
     // Saving an edit reindexes incrementally (via scheduleReindex).
-    state.open(state.files[0])
+    state.open(state.files[0], newTab: true)
     state.activeText = "# Note\nquixotic melody"
     state.save()
     var edited: [SearchHit] = []

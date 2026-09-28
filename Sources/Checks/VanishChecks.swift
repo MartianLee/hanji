@@ -19,7 +19,7 @@ func vanishChecks() {
     s.openVault(at: root)
 
     // 1. Deleted outside Hanji while it has unsaved edits: kept, flagged, not recreated.
-    s.open(s.files.first { $0.name == "A.md" }!)
+    s.open(s.files.first { $0.name == "A.md" }!, newTab: true)
     s.activeText = "unsaved in A"
     try? fm.removeItem(at: root.appendingPathComponent("A.md"))
     s.reloadTree()
@@ -53,7 +53,7 @@ func vanishChecks() {
     expect(!exists("A.md"), "without recreating the file")
 
     // 4. Renaming a folder carries its open notes along.
-    s.open(s.files.first { $0.name == "Inner.md" }!)
+    s.open(s.files.first { $0.name == "Inner.md" }!, newTab: true)
     s.activeText = "unsaved in Inner"
     let renamed = try? s.rename(root.appendingPathComponent("Folder"), to: "Renamed")
     expect(renamed != nil, "folder renamed")
@@ -71,7 +71,7 @@ func vanishChecks() {
     expect(!exists("Renamed"), "nothing left at the renamed path")
 
     // 6. Deleting a note from Hanji saves its last edits into the Trash copy.
-    s.open(s.files.first { $0.name == "Gone.md" }!)
+    s.open(s.files.first { $0.name == "Gone.md" }!, newTab: true)
     s.activeText = "last words"
     s.delete(root.appendingPathComponent("Gone.md"))
     expect(!s.tabs.contains { $0.file.name == "Gone.md" }, "its tab closes")

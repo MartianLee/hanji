@@ -281,6 +281,9 @@ public struct MarkdownEditorView: NSViewRepresentable {
     public var onOpenTag: ((String) -> Void)?
     /// Called when the editor text view becomes first responder (user clicks or tabs into it).
     public var onFocus: (() -> Void)?
+    /// Called with the caret's offset whenever it moves (live editor only), so
+    /// navigation history can come back to it.
+    public var onCaretMove: ((Int) -> Void)?
     /// False when `text` is a snapshot rather than the live buffer (an inactive
     /// split pane). Such an editor can't save an edit, so a click only focuses it.
     public var isLive: Bool
@@ -291,8 +294,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 textFont: String = "", codeFont: String = "",
                 onOpenLink: ((String) -> Void)? = nil,
                 onFocus: (() -> Void)? = nil, isLive: Bool = true,
-                onOpenTag: ((String) -> Void)? = nil) {
+                onOpenTag: ((String) -> Void)? = nil,
+                onCaretMove: ((Int) -> Void)? = nil) {
         self.onOpenTag = onOpenTag
+        self.onCaretMove = onCaretMove
         self.isLive = isLive
         self._text = text
         self.renderers = renderers
@@ -1009,6 +1014,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
             // restyle would pull the marked text out from under the input method.
             // Committing the composition sends textDidChange, which restyles.
             guard !textView.hasMarkedText() else { return }
+            if parent.isLive { parent.onCaretMove?(textView.selectedRange().location) }
             let paragraph = (textView.string as NSString).paragraphRange(for: textView.selectedRange())
             if paragraph == lastCaretParagraph { return }
             lastCaretParagraph = paragraph

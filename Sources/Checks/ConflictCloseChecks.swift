@@ -16,7 +16,7 @@ func conflictCloseChecks() {
 
     let s = AppState(defaults: UserDefaults(suiteName: "mk-cc-\(UUID().uuidString)")!)
     s.openVault(at: root)
-    s.open(s.files.first { $0.name == "A.md" }!)
+    s.open(s.files.first { $0.name == "A.md" }!, newTab: true)
     let aID = s.activeTabID!
     s.activeText = "mine"
     try? "theirs".write(to: a, atomically: true, encoding: .utf8)
@@ -31,7 +31,7 @@ func conflictCloseChecks() {
     s.notice = nil
 
     // The same tab in the background still carries both versions.
-    s.open(s.files.first { $0.name == "B.md" }!)
+    s.open(s.files.first { $0.name == "B.md" }!, newTab: true)
     s.closeTab(aID)
     expectEqual(disk(), "theirs", "closing it in the background doesn't overwrite the disk version")
     expect(s.tabs.contains { $0.id == aID }, "and it stays open")

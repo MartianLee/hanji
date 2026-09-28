@@ -19,7 +19,7 @@ func saveFailureChecks() {
 
     let s = AppState(defaults: UserDefaults(suiteName: "mk-sf-\(UUID().uuidString)")!, autosaveInterval: 0.05)
     s.openVault(at: root)
-    s.open(s.files.first { $0.name == "A.md" }!)
+    s.open(s.files.first { $0.name == "A.md" }!, newTab: true)
     lock(true)
 
     // ⌘S / flush

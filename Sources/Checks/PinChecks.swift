@@ -23,7 +23,7 @@ func pinChecks() {
     let s = AppState(defaults: UserDefaults(suiteName: suite)!)
     defer { UserDefaults().removePersistentDomain(forName: suite) }
     s.openVault(at: vault)
-    func open(_ rel: String) { s.openNote(relativePath: rel) }
+    func open(_ rel: String) { s.openNote(relativePath: rel, newTab: true) }
     func tab(_ name: String) -> OpenTab? { s.panes.flatMap(\.tabs).first { $0.file.name == name } }
 
     // Pinning, and what it does to closing.

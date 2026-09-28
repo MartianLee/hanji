@@ -23,7 +23,7 @@ func quitChecks() {
 
     let s = AppState(defaults: UserDefaults(suiteName: "mk-quit-\(UUID().uuidString)")!, autosaveInterval: 0.05)
     s.openVault(at: root)
-    s.open(s.files.first { $0.name == "A.md" }!)
+    s.open(s.files.first { $0.name == "A.md" }!, newTab: true)
 
     // Typed just before ⌘Q, debounce not yet fired.
     s.activeText = "typed right before quit"
@@ -45,7 +45,7 @@ func quitChecks() {
     s.activeText = "mine"
     try? "theirs".write(to: a, atomically: true, encoding: .utf8)
     s.reloadTree()
-    s.open(s.files.first { $0.name == "B.md" }!)
+    s.open(s.files.first { $0.name == "B.md" }!, newTab: true)
     expectEqual(s.saveAllForClose(), ["A.md"], "a background tab in conflict is named")
     expectEqual(disk(), "theirs", "and its disk version isn't overwritten")
 

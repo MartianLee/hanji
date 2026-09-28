@@ -35,7 +35,7 @@ final class ProbeVault {
     func read(_ rel: String) -> String? { try? String(contentsOf: url(rel), encoding: .utf8) }
     func exists(_ rel: String) -> Bool { fm.fileExists(atPath: url(rel).path) }
     func file(_ name: String) -> MarkdownFile? { s.files.first { $0.name == name } }
-    func open(_ name: String) { if let f = file(name) { s.open(f) } else { print("  ! no file \(name)") } }
+    func open(_ name: String) { if let f = file(name) { s.open(f, newTab: true) } else { print("  ! no file \(name)") } }
     func tab(_ name: String, pane: Int? = nil) -> OpenTab? {
         let ps = pane.map { [s.panes[$0]] } ?? s.panes
         return ps.flatMap(\.tabs).first { $0.file.name == name }

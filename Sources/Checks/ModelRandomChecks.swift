@@ -32,6 +32,7 @@ enum ROp: String, CaseIterable {
     case extWrite, extDelete, extRename, reload
     case replace, resolveReload, resolveMine, restoreMissing, closeMissing
     case switchVault, template
+    case openHere, back, forward
 }
 
 struct RStep: CustomStringConvertible {
@@ -133,7 +134,17 @@ final class RandomModel {
             let fs = mdFiles(); guard !fs.isEmpty else { return false }
             let f = fs[st.a % fs.count]
             if avoidKnown && s.panes.contains(where: { $0.id != s.activePaneID && $0.tabs.contains { $0.file.url.standardizedFileURL.path == f.url.standardizedFileURL.path } }) { return false }
-            log.append("open \(rel(f.url))"); s.open(f)
+            log.append("open \(rel(f.url))"); s.open(f, newTab: true)
+        case .openHere:
+            let fs = mdFiles(); guard !fs.isEmpty else { return false }
+            let f = fs[st.a % fs.count]
+            log.append("open here \(rel(f.url))"); s.open(f)
+        case .back:
+            guard s.canGoBack else { return false }
+            log.append("goBack"); s.goBack()
+        case .forward:
+            guard s.canGoForward else { return false }
+            log.append("goForward"); s.goForward()
         case .type:
             guard s.selectedFile != nil else { return false }
             var t = s.activeText
@@ -348,6 +359,7 @@ func generateSteps(seed: UInt64, count: Int, skip: Set<String>) -> [RStep] {
         (.delete, 2), (.undo, 3), (.newNote, 2), (.extWrite, 3), (.extDelete, 2), (.extRename, 2),
         (.reload, 3), (.replace, 1), (.resolveReload, 2), (.resolveMine, 2), (.restoreMissing, 2),
         (.closeMissing, 1), (.switchVault, 1), (.template, 1),
+        (.openHere, 8), (.back, 4), (.forward, 2),
     ].filter { !skip.contains($0.0.rawValue) }
     let total = weights.map(\.1).reduce(0, +)
     return (0..<count).map { _ in

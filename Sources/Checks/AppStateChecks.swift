@@ -13,7 +13,7 @@ func appStateChecks() {
     expectEqual(state.files.count, 1, "openVault loads files")
     expectEqual(state.index.notes.first?.title ?? "", "A", "openVault builds index")
 
-    state.open(state.files[0])
+    state.open(state.files[0], newTab: true)
     expectEqual(state.activeText, "# A\nx", "open loads active text")
 
     state.activeText = "changed"
@@ -81,7 +81,7 @@ func appCreateNoteChecks() {
     expectEqual(state.pendingCursorOffset, 3, "pendingCursorOffset set")
     expect(state.files.contains { $0.name == "2026-06-09.md" }, "file list refreshed")
 
-    state.openNote(relativePath: "Daily/2026-06-09.md")
+    state.openNote(relativePath: "Daily/2026-06-09.md", newTab: true)
     expectEqual(state.selectedFile?.name, "2026-06-09.md", "openNote selects the file")
     expectEqual(state.activeText, "# Hi", "openNote loads text")
 }
