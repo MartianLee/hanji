@@ -33,7 +33,10 @@ struct WordCountStatusView: View {
         Text("\(words) words · \(chars) chars")
             .font(.caption)
             .foregroundStyle(.secondary)
-            .onReceive(textPublisher) { text in
+            // At most four counts a second: counting walks the whole note, and
+            // doing it on every keystroke cost 12-19ms a key in a 4,000-line
+            // note (60-90ms at 20,000). The latest text always gets counted.
+            .onReceive(textPublisher.throttle(for: .milliseconds(250), scheduler: RunLoop.main, latest: true)) { text in
                 words = WordCounter.words(in: text)
                 chars = WordCounter.characters(in: text)
             }

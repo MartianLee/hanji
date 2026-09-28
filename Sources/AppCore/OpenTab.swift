@@ -16,7 +16,7 @@ public final class NoteBuffer {
     /// The file vanished while the note had unsaved edits; saving is paused until
     /// the user saves it again or closes it (or the file comes back).
     public var missingOnDisk = false
-    public var isDirty: Bool { text != savedText }
+    public var isDirty: Bool { !(text as NSString).isEqual(to: savedText) }   // see AppState.isDirty
 
     init(file: MarkdownFile, text: String) {
         self.file = file

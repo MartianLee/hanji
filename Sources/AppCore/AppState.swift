@@ -25,7 +25,10 @@ public final class AppState: ObservableObject {
         public let message: String
     }
     @Published public var notice: Notice? = nil
-    public var isDirty: Bool { activeText != savedText }
+    /// Code units compared (NSString), not Unicode equivalence (String `!=`):
+    /// asked on every update of the tab bar and the Save menu, and a note's
+    /// bytes are what autosave writes.
+    public var isDirty: Bool { !(activeText as NSString).isEqual(to: savedText) }
     /// The open note's file vanished while it had unsaved edits (see `reconcileTabs`).
     @Published public private(set) var missingOnDisk = false {
         didSet { liveBuffer?.missingOnDisk = missingOnDisk }
