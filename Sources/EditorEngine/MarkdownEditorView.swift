@@ -571,9 +571,18 @@ public struct MarkdownEditorView: NSViewRepresentable {
             layOutNote(tlm, tcs)
         }
 
-        /// Lay the whole note out.
+        /// Lay the whole note out, and make the text view as tall as the result.
+        /// Laying out here, outside TextKit's own viewport pass, doesn't resize the
+        /// view itself: its height could stay at an earlier estimate with the real
+        /// lines below its bottom, out of reach of the caret and the scroller.
         private func layOutNote(_ tlm: NSTextLayoutManager, _ tcs: NSTextContentStorage) {
             tlm.ensureLayout(for: tcs.documentRange)
+            guard let textView else { return }
+            let height = max(tlm.usageBoundsForTextContainer.maxY + textView.textContainerInset.height * 2,
+                             textView.enclosingScrollView?.contentSize.height ?? 0)
+            if abs(textView.frame.height - height) > 0.5 {
+                textView.setFrameSize(NSSize(width: textView.frame.width, height: height))
+            }
         }
 
         /// Coalesce widget rebuilds: `updateWidgets` forces a full-document layout,
@@ -1015,7 +1024,15 @@ public struct MarkdownEditorView: NSViewRepresentable {
             // skip it when there is nothing to place — without it the insertion point
             // is left unpainted after a restyle.
             layOutNote(tlm, tcs)
-            if revealCaret {
+            // A caret the keyboard moved is kept in view. AppKit scrolls to it at
+            // once, against line heights that are still estimates; laid out, the
+            // lines above it came out taller or shorter and the caret could end up
+            // off screen (arrowing up from the end of a long note left the view
+            // behind). Scrolling alone doesn't move the caret, so this never pulls
+            // the view back from where someone scrolled it.
+            let moved = textView.selectedRange() != lastWidgetPassSelection
+            lastWidgetPassSelection = textView.selectedRange()
+            if revealCaret || (moved && textView.window?.firstResponder === textView && !caretVisible(tlm, tcs)) {
                 revealCaret = false
                 textView.scrollRangeToVisible(textView.selectedRange())
             }
@@ -1034,6 +1051,21 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 view.removeFromSuperview()
                 overlays[key] = nil
             }
+        }
+
+        private var lastWidgetPassSelection = NSRange(location: NSNotFound, length: 0)
+
+        /// Whether the caret's line is inside the visible rect.
+        private func caretVisible(_ tlm: NSTextLayoutManager, _ tcs: NSTextContentStorage) -> Bool {
+            guard let textView,
+                  let start = tcs.location(tcs.documentRange.location, offsetBy: textView.selectedRange().location) else { return true }
+            var rect = CGRect.null
+            tlm.enumerateTextSegments(in: NSTextRange(location: start), type: .selection, options: []) { _, f, _, _ in
+                rect = f; return false
+            }
+            guard !rect.isNull else { return true }
+            let visible = textView.visibleRect.offsetBy(dx: 0, dy: -textView.textContainerOrigin.y)
+            return rect.minY >= visible.minY && rect.maxY <= visible.maxY
         }
 
         /// Image widgets (own-line `![[...]]` / `![alt](path)`), resolved relative

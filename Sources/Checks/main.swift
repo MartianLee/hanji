@@ -108,6 +108,7 @@ runChecks([
     ("IncrementalRestyle", incrementalRestyleChecks),
     ("KeystrokeCost", keystrokeCostChecks),
     ("KeystrokeWork", keystrokeWorkChecks),
+    ("EditorCaretTracking", editorCaretTrackingChecks),
     ("StyleCommit", styleCommitChecks),
     ("CommandRegistry2", commandRegistryChecks),
     ("PeriodicNotesPlugin", periodicNotesPluginChecks),

@@ -657,3 +657,30 @@ func keystrokeWorkChecks() {
     expect(EditorMetrics.reservationWrites < 10,
            "and rewrites no widget heights that didn't change (\(EditorMetrics.reservationWrites) writes)")
 }
+
+/// Where the caret is and whether it can be seen, after the moves that lost it
+/// in a long note: ⌘↓ to the end (the caret on the last, empty line, below the
+/// bottom of a view whose height hadn't caught up), and arrowing up from there
+/// (the caret moved, the view didn't follow).
+func editorCaretTrackingChecks() {
+    var lines: [String] = []
+    for i in 0..<1000 { lines += ["## Section \(i)", "Paragraph \(i) with **bold** text and more words to wrap a little.", "- item", ""] }
+    guard let h = EditorHarness(lines.joined(separator: "\n"), cursorOffset: 0) else { expect(false, "editor found"); return }
+    defer { h.close() }
+    let tv = h.textView
+    h.caret(at: 0); h.pump(0.5)
+    func caret() -> String {
+        let rect = tv.convert(h.window.convertFromScreen(tv.firstRect(forCharacterRange: tv.selectedRange(), actualRange: nil)), from: nil)
+        return "caret y \(Int(rect.minY))–\(Int(rect.maxY)), view \(Int(tv.visibleRect.minY))–\(Int(tv.visibleRect.maxY)), height \(Int(tv.frame.height))"
+    }
+    h.key("\u{F701}", 125, [.command, .numericPad, .function]); h.pump(0.6)
+    expectEqual(tv.selectedRange().location, (tv.string as NSString).length, "⌘↓ goes to the end")
+    expect(h.caretInView.0, "and the caret there is in view (\(caret()))")
+    let usage = tv.textLayoutManager?.usageBoundsForTextContainer.maxY ?? 0
+    expect(tv.frame.height >= usage, "the view is as tall as its laid-out text (\(Int(tv.frame.height)) vs \(Int(usage)))")
+    for _ in 0..<30 { h.key("\u{F700}", 126, [.numericPad, .function]); h.pump(0.06) }
+    h.pump(0.6)
+    expect(h.caretInView.0, "arrowing up 30 lines from the end keeps the caret in view (\(caret()))")
+    h.key("\u{F700}", 126, [.command, .numericPad, .function]); h.pump(0.6)
+    expect(tv.selectedRange().location == 0 && h.caretInView.0, "⌘↑ goes back to the top, in view (\(caret()))")
+}
