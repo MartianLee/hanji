@@ -61,6 +61,10 @@ final class ClickableTextView: NSTextView {
     /// adding another one, which is how you leave a list. Everything goes through
     /// insertText, so each step stays a normal undoable edit.
     override func insertNewline(_ sender: Any?) {
+        if let indent = codeIndent() {
+            insertText("\n" + indent, replacementRange: selectedRange())
+            return
+        }
         guard let line = listLine(),
               // Only continue from the end of the item's own text; a mid-line
               // Return splits the line as usual.
@@ -74,6 +78,22 @@ final class ClickableTextView: NSTextView {
         case .end(let markerLength):
             insertText("", replacementRange: NSRange(location: line.range.location, length: markerLength))
         }
+    }
+
+    /// Inside a code block, Return keeps the line's indentation, as a code editor
+    /// does — a block nested in a list item has the fence's indent on every
+    /// line, and typing it again on each one was the chore. The indent is the
+    /// line's leading spaces and tabs up to the caret; nil (a plain newline)
+    /// outside code or on a line without one.
+    private func codeIndent() -> String? {
+        guard let storage = textStorage else { return nil }
+        let caret = selectedRange().location
+        guard isInsideCodeBlock?(caret) == true else { return nil }
+        let ns = storage.string as NSString
+        let start = ns.lineRange(for: NSRange(location: caret, length: 0)).location
+        var end = start
+        while end < caret, ns.character(at: end) == 0x20 || ns.character(at: end) == 0x09 { end += 1 }
+        return end > start ? ns.substring(with: NSRange(location: start, length: end - start)) : nil
     }
 
     /// Tab nests the list item the caret is in one level deeper — including the

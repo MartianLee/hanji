@@ -100,6 +100,7 @@ runChecks([
     ("EditorFonts", editorFontChecks),
     ("EditorLinkCompletion", editorLinkCompletionChecks),
     ("EditorNestedFence", editorNestedFenceChecks),
+    ("EditorCodeIndent", editorCodeIndentChecks),
     ("EditorTable", editorTableChecks),
     ("PastePerf", pastePerfChecks),
     ("IncrementalRestyle", incrementalRestyleChecks),

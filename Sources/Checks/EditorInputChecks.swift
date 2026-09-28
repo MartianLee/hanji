@@ -576,3 +576,46 @@ func editorTableChecks() {
     let font = tv.textStorage?.attribute(.font, at: (tv.string as NSString).range(of: "Name").location, effectiveRange: nil) as? NSFont
     expect((font?.pointSize ?? 0) > 5, "and its former header is visible text again")
 }
+
+/// Return inside a code block keeps the line's indentation, as a code editor
+/// does — above all in a block nested in a list item, where every line starts
+/// with the fence's indent. Outside code, Return is unchanged.
+func editorCodeIndentChecks() {
+    func afterReturn(_ note: String, at needle: String, type extra: String = "") -> (text: String, caret: Int)? {
+        let caret = NSMaxRange((note as NSString).range(of: needle))
+        guard let h = EditorHarness(note, cursorOffset: caret) else { return nil }
+        defer { h.close() }
+        h.caret(at: caret); h.pump(0.2)
+        h.key("\r", 36); h.pump()
+        if !extra.isEmpty { h.type(extra) }
+        return (h.text, h.textView.selectedRange().location)
+    }
+    let nested = "- item\n\n    ```swift\n    let a = 1\n    ```\n"
+    expectEqual(afterReturn(nested, at: "let a = 1", type: "b")?.text,
+                "- item\n\n    ```swift\n    let a = 1\n    b\n    ```\n",
+                "in a nested block, the next line starts at the block's indent")
+    expectEqual(afterReturn(nested, at: "```swift")?.text,
+                "- item\n\n    ```swift\n    \n    let a = 1\n    ```\n", "so does Return on its opening fence")
+    expectEqual(afterReturn("- a\n\t```\n\tx\n\t```", at: "\tx")?.text, "- a\n\t```\n\tx\n\t\n\t```", "tabs stay tabs")
+    let deeper = "- a\n    ```\n    if x {\n        y\n    }\n    ```"
+    expectEqual(afterReturn(deeper, at: "        y")?.text, "- a\n    ```\n    if x {\n        y\n        \n    }\n    ```",
+                "a deeper line keeps its own depth")
+    let top = "```\n  foo\n```"
+    expectEqual(afterReturn(top, at: "  foo")?.text, "```\n  foo\n  \n```", "at the top level too")
+    let r = afterReturn(top, at: "  foo")
+    expectEqual(r?.caret, ("```\n  foo\n  " as NSString).length, "the caret lands after the indent")
+
+    // Unchanged.
+    expectEqual(afterReturn("```\nfoo\n```", at: "foo")?.text, "```\nfoo\n\n```", "an unindented code line: a plain newline")
+    expectEqual(afterReturn("  text", at: "text")?.text, "  text\n", "outside code, indentation isn't carried")
+    expectEqual(afterReturn("- item", at: "item")?.text, "- item\n- ", "a list item still continues")
+    expectEqual(afterReturn("```\n    x\n```", at: "```\n")?.text, "```\n\n    x\n```",
+                "Return before a line's indent just splits it")
+
+    guard let h = EditorHarness(nested, cursorOffset: NSMaxRange((nested as NSString).range(of: "let a = 1"))) else { return }
+    defer { h.close() }
+    h.caret(at: NSMaxRange((nested as NSString).range(of: "let a = 1"))); h.pump(0.2)
+    h.key("\r", 36); h.pump()
+    h.textView.undoManager?.undo(); h.pump()
+    expectEqual(h.text, nested, "one undo takes the new line and its indent back")
+}
