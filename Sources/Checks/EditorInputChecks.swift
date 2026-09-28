@@ -238,6 +238,11 @@ func incrementalRestyleChecks() {
     ---
     # Heading
     Some **bold** and `code` and a [[link]] and #tag.
+
+    | a | b |
+    |---|--:|
+    | **1** | [[n\\|alias]] |
+
     - item one
     - [ ] task
     1. first
@@ -287,6 +292,12 @@ func incrementalRestyleChecks() {
     live.key("\u{7f}", 51); live.key("\u{7f}", 51); live.key("\u{7f}", 51); live.pump(); compare("deleting the fence")
     caretAfter("> inside"); live.type(" more"); compare("typing in a callout")
     caretAfter("title: Note"); live.type("s"); compare("typing in frontmatter")
+    caretAfter("| **1**"); live.type(" x"); compare("typing in a table")
+    caretAfter("# Heading"); compare("caret out of a table")
+    let delimiterRow = ns().range(of: "|---|--:|\n")
+    live.textView.insertText("", replacementRange: delimiterRow); compare("deleting a table's delimiter row")
+    live.textView.undoManager?.undo(); compare("undoing it")
+    caretAfter("# Heading"); compare("caret away from the table again")
     // A rule that stops being a rule (an opened fence now runs over it) must not
     // keep the rule's reserved, invisible styling.
     let rule = ns().range(of: "\n---\nLast").location + 1
@@ -300,7 +311,7 @@ func incrementalRestyleChecks() {
     // Random edits and caret moves, compared after each one.
     var seed: UInt64 = 0x1234ABCD   // this seed once caught a stale widget reservation
     func next(_ n: Int) -> Int { seed = seed &* 6364136223846793005 &+ 1442695040888963407; return Int((seed >> 33) % UInt64(n)) }
-    let pieces = ["x", "**b**", "`c`", "[[L]]", "- ", "- [ ] ", "# ", "#tag ", "\n", "\n\n", "> ", "```", "---", "1. ", " "]
+    let pieces = ["x", "**b**", "`c`", "[[L]]", "- ", "- [ ] ", "# ", "#tag ", "\n", "\n\n", "> ", "```", "---", "1. ", " ", "|", "| x |\n|---|\n"]
     for step in 0..<30 {
         let length = (live.textView.string as NSString).length
         switch next(4) {
@@ -520,4 +531,48 @@ func editorNestedFenceChecks() {
     expect(font("Player")?.isFixedPitch == false, "without the list item, the indented fence is text again")
     h.textView.undoManager?.undo(); h.pump(0.3)
     expect(font("Player")?.isFixedPitch == true, "and code once the marker is back")
+}
+
+/// A pipe table renders as a grid overlay holding its own height open: the line
+/// after it sits just below the grid (no gap for the hidden rows), and the
+/// source comes back while the caret is in the table.
+func editorTableChecks() {
+    let note = "Intro\n\n| Name | Qty |\n|:-----|----:|\n| **apple** | 3 |\n| [[fruit\\|pear]] | 10 |\n| #tag | `x` |\n\nAfter the table"
+    guard let h = EditorHarness(note, cursorOffset: 0) else { expect(false, "editor found"); return }
+    defer { h.close() }
+    h.pump(0.4)
+    let tv = h.textView
+    func overlays() -> [NSView] { tv.subviews.filter { $0 is NSHostingView<AnyView> } }
+    func lineTop(_ needle: String) -> CGFloat {
+        let i = (tv.string as NSString).range(of: needle).location
+        let screen = tv.firstRect(forCharacterRange: NSRange(location: i, length: 1), actualRange: nil)
+        guard let window = tv.window else { return -1 }
+        let inWindow = window.convertFromScreen(screen)
+        return tv.convert(inWindow, from: nil).minY
+    }
+    guard let grid = overlays().first else { expect(false, "the table is drawn as an overlay"); return }
+    expectEqual(overlays().count, 1, "one overlay, for the table")
+    expect(grid.frame.height > 80 && grid.frame.height < 250, "grid holds the height of four rows (\(grid.frame.height)pt)")
+    let after = lineTop("After the table")
+    expect(after >= grid.frame.maxY - 1, "the next line is below the grid (\(after) vs \(grid.frame.maxY))")
+    expect(after - grid.frame.maxY < 45, "with no gap left by the hidden rows (\(after - grid.frame.maxY)pt)")
+    if let path = ProcessInfo.processInfo.environment["HANJI_TABLE_PNG"],
+       let rep = tv.bitmapImageRepForCachingDisplay(in: tv.bounds) {
+        tv.cacheDisplay(in: tv.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    }
+
+    h.caret(at: (tv.string as NSString).range(of: "apple").location); h.pump(0.3)
+    expectEqual(overlays().count, 0, "caret in the table shows its source")
+    expect(lineTop("After the table") > lineTop("| #tag"), "source rows are laid out again")
+    h.caret(at: 0); h.pump(0.3)
+    expectEqual(overlays().count, 1, "caret out: the grid is back")
+
+    // Breaking the delimiter row turns the rows back into plain text.
+    let delimiter = (tv.string as NSString).range(of: "|:-----|----:|")
+    tv.insertText("", replacementRange: NSRange(location: delimiter.location, length: delimiter.length + 1))
+    h.caret(at: 0); h.pump(0.3)
+    expectEqual(overlays().count, 0, "no delimiter row, no table")
+    let font = tv.textStorage?.attribute(.font, at: (tv.string as NSString).range(of: "Name").location, effectiveRange: nil) as? NSFont
+    expect((font?.pointSize ?? 0) > 5, "and its former header is visible text again")
 }

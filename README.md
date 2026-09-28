@@ -38,6 +38,9 @@ to set everything up again.
   list item (the `    ```swift` under `- ` that GitHub READMEs use) is code
   too, its slab starting under the item's text.
 - Inline images, **mermaid** diagrams, and horizontal rules render in place.
+- **Tables** (GFM pipe tables) render as a grid — column alignment, and
+  bold / links / `code` / tags inside cells (`[[note\|alias]]` works); the
+  source comes back while the caret is in the table.
 - Editable inline file title; clicking a `[[wikilink]]` or `[text](note.md)`
   opens the target note.
 - **Find & replace in the note** (⌘F, ⌘G / ⇧⌘G, ⌥⌘F) using AppKit's find bar.

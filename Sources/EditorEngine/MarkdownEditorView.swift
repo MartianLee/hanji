@@ -500,7 +500,11 @@ public struct MarkdownEditorView: NSViewRepresentable {
             DispatchQueue.main.async { [weak self] in self?.updateWidgets() }
         }
 
-        struct WidgetSpec { let key: String; let region: Range<Int>; let view: AnyView }
+        struct WidgetSpec {
+            let key: String; let region: Range<Int>; let view: AnyView
+            /// Tallest the widget may reserve; a table runs as long as it is.
+            var maxHeight: CGFloat = 600
+        }
 
         private var widgetUpdateScheduled = false
         /// Set by an edit or a jump: once the widget pass has laid the document
@@ -871,10 +875,11 @@ public struct MarkdownEditorView: NSViewRepresentable {
             }
             specs.append(contentsOf: imageWidgets(caret: caret, nstext: nstext))
             specs.append(contentsOf: hrWidgets(caret: caret, nstext: nstext))
-            widgetRegions = specs.map(\.region)   // for click-to-reveal caret snapping
-
             let inset = textView.textContainerInset.width
             let width = max(50, textView.bounds.width - inset * 2)
+            specs.append(contentsOf: tableWidgets(caret: caret, nstext: nstext, width: width))
+            widgetRegions = specs.map(\.region)   // for click-to-reveal caret snapping
+
             var live: Set<String> = []
             var placements: [(region: Range<Int>, host: NSHostingView<AnyView>, h: CGFloat)] = []
 
@@ -885,7 +890,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 if let existing = overlays[spec.key] { host = existing; host.rootView = spec.view }
                 else { host = PassthroughHostingView(rootView: spec.view); textView.addSubview(host); overlays[spec.key] = host }
                 host.frame.size.width = width
-                let h = min(max(20, host.fittingSize.height), 600)
+                let h = min(max(20, host.fittingSize.height), spec.maxHeight)
                 reserve(region: spec.region, height: h, in: storage)
                 placements.append((spec.region, host, h))
             }
@@ -973,6 +978,17 @@ public struct MarkdownEditorView: NSViewRepresentable {
             return out
         }
 
+        /// Pipe tables drawn as a grid; like other widgets, the source comes back
+        /// while the caret is anywhere in the table.
+        func tableWidgets(caret: Range<Int>, nstext: NSString, width: CGFloat) -> [WidgetSpec] {
+            TableParser.tables(in: nstext as String).compactMap { table in
+                if intersects(table.range, caret) { return nil }
+                return WidgetSpec(key: "tbl-\(table.range.lowerBound)-\(table.range.upperBound)", region: table.range,
+                                  view: AnyView(TableWidgetView(table: table, width: width)),
+                                  maxHeight: .greatestFiniteMagnitude)
+            }
+        }
+
         /// Reserve `height` for a block: force the first line to that height and
         /// collapse the remaining lines; hide the source (the overlay covers it).
         private func reserve(region: Range<Int>, height: CGFloat, in storage: NSTextStorage) {
@@ -989,6 +1005,12 @@ public struct MarkdownEditorView: NSViewRepresentable {
             if firstEnd < upper {
                 storage.addAttributes([.font: NSFont.systemFont(ofSize: 0.01), .foregroundColor: NSColor.clear],
                                       range: NSRange(location: firstEnd, length: upper - firstEnd))
+            }
+            // The collapsed lines keep no paragraph spacing: body text's 6pt a line
+            // left a gap under a table as tall as it had rows.
+            if firstEnd + 1 < upper {
+                storage.addAttribute(.paragraphStyle, value: NSParagraphStyle.default,
+                                     range: NSRange(location: firstEnd + 1, length: upper - firstEnd - 1))
             }
         }
 
