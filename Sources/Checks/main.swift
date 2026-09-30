@@ -48,6 +48,8 @@ runChecks([
     ("CodeBlockTokenizer", codeBlockTokenizerChecks),
     ("CodeBlockStyler", codeBlockStylerChecks),
     ("CodeHighlightStyler", codeHighlightStylerChecks),
+    ("CodeSlabStaysOnCode", codeSlabStaysOnCodeChecks),
+    ("MarkerStaysOnList", markerStaysOnListChecks),
     ("CodeBlockRegion", codeBlockRegionChecks),
     ("RendererRegistry", rendererRegistryChecks),
     ("TaskToggle", taskToggleChecks),

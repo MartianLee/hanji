@@ -417,6 +417,8 @@ public struct MarkdownEditorView: NSViewRepresentable {
         scroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(context.coordinator, selector: #selector(Coordinator.clipViewDidScroll),
                                                name: NSView.boundsDidChangeNotification, object: scroll.contentView)
+        NotificationCenter.default.addObserver(context.coordinator, selector: #selector(Coordinator.storageDidProcessEditing(_:)),
+                                               name: NSTextStorage.didProcessEditingNotification, object: textView.textStorage)
         context.coordinator.refresh()
         return scroll
     }
@@ -1251,6 +1253,28 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 if codeRegions[mid].upperBound <= offset { low = mid + 1 } else { high = mid }
             }
             return low < codeRegions.count && codeRegions[low].contains(offset) ? codeRegions[low] : nil
+        }
+
+        /// Carry the code blocks and marker lines through an edit the moment the
+        /// storage takes it, before TextKit lays the moved lines out. Both are
+        /// offsets, refreshed by restyle(), which waits while an input method is
+        /// composing: typing Hangul in a heading above a block moved the blank line
+        /// under the heading onto the fence's old offset, it was laid out as code,
+        /// and that fragment kept its slab after the restyle — its attributes never
+        /// changed, so nothing laid it out again. A bullet got stranded the same way.
+        @objc func storageDidProcessEditing(_ note: Notification) {
+            guard let storage = note.object as? NSTextStorage, storage.editedMask.contains(.editedCharacters) else { return }
+            let edit = storage.editedRange, delta = storage.changeInLength
+            let start = edit.location, oldEnd = NSMaxRange(edit) - delta
+            func moved(_ offset: Int) -> Int { offset < start ? offset : offset >= oldEnd ? offset + delta : start }
+            codeRegions = codeRegions.compactMap { r in
+                let lo = moved(r.lowerBound), hi = r.upperBound < start ? r.upperBound
+                    : r.upperBound >= oldEnd ? r.upperBound + delta : NSMaxRange(edit)
+                return lo < hi ? lo..<hi : nil
+            }
+            markerLines = Dictionary(markerLines.compactMap { line, placement in
+                line < start || line >= oldEnd ? (moved(line), placement) : nil
+            }, uniquingKeysWith: { first, _ in first })
         }
 
         private func intersects(_ a: Range<Int>, _ b: Range<Int>) -> Bool {

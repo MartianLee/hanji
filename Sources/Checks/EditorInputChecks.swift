@@ -697,3 +697,91 @@ func editorCaretTrackingChecks() {
     h.key("\u{F700}", 126, [.command, .numericPad, .function]); h.pump(0.6)
     expect(tv.selectedRange().location == 0 && h.caretInView.0, "⌘↑ goes back to the top, in view (\(caret()))")
 }
+
+/// Only a code block's own lines draw its slab — never the lines above it, after
+/// an edit shifts the block (typing or composing Hangul in a heading above it,
+/// deleting a line above it).
+func codeSlabStaysOnCodeChecks() {
+    func isSlab(_ h: EditorHarness, lineAt i: Int) -> Bool {
+        guard let tlm = h.textView.textLayoutManager, let tcs = tlm.textContentManager,
+              let loc = tcs.location(tcs.documentRange.location, offsetBy: i),
+              let fragment = tlm.textLayoutFragment(for: loc) else { return false }
+        return String(describing: type(of: fragment)).contains("CodeBlock")
+    }
+    func check(_ label: String, _ note: String, edit: (EditorHarness) -> Void) {
+        guard let h = EditorHarness(note, cursorOffset: 0) else { expect(false, "editor found"); return }
+        defer { h.close() }
+        h.pump(0.3)
+        edit(h)
+        h.pump(0.3)
+        let ns = h.textView.string as NSString
+        let fence = ns.range(of: "```").location
+        var bad: [Int] = []
+        var i = 0
+        while i < fence {
+            let para = ns.paragraphRange(for: NSRange(location: i, length: 0))
+            if isSlab(h, lineAt: i) { bad.append(i) }
+            i = NSMaxRange(para)
+        }
+        expect(bad.isEmpty, "\(label): no slab above the fence (slab lines at \(bad), fence at \(fence))")
+        expect(isSlab(h, lineAt: fence), "\(label): the fence line draws the slab")
+    }
+    let note = "## Notes \n\n\n## 결과\n\n```\n콘텐츠 노출\n최근 업데이트\n```\n"
+    check("typed above", note) { h in
+        h.caret(at: (note as NSString).range(of: "결과").location + 2); h.type("abc")
+    }
+    check("deleted above", note) { h in
+        h.caret(at: 10); h.key("\u{7f}", 51); h.pump()
+    }
+    check("composed above", note) { h in
+        let at = (note as NSString).range(of: "결과").location + 2
+        h.caret(at: at)
+        for step in ["ㅎ", "하", "한", "한ㄱ", "한그", "한글"] {
+            h.textView.setMarkedText(step, selectedRange: NSRange(location: (step as NSString).length, length: 0),
+                                     replacementRange: NSRange(location: NSNotFound, length: 0))
+            h.pump(0.05)
+        }
+        h.textView.insertText("한글", replacementRange: h.textView.markedRange())
+    }
+    check("composed then deleted above", note) { h in
+        let at = (note as NSString).range(of: "결과").location + 2
+        h.caret(at: at)
+        for step in ["ㅎ", "하", "한"] {
+            h.textView.setMarkedText(step, selectedRange: NSRange(location: (step as NSString).length, length: 0),
+                                     replacementRange: NSRange(location: NSNotFound, length: 0))
+            h.pump(0.05)
+        }
+        h.textView.insertText("한", replacementRange: h.textView.markedRange())
+        h.pump()
+        for _ in 0..<3 { h.key("\u{7f}", 51) }
+        h.pump()
+    }
+}
+
+/// Same for a list's bullets: composing Hangul above a list mustn't leave a
+/// bullet drawn on a line that has none.
+func markerStaysOnListChecks() {
+    // One composed character moves the blank line onto the item's old offset.
+    let note = "## 결과\n\n- item\n"
+    guard let h = EditorHarness(note, cursorOffset: 0) else { expect(false, "editor found"); return }
+    defer { h.close() }
+    h.pump(0.3)
+    h.caret(at: 5)
+    for step in ["ㅎ", "하", "한"] {
+        h.textView.setMarkedText(step, selectedRange: NSRange(location: (step as NSString).length, length: 0),
+                                 replacementRange: NSRange(location: NSNotFound, length: 0))
+        h.pump(0.05)
+    }
+    h.textView.insertText("한", replacementRange: h.textView.markedRange())
+    h.pump(0.3)
+    func isMarker(_ needle: String) -> Bool {
+        guard let tlm = h.textView.textLayoutManager, let tcs = tlm.textContentManager,
+              case let i = (h.textView.string as NSString).range(of: needle).location + (needle == "\n\n" ? 1 : 0),
+              i != NSNotFound,
+              let loc = tcs.location(tcs.documentRange.location, offsetBy: i),
+              let fragment = tlm.textLayoutFragment(for: loc) else { return false }
+        return String(describing: type(of: fragment)).contains("Marker")
+    }
+    expect(!isMarker("\n\n"), "no bullet on the blank line above the list after composing above it")
+    expect(isMarker("- item"), "the list item keeps its bullet")
+}
