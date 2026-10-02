@@ -469,7 +469,8 @@ struct ContentView: View {
             if let tab = pane.tabs.first(where: { $0.id == pane.activeTabID }) {
                 let fileURL = isActivePane ? (appState.selectedFile?.url ?? tab.file.url) : tab.file.url
                 InlineTitleView(fileURL: fileURL, maxLineWidth: readableWidth,
-                                font: EditorFonts.boldText(appState.textFont, size: 28), rename: { newName in
+                                font: EditorFonts.boldText(appState.textFont, size: 28),
+                                isReadOnly: tab.isReading, rename: { newName in
                     _ = try? appState.rename(fileURL, to: newName)
                 }, enterBody: { appState.pendingCursorOffset = 0 })
                 if isActivePane, appState.externalConflict != nil {
@@ -504,7 +505,8 @@ struct ContentView: View {
                     onFocus: { appState.focusPane(pane.id) },
                     isLive: isActivePane,
                     onOpenTag: { uiState.search("#" + $0) },
-                    onCaretMove: { appState.caretMoved(to: $0) })
+                    onCaretMove: { appState.caretMoved(to: $0) },
+                    isReading: tab.isReading)
                 .opacity(isActivePane ? 1 : 0.92)
             } else {
                 Text("Open a vault, then select a note")
@@ -631,6 +633,8 @@ private struct InlineTitleView: View {
     let maxLineWidth: CGFloat?
     /// The text font's bold, so the title matches the headings below it.
     let font: NSFont
+    /// Reading mode: the title is plain text, not a field, so it can't be renamed by accident.
+    let isReadOnly: Bool
     let rename: (String) -> Void
     let enterBody: () -> Void
     @State private var title: String = ""
@@ -639,23 +643,30 @@ private struct InlineTitleView: View {
     private var base: String { fileURL.deletingPathExtension().lastPathComponent }
 
     var body: some View {
-        TextField("Untitled", text: $title)
-            .textFieldStyle(.plain)
-            .font(Font(font as CTFont))
-            .lineLimit(1)
-            .focused($focused)
-            .frame(maxWidth: maxLineWidth ?? .infinity, alignment: .leading)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 24)
-            .padding(.top, 18)
-            .padding(.bottom, 6)
-            .background(Color(nsColor: .textBackgroundColor))   // match the editor body
-            .onAppear { title = base }
-            .onChange(of: fileURL) { _, _ in title = base }     // switched notes → resync
-            .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
-            // Enter drops into the editor body. Space must NOT: titles have spaces
-            // in them, and stealing the first one made multi-word titles unwritable.
-            .onKeyPress(.return) { commit(); enterBody(); return .handled }
+        // Same font and padding in both branches, so the page doesn't shift when the mode flips.
+        Group {
+            if isReadOnly {
+                Text(base).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                TextField("Untitled", text: $title)
+                    .textFieldStyle(.plain)
+                    .lineLimit(1)
+                    .focused($focused)
+                    .onAppear { title = base }
+                    .onChange(of: fileURL) { _, _ in title = base }     // switched notes → resync
+                    .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
+                    // Enter drops into the editor body. Space must NOT: titles have spaces
+                    // in them, and stealing the first one made multi-word titles unwritable.
+                    .onKeyPress(.return) { commit(); enterBody(); return .handled }
+            }
+        }
+        .font(Font(font as CTFont))
+        .frame(maxWidth: maxLineWidth ?? .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
+        .padding(.bottom, 6)
+        .background(Color(nsColor: .textBackgroundColor))   // match the editor body
     }
 
     private func commit() {

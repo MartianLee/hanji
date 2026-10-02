@@ -91,6 +91,10 @@ struct HanjiApp: App {
                                                 isAvailable: { [weak appState] in appState?.activeTabID != nil }) { [weak appState] in
                         if let id = appState?.activeTabID { appState?.togglePin(id) }
                     })
+                    h.commands.register(Command(id: "tab.toggleReading", title: "Toggle reading mode",
+                                                isAvailable: { [weak appState] in appState?.activeTabID != nil }) { [weak appState] in
+                        if let id = appState?.activeTabID { appState?.toggleReading(id) }
+                    })
                     h.commands.register(Command(id: "file.moveTo", title: "Move note to folder\u{2026}") { [weak uiState, weak appState] in
                         guard appState?.selectedFile != nil else { return }
                         uiState?.palette = .moveTo
@@ -169,6 +173,12 @@ struct HanjiApp: App {
                 .keyboardShortcut("f", modifiers: [.command, .option, .shift])
             }
             CommandGroup(after: .sidebar) {
+                Toggle("Reading Mode", isOn: Binding(
+                    get: { appState.isActiveTabReading },
+                    set: { _ in if let id = appState.activeTabID { appState.toggleReading(id) } }))
+                    .keyboardShortcut("e", modifiers: .command)
+                    .disabled(appState.activeTabID == nil)
+                Divider()
                 Button(uiState.leftSidebarVisible ? "Hide File Sidebar" : "Show File Sidebar") {
                     uiState.leftSidebarVisible.toggle()
                 }

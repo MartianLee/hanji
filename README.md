@@ -79,6 +79,9 @@ To reproduce the tables:
   source comes back while the caret is in the table.
 - Editable inline file title; clicking a `[[wikilink]]` or `[text](note.md)`
   opens the target note.
+- **Reading mode (⌘E)** per tab: the note fully rendered, the caret's line
+  included, and not editable — checkboxes still toggle. Kept through links
+  and Back/Forward in the tab, and remembered for pinned tabs.
 - **Find & replace in the note** (⌘F, ⌘G / ⇧⌘G, ⌥⌘F) using AppKit's find bar.
 - **Autosave** (debounced, off the main thread) with external-edit **conflict
   detection** and a non-modal reload / keep-mine banner; ⌘S saves on demand.
@@ -171,8 +174,7 @@ no XCTest). See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the design records in
 
 v0.1 — early, and under active development.
 
-- **Not built yet**: export / print, a separate reading (rendered-only) mode,
-  and an outline / table-of-contents panel.
+- **Not built yet**: export / print, and an outline / table-of-contents panel.
 - **Move Tab Left/Right (⌃⌘←/→) collides with macOS Spaces switching** if you
   have that enabled in System Settings ▸ Keyboard. Use the File menu items, or
   rebind Spaces.

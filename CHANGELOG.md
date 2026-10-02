@@ -6,6 +6,10 @@ based on [Keep a Changelog](https://keepachangelog.com/); this project will use
 
 ## [Unreleased]
 
+### Editor
+- Reading mode (⌘E, View ▸ Reading Mode, or the command palette): a tab shows
+  its note fully rendered and takes no typing; checkboxes still toggle (#1).
+
 ## [0.1.0] - 2026-09-26
 
 First public release.

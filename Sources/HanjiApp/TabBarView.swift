@@ -41,6 +41,10 @@ struct TabBarView: View {
         let isActive = pane.id == appState.activePaneID && tab.id == pane.activeTabID
         let dirty = isActive ? appState.isDirty : tab.isDirty
         return HStack(spacing: 6) {
+            if tab.isReading {
+                Image(systemName: "book").font(.system(size: 10)).foregroundStyle(.secondary)
+                    .help("Reading mode (⌘E)")
+            }
             Text(tab.file.url.deletingPathExtension().lastPathComponent)
                 .font(.callout).lineLimit(1)
                 .foregroundStyle(isActive ? .primary : .secondary)
