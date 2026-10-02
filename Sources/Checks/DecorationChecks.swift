@@ -14,4 +14,8 @@ func decorationChecks() {
     let on = Decorator.decorations(spans: spans, selection: 2..<2)
     expectEqual(on.hidden, [], "no markers hidden when caret is on the line")
     expectEqual(on.styles.first?.style, .bold, "content still styled on active line")
+
+    // No caret at all (reading mode) -> every line hides its markers
+    let none = Decorator.decorations(spans: spans, selection: nil)
+    expectEqual(none.hidden, [0..<2, 3..<5], "no selection hides the markers on every line")
 }

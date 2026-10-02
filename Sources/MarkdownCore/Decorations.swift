@@ -29,8 +29,9 @@ extension DecorationSet {
 
 public enum Decorator {
     /// Pure: spans + caret/selection (UTF-16 offsets) -> style runs + marker ranges to hide.
-    /// A span's markers are hidden unless the selection intersects the span's line.
-    public static func decorations(spans: [MarkSpan], selection: Range<Int>) -> DecorationSet {
+    /// A span's markers are hidden unless the selection intersects the span's line;
+    /// with no selection (reading mode) every line hides them.
+    public static func decorations(spans: [MarkSpan], selection: Range<Int>?) -> DecorationSet {
         var styles: [StyleRun] = []
         var hidden: [Range<Int>] = []
         for span in spans {
@@ -38,7 +39,7 @@ public enum Decorator {
             let uppers = span.markers.map(\.upperBound) + [span.content.upperBound]
             let full = lowers.min()! ..< uppers.max()!
             styles.append(StyleRun(range: full, style: span.style))
-            if !intersects(span.line, selection) {
+            if !(selection.map { intersects(span.line, $0) } ?? false) {
                 hidden.append(contentsOf: span.markers)
             }
         }
