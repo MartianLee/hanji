@@ -935,6 +935,12 @@ public struct MarkdownEditorView: NSViewRepresentable {
                   !CodeBlockParser.codeRanges(in: text).contains(where: { $0.contains(t.offset) })
             else { return false }
             let range = NSRange(location: t.offset, length: 1)
+            // Reading mode: the view is read-only, and a checkbox is the one edit it
+            // allows. Editable for just this change, so it is an ordinary edit with
+            // an undo entry.
+            let wasEditable = textView.isEditable
+            textView.isEditable = true
+            defer { textView.isEditable = wasEditable }
             guard textView.shouldChangeText(in: range, replacementString: t.replacement) else { return false }
             textView.textStorage?.replaceCharacters(in: range, with: t.replacement)
             textView.didChangeText()

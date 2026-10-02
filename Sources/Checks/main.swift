@@ -26,6 +26,7 @@ runChecks([
     ("ReadingTabs", readingTabChecks),
     ("EditorReading", editorReadingChecks),
     ("EditorReadingResync", editorReadingResyncChecks),
+    ("EditorReadingCheckbox", editorReadingCheckboxChecks),
     ("SplitSafety", splitSafetyChecks),
     ("SplitCloseDedupe", splitCloseAndDedupeChecks),
     ("ModelRandom", probeRandomChecks),

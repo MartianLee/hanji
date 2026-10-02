@@ -124,3 +124,30 @@ func editorReadingResyncChecks() {
     expect(markerSize(first) > 5, "back in editing, returning to the first line shows its ** (\(markerSize(first))pt)")
     expect(markerSize(second) < 1, "and the second line hides its ** again (\(markerSize(second))pt)")
 }
+
+/// In reading mode a checkbox is the one thing a click changes; ⌘Z takes it
+/// back, and the text view is read-only again after both.
+func editorReadingCheckboxChecks() {
+    var text = "- [ ] task"
+    let view = MarkdownEditorView(text: Binding(get: { text }, set: { text = $0 }), isReading: true)
+    let coordinator = view.makeCoordinator()
+    let textView = NSTextView()
+    textView.allowsUndo = true
+    textView.isEditable = false            // as makeNSView sets it up for reading
+    textView.delegate = coordinator
+    textView.string = text
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+                          styleMask: [.titled], backing: .buffered, defer: true)
+    window.contentView = textView
+    coordinator.textView = textView
+    coordinator.sync(with: view)
+
+    expect(coordinator.handleClick(at: 2), "reading: a checkbox click is handled")
+    expectEqual(text, "- [x] task", "and saved to the note")
+    expect(!textView.isEditable, "read-only again after the toggle")
+    expect(textView.undoManager?.canUndo == true, "the toggle registered an undo")
+    textView.undoManager?.undo()
+    expectEqual(textView.string, "- [ ] task", "⌘Z takes it back while reading")
+    expectEqual(text, "- [ ] task", "and the note follows")
+    expect(!textView.isEditable, "read-only again after the undo")
+}
