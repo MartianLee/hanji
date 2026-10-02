@@ -43,6 +43,7 @@ struct TabBarView: View {
         return HStack(spacing: 6) {
             if tab.isReading {
                 Image(systemName: "book").font(.system(size: 10)).foregroundStyle(.secondary)
+                    .accessibilityLabel("Reading mode")
                     .help("Reading mode (⌘E)")
             }
             Text(tab.file.url.deletingPathExtension().lastPathComponent)
