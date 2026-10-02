@@ -433,7 +433,6 @@ public struct MarkdownEditorView: NSViewRepresentable {
     public func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = nsView.documentView as? NSTextView else { return }
         context.coordinator.sync(with: self)
-        if context.coordinator.appliedReading != isReading { context.coordinator.setReading(isReading) }
         if LivePreviewStyler.baseFontSize != fontSize || LivePreviewStyler.lineHeightMultiple != lineHeight
             || LivePreviewStyler.textFont != textFont || LivePreviewStyler.codeFont != codeFont {
             LivePreviewStyler.baseFontSize = fontSize
@@ -449,10 +448,16 @@ public struct MarkdownEditorView: NSViewRepresentable {
         // NSString's comparison of the code units, not String's Unicode-aware one:
         // this runs on every SwiftUI update of the editor — every keystroke — and
         // String's `!=` walked a long note ten times slower.
-        if !(textView.string as NSString).isEqual(to: text) {
+        let textWasReplaced = !(textView.string as NSString).isEqual(to: text)
+        if textWasReplaced {
             textView.string = text
             context.coordinator.needsFullRestyle = true
             context.coordinator.refresh()
+        }
+        // After the swap above: a tab switch hands over a new note and possibly a
+        // new mode at once, and the old note's top line means nothing in the new one.
+        if context.coordinator.appliedReading != isReading {
+            context.coordinator.setReading(isReading, holdingView: !textWasReplaced && cursorOffset == nil)
         }
         if let offset = cursorOffset,
            let tv = nsView.documentView as? NSTextView {
@@ -662,24 +667,31 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
         /// Reading mode on or off: every line rendered, and the text view read-only.
         /// A composition in progress is committed first — the full restyle below
-        /// must never run over marked text — and the top line stays where it is.
-        func setReading(_ reading: Bool) {
+        /// must never run over marked text — and the top line stays where it is,
+        /// unless `holdingView` is false: a new note or a pending caret jump says
+        /// where the view belongs.
+        func setReading(_ reading: Bool, holdingView: Bool) {
             guard let textView else { return }
             appliedReading = reading
             if textView.hasMarkedText() {
                 textView.unmarkText()
-                // Out of the SwiftUI update this runs in.
+                // Out of the SwiftUI update this runs in. The binding is taken now:
+                // by the time the hop runs, `parent` may belong to another tab.
                 let committed = textView.string
-                DispatchQueue.main.async { [weak self] in
-                    if let self, self.parent.text != committed { self.parent.text = committed }
+                let binding = parent.$text
+                DispatchQueue.main.async {
+                    if binding.wrappedValue != committed { binding.wrappedValue = committed }
                 }
             }
-            pendingScrollAnchor = scrollAnchor()
+            // A second switch before the widget pass keeps the first anchor, the
+            // one taken against the layout the user was looking at.
+            pendingScrollAnchor = holdingView ? (pendingScrollAnchor ?? scrollAnchor()) : nil
             textView.isEditable = !reading
             closeLinkCompletion()
             needsFullRestyle = true
             refresh()
-            // Caret moves while reading don't update this, and the restyle above just styled the current caret line.
+            // Caret moves while reading don't update this, and the restyle above
+            // just styled the current caret line.
             lastCaretParagraph = (textView.string as NSString).paragraphRange(for: textView.selectedRange())
         }
         /// Spans and code blocks, remembered per line (see TokenizerCache).
@@ -955,7 +967,8 @@ public struct MarkdownEditorView: NSViewRepresentable {
             return i
         }
 
-        /// Toggle a task checkbox if the click landed on one. Returns true if handled.
+        /// Toggle a task checkbox if the click landed on one, also in a read-only
+        /// view (reading mode). Returns true if handled.
         /// Inside a fenced code block `- [ ]` is code, so it doesn't toggle. The
         /// toggle goes through the text view's edit path, so ⌘Z takes it back and
         /// textDidChange carries it to the note.
@@ -966,15 +979,18 @@ public struct MarkdownEditorView: NSViewRepresentable {
                   !CodeBlockParser.codeRanges(in: text).contains(where: { $0.contains(t.offset) })
             else { return false }
             let range = NSRange(location: t.offset, length: 1)
-            // Reading mode: the view is read-only, and a checkbox is the one edit it
-            // allows. Editable for just this change, so it is an ordinary edit with
-            // an undo entry.
+            // A read-only view (reading mode) still lets a checkbox through, so the
+            // text view is made editable for just this change, which then is an
+            // ordinary edit with an undo entry; otherwise it already is editable.
             let wasEditable = textView.isEditable
             textView.isEditable = true
             defer { textView.isEditable = wasEditable }
             guard textView.shouldChangeText(in: range, replacementString: t.replacement) else { return false }
             textView.textStorage?.replaceCharacters(in: range, with: t.replacement)
             textView.didChangeText()
+            // The click didn't move the caret, so the view must stay where the user
+            // is reading rather than scroll back to it.
+            revealCaret = false
             return true
         }
 

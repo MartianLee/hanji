@@ -65,6 +65,34 @@ func readingTabChecks() {
     expect(tab("Renamed.md")?.isReading == true, "a rename carries the mode along")
 }
 
+/// Moving a reading tab onto a pane that already shows the same note merges the
+/// two tabs; the survivor takes the moved tab's mode rather than keeping its own.
+func readingTabMergeChecks() {
+    let fm = FileManager.default
+    let vault = fm.temporaryDirectory.appendingPathComponent("mk-read-merge-\(UUID().uuidString)")
+    try? fm.createDirectory(at: vault, withIntermediateDirectories: true)
+    defer {
+        try? fm.removeItem(at: SearchIndex.indexFileURL(forVault: vault)); try? fm.removeItem(at: vault)
+    }
+    try? "A".write(to: vault.appendingPathComponent("A.md"), atomically: true, encoding: .utf8)
+    let suite = "mk-read-merge-\(UUID().uuidString)"
+    let s = AppState(defaults: UserDefaults(suiteName: suite)!)
+    defer { UserDefaults().removePersistentDomain(forName: suite) }
+    s.openVault(at: vault)
+    s.openNote(relativePath: "A.md", newTab: true)
+    s.splitRight()                              // the same note in a second pane
+    guard s.panes.count == 2, let moving = s.panes[0].tabs.first, let staying = s.panes[1].tabs.first else {
+        expect(false, "two panes show the note"); return
+    }
+    expect(moving.buffer === staying.buffer, "both panes share the note's buffer")
+    s.toggleReading(moving.id)
+    expect(!staying.isReading, "the other pane's tab is editing")
+    s.moveTabToSide(moving.id, .right)
+    expectEqual(s.panes.count, 1, "the emptied pane collapses")
+    expectEqual(s.panes.first?.tabs.count, 1, "the two tabs merged into one")
+    expect(s.panes.first?.tabs.first?.isReading == true, "the surviving tab takes the moved tab's reading mode")
+}
+
 /// Reading mode draws the caret's line like every other line — markers hidden,
 /// widgets drawn — and the text view takes no typing. Back in editing, the
 /// caret's line shows its source again.
@@ -164,6 +192,7 @@ func editorReadingSwitchChecks() {
     h.caret(at: 6)
     h.textView.setMarkedText("한", selectedRange: NSRange(location: 1, length: 0),
                              replacementRange: NSRange(location: NSNotFound, length: 0))
+    h.textView.didChangeText()                 // an input method reports each step, so the note follows
     h.pump(0.05)
     h.isReading = true; h.rebuild()
     expect(!h.textView.hasMarkedText(), "switching commits the composition")
@@ -183,4 +212,52 @@ func editorReadingSwitchChecks() {
     expectEqual(s.topLineOffset, before, "reading: the same line stays at the top")
     s.isReading = false; s.rebuild()
     expectEqual(s.topLineOffset, before, "editing again: still the same line")
+}
+
+/// One editor serves every tab, so a tab switch can change the note and the mode
+/// in a single update. The new note must not inherit the old note's scroll
+/// anchor: the view ends up where it would for the same switch without a mode
+/// change, not at the offset the previous note had at its top.
+func editorReadingTabSwitchChecks() {
+    let first = (0..<300).map { "First note line \($0)" }.joined(separator: "\n")
+    let rows = (0..<30).map { "| r\($0) | v |" }.joined(separator: "\n")
+    let second = "| a | b |\n|---|---|\n" + rows + "\n\n"
+        + (0..<300).map { "Second note line \($0)" }.joined(separator: "\n")
+    guard let h = EditorHarness(first) else { expect(false, "editor found"); return }
+    defer { h.close() }
+    h.pump(0.4)
+    let target = (first as NSString).range(of: "First note line 150").location
+
+    h.scrollToTop(of: target)
+    h.text = second; h.rebuild()
+    let control = h.topLineOffset
+
+    h.text = first; h.rebuild()
+    h.scrollToTop(of: target)
+    h.text = second; h.isReading = true; h.rebuild()
+    expectEqual(h.topLineOffset, control, "a tab switch into reading scrolls like one without a mode change")
+}
+
+/// A checkbox click doesn't move the caret, so ticking one in a long note must
+/// leave the view where it is rather than scrolling back to the caret.
+func editorCheckboxScrollChecks() {
+    let body = (0..<300).map { "Line \($0) with text" }.joined(separator: "\n")
+    let note = body + "\n- [ ] task\n" + (0..<20).map { "Tail \($0)" }.joined(separator: "\n")
+    let box = (note as NSString).range(of: "[ ] task").location
+    for reading in [true, false] {
+        let mode = reading ? "reading" : "editing"
+        guard let h = EditorHarness(note) else { expect(false, "editor found"); return }
+        defer { h.close() }
+        h.pump(0.4)
+        h.caret(at: 0)
+        h.isReading = reading; h.rebuild()
+        h.scrollToTop(of: box)
+        let before = h.topLineOffset
+        expect(before != nil, "\(mode): a line is at the top")
+        guard let c = h.textView.delegate as? MarkdownEditorView.Coordinator else { expect(false, "coordinator"); return }
+        expect(c.handleClick(at: box + 1), "\(mode): the click toggles the box")
+        h.pump(0.4)
+        expect(h.text.contains("- [x] task"), "\(mode): the note holds the ticked box")
+        expectEqual(h.topLineOffset, before, "\(mode): the view stays where it was")
+    }
 }

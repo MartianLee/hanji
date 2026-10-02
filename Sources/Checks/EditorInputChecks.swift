@@ -42,6 +42,9 @@ final class EditorHarness {
         guard let tv = find(window.contentView!) else { return nil }
         textView = tv
         box = self
+        // The initial jump happened during the pump above, before `box` existed to
+        // take the editor's clearing of it; as in the app, it is spent by now.
+        self.cursorOffset = nil
         window.makeFirstResponder(tv)
     }
 
