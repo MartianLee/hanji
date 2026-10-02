@@ -85,6 +85,10 @@ func editorReadingChecks() {
     expect(markerSize() < 1, "editing: a line without the caret hides its ** (\(markerSize())pt)")
     h.caret(at: bold + 3); h.pump(0.3)
     expect(markerSize() > 5, "editing: the caret's line shows its ** (\(markerSize())pt)")
+    // Switching to reading with the caret on that line restyles it: the markers must hide.
+    h.isReading = true; h.rebuild()
+    expect(markerSize() < 1, "reading: the caret's line hides them too, switching in on it (\(markerSize())pt)")
+    h.isReading = false; h.rebuild()
 
     h.caret(at: rule); h.pump(0.3)
     h.isReading = true; h.rebuild()
