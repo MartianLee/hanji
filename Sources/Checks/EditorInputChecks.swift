@@ -94,6 +94,23 @@ final class EditorHarness {
         let vis = clip.documentVisibleRect
         return (y >= vis.minY && y <= vis.maxY, "caret y=\(Int(y)), visible \(Int(vis.minY))–\(Int(vis.maxY))")
     }
+
+    /// Scroll so the line holding `offset` is at the top of the view.
+    func scrollToTop(of offset: Int) {
+        guard let tlm = textView.textLayoutManager, let tcs = tlm.textContentManager,
+              let loc = tcs.location(tcs.documentRange.location, offsetBy: offset),
+              let frag = tlm.textLayoutFragment(for: loc) else { return }
+        textView.scroll(NSPoint(x: 0, y: frag.layoutFragmentFrame.minY + textView.textContainerOrigin.y))
+        pump()
+    }
+
+    /// Where the line at the top of the view starts.
+    var topLineOffset: Int? {
+        guard let tlm = textView.textLayoutManager, let tcs = tlm.textContentManager else { return nil }
+        let y = textView.visibleRect.minY - textView.textContainerOrigin.y
+        guard let frag = tlm.textLayoutFragment(for: CGPoint(x: 0, y: max(0, y) + 1)) else { return nil }
+        return tcs.offset(from: tcs.documentRange.location, to: frag.rangeInElement.location)
+    }
     func close() { window.orderOut(nil) }
 }
 

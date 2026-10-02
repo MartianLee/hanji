@@ -151,3 +151,32 @@ func editorReadingCheckboxChecks() {
     expectEqual(text, "- [ ] task", "and the note follows")
     expect(!textView.isEditable, "read-only again after the undo")
 }
+
+/// Switching mid-composition commits the composed text first. Switching keeps
+/// the line at the top of the view there, although the lines above it change
+/// height (a table under the caret is source rows in editing, a grid in reading).
+func editorReadingSwitchChecks() {
+    guard let h = EditorHarness("first line\nsecond line") else { expect(false, "editor found"); return }
+    h.caret(at: 6)
+    h.textView.setMarkedText("한", selectedRange: NSRange(location: 1, length: 0),
+                             replacementRange: NSRange(location: NSNotFound, length: 0))
+    h.pump(0.05)
+    h.isReading = true; h.rebuild()
+    expect(!h.textView.hasMarkedText(), "switching commits the composition")
+    expectEqual(h.text, "first 한line\nsecond line", "and the note holds the committed text")
+    h.close()
+
+    let rows = (0..<30).map { "| r\($0) | v |" }.joined(separator: "\n")
+    let body = (0..<300).map { "Line \($0) with **bold**" }.joined(separator: "\n")
+    let note = "| a | b |\n|---|---|\n" + rows + "\n\n" + body
+    guard let s = EditorHarness(note, cursorOffset: 3) else { expect(false, "editor found"); return }
+    defer { s.close() }
+    s.pump(0.4)
+    s.scrollToTop(of: (note as NSString).range(of: "Line 150 ").location)
+    let before = s.topLineOffset
+    expect(before != nil, "a line is at the top")
+    s.isReading = true; s.rebuild()
+    expectEqual(s.topLineOffset, before, "reading: the same line stays at the top")
+    s.isReading = false; s.rebuild()
+    expectEqual(s.topLineOffset, before, "editing again: still the same line")
+}

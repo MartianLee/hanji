@@ -640,10 +640,41 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// `isStyledAsShown`) keeps following the real caret.
         private var revealSelection: NSRange? { parent.isReading ? nil : textView?.selectedRange() }
 
+        /// The line at the top of the view, and how far past its top the view is
+        /// scrolled, taken before a mode switch restyles the note; the next widget
+        /// pass puts it back once the lines above have their new heights.
+        private var pendingScrollAnchor: (offset: Int, delta: CGFloat)?
+
+        private func scrollAnchor() -> (offset: Int, delta: CGFloat)? {
+            guard let tv = textView, let tlm = tv.textLayoutManager, let tcs = tlm.textContentManager else { return nil }
+            let y = tv.visibleRect.minY - tv.textContainerOrigin.y
+            guard let frag = tlm.textLayoutFragment(for: CGPoint(x: 0, y: max(0, y) + 1)) else { return nil }
+            return (tcs.offset(from: tcs.documentRange.location, to: frag.rangeInElement.location),
+                    y - frag.layoutFragmentFrame.minY)
+        }
+
+        private func restore(_ anchor: (offset: Int, delta: CGFloat), _ tlm: NSTextLayoutManager, _ tcs: NSTextContentStorage) {
+            guard let tv = textView, let loc = tcs.location(tcs.documentRange.location, offsetBy: anchor.offset),
+                  let frag = tlm.textLayoutFragment(for: loc) else { return }
+            let delta = min(anchor.delta, frag.layoutFragmentFrame.height)
+            tv.scroll(NSPoint(x: 0, y: frag.layoutFragmentFrame.minY + delta + tv.textContainerOrigin.y))
+        }
+
         /// Reading mode on or off: every line rendered, and the text view read-only.
+        /// A composition in progress is committed first — the full restyle below
+        /// must never run over marked text — and the top line stays where it is.
         func setReading(_ reading: Bool) {
             guard let textView else { return }
             appliedReading = reading
+            if textView.hasMarkedText() {
+                textView.unmarkText()
+                // Out of the SwiftUI update this runs in.
+                let committed = textView.string
+                DispatchQueue.main.async { [weak self] in
+                    if let self, self.parent.text != committed { self.parent.text = committed }
+                }
+            }
+            pendingScrollAnchor = scrollAnchor()
             textView.isEditable = !reading
             closeLinkCompletion()
             needsFullRestyle = true
@@ -1074,7 +1105,11 @@ public struct MarkdownEditorView: NSViewRepresentable {
             // the view back from where someone scrolled it.
             let moved = textView.selectedRange() != lastWidgetPassSelection
             lastWidgetPassSelection = textView.selectedRange()
-            if revealCaret || (moved && textView.window?.firstResponder === textView && !caretVisible(tlm, tcs)) {
+            if let anchor = pendingScrollAnchor {
+                pendingScrollAnchor = nil
+                revealCaret = false
+                restore(anchor, tlm, tcs)
+            } else if revealCaret || (moved && textView.window?.firstResponder === textView && !caretVisible(tlm, tcs)) {
                 revealCaret = false
                 textView.scrollRangeToVisible(textView.selectedRange())
             }
