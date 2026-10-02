@@ -80,14 +80,18 @@ func editorReadingChecks() {
     }
     func overlays() -> Int { tv.subviews.filter { $0 is NSHostingView<AnyView> }.count }
 
+    h.caret(at: rule); h.pump(0.3)
+    expectEqual(overlays(), 0, "editing: the rule under the caret shows its source")
+    expect(markerSize() < 1, "editing: a line without the caret hides its ** (\(markerSize())pt)")
     h.caret(at: bold + 3); h.pump(0.3)
     expect(markerSize() > 5, "editing: the caret's line shows its ** (\(markerSize())pt)")
 
+    h.caret(at: rule); h.pump(0.3)
     h.isReading = true; h.rebuild()
+    expectEqual(overlays(), 1, "reading: the rule under the caret is drawn")
+    h.caret(at: bold + 3); h.pump(0.3)
     expect(markerSize() < 1, "reading: the caret's line hides them too (\(markerSize())pt)")
     expect(!tv.isEditable, "reading: the text view isn't editable")
-    h.caret(at: rule); h.pump(0.3)
-    expectEqual(overlays(), 1, "reading: the rule under the caret is still drawn")
     h.type("x\n"); h.key("\t", 48); h.pump()
     expectEqual(h.text, note, "reading: keys don't change the note")
 
@@ -95,4 +99,28 @@ func editorReadingChecks() {
     h.caret(at: rule); h.pump(0.3)
     expectEqual(overlays(), 0, "editing: the rule under the caret shows its source")
     expect(tv.isEditable, "editing: typing works again")
+}
+
+/// Moving the caret while reading doesn't restyle anything, so leaving reading
+/// mode must resync which line the caret is on: moving back onto the line the
+/// caret was on before reading still reveals it, and the line the caret left
+/// hides its markers again.
+func editorReadingResyncChecks() {
+    let note = "First **one** line\n\nSecond **two** line"
+    let first = (note as NSString).range(of: "**one**").location
+    let second = (note as NSString).range(of: "**two**").location
+    guard let h = EditorHarness(note) else { expect(false, "editor found"); return }
+    defer { h.close() }
+    let tv = h.textView
+    func markerSize(_ at: Int) -> CGFloat {
+        (tv.textStorage?.attribute(.font, at: at, effectiveRange: nil) as? NSFont)?.pointSize ?? -1
+    }
+
+    h.caret(at: first + 3); h.pump(0.3)
+    h.isReading = true; h.rebuild()
+    h.caret(at: second + 3); h.pump(0.3)
+    h.isReading = false; h.rebuild()
+    h.caret(at: first + 3); h.pump(0.3)
+    expect(markerSize(first) > 5, "back in editing, returning to the first line shows its ** (\(markerSize(first))pt)")
+    expect(markerSize(second) < 1, "and the second line hides its ** again (\(markerSize(second))pt)")
 }

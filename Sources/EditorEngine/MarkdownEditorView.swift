@@ -648,6 +648,8 @@ public struct MarkdownEditorView: NSViewRepresentable {
             closeLinkCompletion()
             needsFullRestyle = true
             refresh()
+            // Caret moves while reading don't update this, and the restyle above just styled the current caret line.
+            lastCaretParagraph = (textView.string as NSString).paragraphRange(for: textView.selectedRange())
         }
         /// Spans and code blocks, remembered per line (see TokenizerCache).
         private let tokenizer = TokenizerCache()
