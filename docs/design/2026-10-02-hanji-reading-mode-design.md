@@ -66,13 +66,16 @@ list editing, renaming the inline title — is off.
 - The coordinator gets `revealSelection: NSRange?` — nil in reading mode,
   otherwise the text view's selection. Every place that decides "the caret's
   line shows its source" reads it; nil reveals no line:
-  1. `hideMarkers`
-  2. `markerPlacements` (bullets and checkboxes)
-  3. `reapplyReservations`
-  4. `updateWidgets` — code-block renderers, `imageWidgets`, `hrWidgets`,
+  1. `Decorator.decorations` (inline markers; its selection becomes optional)
+  2. `hideMarkers`
+  3. `markerPlacements` (bullets and checkboxes)
+  4. `reapplyReservations`
+  5. `updateWidgets` — code-block renderers, `imageWidgets`, `hrWidgets`,
      `tableWidgets`
-  5. `dirtyParagraphs` / `isStyledAsShown`
   6. `textViewDidChangeSelection` — no restyle on caret moves in reading mode
+- Change tracking (`dirtyParagraphs`, `isStyledAsShown`) keeps following the
+  real caret. At worst it restyles a paragraph that renders the same, and the
+  incremental restyle stays untouched.
 - `updateNSView`, when `isReading` changes: commit any marked text
   (`unmarkText()`), remember the top visible character offset, set
   `isEditable = !isReading`, close the `[[` completion list, run one full
