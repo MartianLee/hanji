@@ -116,6 +116,7 @@ public final class AppState: ObservableObject {
     private static let readableKey = "io.hanji.readableLineLength"
     private static let textFontKey = "io.hanji.textFont"
     private static let codeFontKey = "io.hanji.codeFont"
+    private static func readingKey(_ root: URL) -> String { "io.hanji.reading.\(root.standardizedFileURL.path)" }
     private static func pinsKey(_ root: URL) -> String { "io.hanji.pinned.\(root.standardizedFileURL.path)" }
 
     public init(defaults: UserDefaults = .standard, autosaveInterval: TimeInterval = 0.8) {
@@ -709,6 +710,7 @@ public final class AppState: ObservableObject {
                 // That pane already shows this note — the same buffer, so nothing
                 // is lost by going to its tab (which takes over any pin).
                 if snapshot.isPinned { target.tabs[existing].isPinned = true }
+                target.tabs[existing].isReading = snapshot.isReading
                 target.activeTabID = target.tabs[existing].id
                 activePaneID = target.id
                 hydrate(from: target.tabs[existing])
@@ -945,18 +947,39 @@ public final class AppState: ObservableObject {
         persistPins()
     }
 
-    /// The vault's pinned notes, vault-relative, in tab order (left pane first).
+    // MARK: - Reading mode
+
+    /// Reading mode on or off for a tab (in any pane); remembered for pinned tabs.
+    public func toggleReading(_ tabID: UUID) {
+        guard let pane = panes.first(where: { $0.tabs.contains { $0.id == tabID } }),
+              let idx = pane.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        objectWillChange.send()
+        pane.tabs[idx].isReading.toggle()
+        persistPins()
+    }
+
+    /// Whether the active tab is in reading mode (View ▸ Reading Mode's check).
+    public var isActiveTabReading: Bool {
+        activeTabIndex.map { activePane!.tabs[$0].isReading } ?? false
+    }
+
+    /// The vault's pinned notes, vault-relative, in tab order (left pane first),
+    /// and which of them are in reading mode.
     private func persistPins() {
         guard let root = vaultRoot else { return }
+        defaults.set(pinnedPaths(root) { _ in true }, forKey: Self.pinsKey(root))
+        defaults.set(pinnedPaths(root) { $0.isReading }, forKey: Self.readingKey(root))
+    }
+
+    private func pinnedPaths(_ root: URL, where include: (OpenTab) -> Bool) -> [String] {
         let prefix = root.standardizedFileURL.path + "/"
         var seen = Set<String>()
-        let paths = panes.flatMap(\.tabs).filter(\.isPinned).compactMap { tab -> String? in
+        return panes.flatMap(\.tabs).filter { $0.isPinned && include($0) }.compactMap { tab -> String? in
             let path = tab.file.url.standardizedFileURL.path
             guard path.hasPrefix(prefix) else { return nil }
             let rel = String(path.dropFirst(prefix.count))
             return seen.insert(rel).inserted ? rel : nil
         }
-        defaults.set(paths, forKey: Self.pinsKey(root))
     }
 
     /// Reopen the vault's pinned notes as pinned tabs; the first one is shown.
@@ -964,11 +987,13 @@ public final class AppState: ObservableObject {
     private func restorePins() {
         guard let root = vaultRoot, let pane = activePane,
               let paths = defaults.stringArray(forKey: Self.pinsKey(root)), !paths.isEmpty else { return }
+        let reading = Set(defaults.stringArray(forKey: Self.readingKey(root)) ?? [])
         for rel in paths {
             guard let url = urlInsideVault(rel), FileManager.default.fileExists(atPath: url.path) else { continue }
             openNote(relativePath: rel, newTab: true)
             if let idx = pane.tabs.firstIndex(where: { $0.file.url.standardizedFileURL == url.standardizedFileURL }) {
                 pane.tabs[idx].isPinned = true
+                pane.tabs[idx].isReading = reading.contains(rel)
             }
         }
         if let first = pane.tabs.first, first.id != pane.activeTabID { switchTab(first.id) }
