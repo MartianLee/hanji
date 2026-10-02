@@ -329,6 +329,9 @@ public struct MarkdownEditorView: NSViewRepresentable {
     /// False when `text` is a snapshot rather than the live buffer (an inactive
     /// split pane). Such an editor can't save an edit, so a click only focuses it.
     public var isLive: Bool
+    /// Reading mode: no line shows its Markdown source, and only checkbox
+    /// toggles change the note.
+    public var isReading: Bool
 
     public init(text: Binding<String>, renderers: RendererRegistry? = nil, vaultRoot: URL? = nil,
                 cursorOffset: Binding<Int?> = .constant(nil), fontSize: CGFloat = 15,
@@ -338,10 +341,12 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 onOpenLink: ((String) -> Void)? = nil,
                 onFocus: (() -> Void)? = nil, isLive: Bool = true,
                 onOpenTag: ((String) -> Void)? = nil,
-                onCaretMove: ((Int) -> Void)? = nil) {
+                onCaretMove: ((Int) -> Void)? = nil,
+                isReading: Bool = false) {
         self.onOpenTag = onOpenTag
         self.onCaretMove = onCaretMove
         self.isLive = isLive
+        self.isReading = isReading
         self._text = text
         self.renderers = renderers
         self.vaultRoot = vaultRoot
@@ -384,6 +389,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         // doesn't wipe it.
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
+        textView.isEditable = !isReading
         textView.string = text
 
         let scroll = NSScrollView()
@@ -419,6 +425,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
                                                name: NSView.boundsDidChangeNotification, object: scroll.contentView)
         NotificationCenter.default.addObserver(context.coordinator, selector: #selector(Coordinator.storageDidProcessEditing(_:)),
                                                name: NSTextStorage.didProcessEditingNotification, object: textView.textStorage)
+        context.coordinator.appliedReading = isReading
         context.coordinator.refresh()
         return scroll
     }
@@ -426,6 +433,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
     public func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = nsView.documentView as? NSTextView else { return }
         context.coordinator.sync(with: self)
+        if context.coordinator.appliedReading != isReading { context.coordinator.setReading(isReading) }
         if LivePreviewStyler.baseFontSize != fontSize || LivePreviewStyler.lineHeightMultiple != lineHeight
             || LivePreviewStyler.textFont != textFont || LivePreviewStyler.codeFont != codeFont {
             LivePreviewStyler.baseFontSize = fontSize
@@ -625,6 +633,22 @@ public struct MarkdownEditorView: NSViewRepresentable {
         private var styledCodeRanges: [Range<Int>] = []
         /// Restyle everything next time (first load, font size, text replaced).
         var needsFullRestyle = true
+        /// The mode the text view was last set up for (see `setReading`).
+        var appliedReading = false
+        /// The selection whose lines show their source: the text view's, or nil in
+        /// reading mode, where no line does. Change tracking (`dirtyParagraphs`,
+        /// `isStyledAsShown`) keeps following the real caret.
+        private var revealSelection: NSRange? { parent.isReading ? nil : textView?.selectedRange() }
+
+        /// Reading mode on or off: every line rendered, and the text view read-only.
+        func setReading(_ reading: Bool) {
+            guard let textView else { return }
+            appliedReading = reading
+            textView.isEditable = !reading
+            closeLinkCompletion()
+            needsFullRestyle = true
+            refresh()
+        }
         /// Spans and code blocks, remembered per line (see TokenizerCache).
         private let tokenizer = TokenizerCache()
 
@@ -642,7 +666,8 @@ public struct MarkdownEditorView: NSViewRepresentable {
             let regions = tokenizer.codeBlockRegions
             codeRegions = tokenizer.codeRanges                            // unclosed fences too
             let sel = textView.selectedRange()
-            let selection = sel.location..<(sel.location + sel.length)
+            let reveal = revealSelection
+            let selection = reveal.map { $0.location..<NSMaxRange($0) }
             let deco = Decorator.decorations(spans: spans, selection: selection)
             let caretParagraph = text.paragraphRange(for: sel)
             let everything = NSRange(location: 0, length: text.length)
@@ -659,9 +684,9 @@ public struct MarkdownEditorView: NSViewRepresentable {
             EditorMetrics.restyledCharacters += scopes.reduce(0) { $0 + $1.length }
             for scope in scopes where scope.length > 0 {
                 restyle(scope, of: storage, text: text, deco: deco, regions: regions,
-                        spans: spans, sel: sel, caret: selection)
+                        spans: spans, sel: reveal, caret: selection)
             }
-            markerLines = markerPlacements(spans: spans, sel: sel, text: text)
+            markerLines = markerPlacements(spans: spans, sel: reveal, text: text)
             styledText = text
             styledCaretParagraph = caretParagraph
             styledCodeRanges = codeRegions
@@ -675,7 +700,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// (LivePreviewStyler.commit): rewriting unchanged ranges throws away their
         /// layout, and the viewport jumps as TextKit 2 falls back to estimated heights.
         private func restyle(_ scope: NSRange, of storage: NSTextStorage, text: NSString, deco: DecorationSet,
-                             regions: [CodeBlockRegion], spans: [MarkSpan], sel: NSRange, caret: Range<Int>) {
+                             regions: [CodeBlockRegion], spans: [MarkSpan], sel: NSRange?, caret: Range<Int>?) {
             let range = scope.location..<NSMaxRange(scope)
             let local = NSTextStorage(attributedString: storage.attributedSubstring(from: scope))
             LivePreviewStyler.apply(deco.clipped(to: range), to: local)
@@ -819,7 +844,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
         /// Put back the reservations inside `storage`, a stretch of `text` starting
         /// at `offset`.
-        private func reapplyReservations(in storage: NSTextStorage, text: NSString, caret: Range<Int>, offset: Int) {
+        private func reapplyReservations(in storage: NSTextStorage, text: NSString, caret: Range<Int>?, offset: Int) {
             guard !reservations.isEmpty else { return }
             for r in reservations {
                 // A block the caret is inside shows its source instead of its widget.
@@ -838,8 +863,8 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// inside one restyled stretch; `markerPlacements` records where the
         /// bullets/checkboxes are drawn. Caret-aware: the line being edited shows
         /// its raw `- [ ]` text.
-        private func hideMarkers(spans: [MarkSpan], sel: NSRange, text: NSString, in storage: NSTextStorage, offset: Int) {
-            let caretLine = text.paragraphRange(for: sel)
+        private func hideMarkers(spans: [MarkSpan], sel: NSRange?, text: NSString, in storage: NSTextStorage, offset: Int) {
+            let caretLine = sel.map { text.paragraphRange(for: $0) }
             let window = offset..<(offset + storage.length)
             // Writes land in `storage` (a stretch of `text` starting at `offset`).
             func collapse(_ loc: Int, _ len: Int) {
@@ -852,7 +877,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 storage.addAttribute(.foregroundColor, value: NSColor.clear, range: NSRange(location: loc - offset, length: len))
             }
             for span in spans where span.line.lowerBound >= window.lowerBound && span.line.lowerBound < window.upperBound {
-                guard !Self.onCaret(span.line, caretLine) else { continue }
+                if let caretLine, Self.onCaret(span.line, caretLine) { continue }
                 let m = Self.firstNonSpace(text, span.line.lowerBound, span.line.upperBound)
                 switch span.style {
                 case .listItem:
@@ -872,10 +897,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
         /// Where to draw a bullet or checkbox, for the whole note (lines off the
         /// caret; the caret's line shows its raw `- [ ]`).
-        private func markerPlacements(spans: [MarkSpan], sel: NSRange, text: NSString) -> [Int: MarkerPlacement] {
-            let caretLine = text.paragraphRange(for: sel)
+        private func markerPlacements(spans: [MarkSpan], sel: NSRange?, text: NSString) -> [Int: MarkerPlacement] {
+            let caretLine = sel.map { text.paragraphRange(for: $0) }
             var marks: [Int: MarkerPlacement] = [:]
-            for span in spans where !Self.onCaret(span.line, caretLine) {
+            for span in spans where !(caretLine.map { Self.onCaret(span.line, $0) } ?? false) {
                 let m = Self.firstNonSpace(text, span.line.lowerBound, span.line.upperBound)
                 switch span.style {
                 case .listItem: marks[span.line.lowerBound] = MarkerPlacement(kind: .bullet, charIndex: m - span.line.lowerBound)
@@ -933,7 +958,8 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 onOpenLink(ref.target)
                 return true
             }
-            if let region = widgetRegions.first(where: { $0.lowerBound <= index && index < $0.upperBound }),
+            if !parent.isReading,
+               let region = widgetRegions.first(where: { $0.lowerBound <= index && index < $0.upperBound }),
                let textView {
                 textView.window?.makeFirstResponder(textView)
                 textView.setSelectedRange(NSRange(location: region.lowerBound, length: 0))
@@ -950,8 +976,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
             let tcs = tlm?.textContentManager as? NSTextContentStorage
             guard let tlm, let tcs, let storage = textView.textStorage else { clearOverlays(); return }
 
-            let sel = textView.selectedRange()
-            let caret = sel.location..<(sel.location + sel.length)
+            let caret = revealSelection.map { $0.location..<NSMaxRange($0) }
             let nstext = textView.string as NSString
 
             var specs: [WidgetSpec] = []
@@ -1079,7 +1104,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
         /// Image widgets (own-line `![[...]]` / `![alt](path)`), resolved relative
         /// to the vault root and loaded as NSImage.
-        func imageWidgets(caret: Range<Int>, nstext: NSString) -> [WidgetSpec] {
+        func imageWidgets(caret: Range<Int>?, nstext: NSString) -> [WidgetSpec] {
             guard let root = vaultRoot else { return [] }
             var out: [WidgetSpec] = []
             for ref in ImageParser.images(in: nstext as String) {
@@ -1100,7 +1125,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
         /// Horizontal rules (`---` lines) drawn as real divider lines; the raw
         /// text reveals when the caret enters the line, like other widgets.
-        func hrWidgets(caret: Range<Int>, nstext: NSString) -> [WidgetSpec] {
+        func hrWidgets(caret: Range<Int>?, nstext: NSString) -> [WidgetSpec] {
             var out: [WidgetSpec] = []
             for line in HRParser.lines(in: nstext as String) {
                 if intersects(line, caret) { continue }
@@ -1119,7 +1144,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
         /// Pipe tables drawn as a grid; like other widgets, the source comes back
         /// while the caret is anywhere in the table.
-        func tableWidgets(caret: Range<Int>, nstext: NSString, width: CGFloat, codeRanges: [Range<Int>]?) -> [WidgetSpec] {
+        func tableWidgets(caret: Range<Int>?, nstext: NSString, width: CGFloat, codeRanges: [Range<Int>]?) -> [WidgetSpec] {
             let tables = codeRanges.map { TableParser.tables(in: nstext as String, codeRanges: $0) } ?? TableParser.tables(in: nstext as String)
             return tables.compactMap { table in
                 if intersects(table.range, caret) { return nil }
@@ -1277,8 +1302,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
             }, uniquingKeysWith: { first, _ in first })
         }
 
-        private func intersects(_ a: Range<Int>, _ b: Range<Int>) -> Bool {
-            a.lowerBound <= b.upperBound && b.lowerBound <= a.upperBound
+        /// Inclusive overlap; no caret (reading mode) overlaps nothing.
+        private func intersects(_ a: Range<Int>, _ b: Range<Int>?) -> Bool {
+            guard let b else { return false }
+            return a.lowerBound <= b.upperBound && b.lowerBound <= a.upperBound
         }
 
         // MARK: [[ link completion
@@ -1292,7 +1319,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
         /// Open, refresh or close the suggestion list for where the caret is now.
         func updateLinkCompletion() {
-            guard let textView, parent.isLive, textView.window?.firstResponder === textView,
+            guard let textView, parent.isLive, !parent.isReading, textView.window?.firstResponder === textView,
                   let targets = parent.linkTargets,
                   textView.selectedRange().length == 0,
                   let context = LinkCompletion.context(in: textView.string as NSString,
@@ -1417,6 +1444,8 @@ public struct MarkdownEditorView: NSViewRepresentable {
             // Committing the composition sends textDidChange, which restyles.
             guard !textView.hasMarkedText() else { return }
             if parent.isLive { parent.onCaretMove?(textView.selectedRange().location) }
+            // Reading mode reveals no line, so a caret move changes nothing on screen.
+            if parent.isReading { return }
             let paragraph = (textView.string as NSString).paragraphRange(for: textView.selectedRange())
             if paragraph == lastCaretParagraph { return }
             lastCaretParagraph = paragraph

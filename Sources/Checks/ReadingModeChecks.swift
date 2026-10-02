@@ -64,3 +64,35 @@ func readingTabChecks() {
     s.openVault(at: other); s.openVault(at: vault)
     expect(tab("Renamed.md")?.isReading == true, "a rename carries the mode along")
 }
+
+/// Reading mode draws the caret's line like every other line — markers hidden,
+/// widgets drawn — and the text view takes no typing. Back in editing, the
+/// caret's line shows its source again.
+func editorReadingChecks() {
+    let note = "Intro\n\nSome **bold** text\n\n---\n\nAfter"
+    let bold = (note as NSString).range(of: "**bold**").location
+    let rule = (note as NSString).range(of: "---").location
+    guard let h = EditorHarness(note) else { expect(false, "editor found"); return }
+    defer { h.close() }
+    let tv = h.textView
+    func markerSize() -> CGFloat {
+        (tv.textStorage?.attribute(.font, at: bold, effectiveRange: nil) as? NSFont)?.pointSize ?? -1
+    }
+    func overlays() -> Int { tv.subviews.filter { $0 is NSHostingView<AnyView> }.count }
+
+    h.caret(at: bold + 3); h.pump(0.3)
+    expect(markerSize() > 5, "editing: the caret's line shows its ** (\(markerSize())pt)")
+
+    h.isReading = true; h.rebuild()
+    expect(markerSize() < 1, "reading: the caret's line hides them too (\(markerSize())pt)")
+    expect(!tv.isEditable, "reading: the text view isn't editable")
+    h.caret(at: rule); h.pump(0.3)
+    expectEqual(overlays(), 1, "reading: the rule under the caret is still drawn")
+    h.type("x\n"); h.key("\t", 48); h.pump()
+    expectEqual(h.text, note, "reading: keys don't change the note")
+
+    h.isReading = false; h.rebuild()
+    h.caret(at: rule); h.pump(0.3)
+    expectEqual(overlays(), 0, "editing: the rule under the caret shows its source")
+    expect(tv.isEditable, "editing: typing works again")
+}

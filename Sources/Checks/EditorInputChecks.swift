@@ -15,11 +15,14 @@ final class EditorHarness {
     var textFont = ""
     var codeFont = ""
     var linkTargets: [String] = []
+    var isReading = false
 
     init?(_ initial: String, cursorOffset initialOffset: Int? = nil, lineHeight: CGFloat = 1.3,
-          maxLineWidth: CGFloat? = nil, width: CGFloat = 800, linkTargets: [String] = []) {
+          maxLineWidth: CGFloat? = nil, width: CGFloat = 800, linkTargets: [String] = [],
+          isReading: Bool = false) {
         text = initial
         self.linkTargets = linkTargets
+        self.isReading = isReading
         cursorOffset = initialOffset
         self.lineHeight = lineHeight
         self.maxLineWidth = maxLineWidth
@@ -30,7 +33,7 @@ final class EditorHarness {
         let offset = Binding(get: { box?.cursorOffset ?? initialOffset }, set: { box?.cursorOffset = $0 })
         let host = NSHostingView(rootView: MarkdownEditorView(text: binding, cursorOffset: offset,
                                                               lineHeight: lineHeight, maxLineWidth: maxLineWidth,
-                                                              linkTargets: { linkTargets }))
+                                                              linkTargets: { linkTargets }, isReading: isReading))
         hosting = host
         window.contentView = host
         window.makeKeyAndOrderFront(nil)
@@ -69,7 +72,7 @@ final class EditorHarness {
                                                                      set: { self.cursorOffset = $0 }),
                                                lineHeight: lineHeight, maxLineWidth: maxLineWidth,
                                                textFont: textFont, codeFont: codeFont,
-                                               linkTargets: { self.linkTargets })
+                                               linkTargets: { self.linkTargets }, isReading: isReading)
         pump(0.4)
     }
 

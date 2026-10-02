@@ -24,6 +24,7 @@ runChecks([
     ("Vanish", vanishChecks),
     ("Pin", pinChecks),
     ("ReadingTabs", readingTabChecks),
+    ("EditorReading", editorReadingChecks),
     ("SplitSafety", splitSafetyChecks),
     ("SplitCloseDedupe", splitCloseAndDedupeChecks),
     ("ModelRandom", probeRandomChecks),
