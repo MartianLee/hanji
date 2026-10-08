@@ -33,7 +33,14 @@ struct OutlineView: View {
     let workspace: WorkspaceActions
 
     @State private var items: [OutlineHeading]?
-    @State private var focusOffset = 0
+    /// The index of the heading whose section holds the caret. Only this is
+    /// state, so a caret move within one section doesn't redraw the list.
+    @State private var current: Int?
+    /// The latest caret offset, kept outside SwiftUI state because writing it
+    /// on every caret move must not invalidate the view.
+    @State private var caret = CaretBox()
+
+    private final class CaretBox { var offset = 0 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -42,7 +49,6 @@ struct OutlineView: View {
                     Text("No headings").font(.caption).foregroundStyle(.secondary)
                 } else {
                     let top = items.map(\.level).min() ?? 1
-                    let current = Outline.current(in: items, at: focusOffset)
                     ForEach(Array(items.enumerated()), id: \.element.offset) { index, heading in
                         Button { workspace.reveal(offset: heading.offset) } label: {
                             Text(heading.title.isEmpty ? "Untitled" : heading.title)
@@ -63,7 +69,18 @@ struct OutlineView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onReceive(headings) { items = $0 }
-        .onReceive(focus) { focusOffset = $0 }
+        .onReceive(headings) {
+            items = $0
+            updateCurrent(in: $0)
+        }
+        .onReceive(focus) {
+            caret.offset = $0
+            updateCurrent(in: items)
+        }
+    }
+
+    private func updateCurrent(in headings: [OutlineHeading]?) {
+        let index = Outline.current(in: headings ?? [], at: caret.offset)
+        if index != current { current = index }
     }
 }

@@ -105,13 +105,13 @@ To reproduce the tables:
 - **Vault-wide find & replace (⌥⇧⌘F)**: literal match with a case toggle, a
   confirmation that states how many occurrences in how many notes, and one
   **⌥⌘Z** that reverts the entire batch.
-- Show or hide the file sidebar with **⌘B**; **Backlinks** and **Calendar** side
+- Show or hide the file sidebar with **⌘B**; **Backlinks**, **Outline** and **Calendar** side
   panels on the right (collapsible, ⌥⌘B).
 - Settings: editor font size, recent vaults, and **live plugin toggles**.
 
 **Plugins / SDK (compile-time, Swift)**
 - First-party: **Journal** (daily → yearly notes, previous/next, settings
-  tab), **Templates**, **Backlinks**, **Calendar**, Word Count — all built on
+  tab), **Templates**, **Backlinks**, **Outline**, **Calendar**, Word Count — all built on
   the same `ExtensionSDK` third parties would use, and each can be switched off
   completely in Settings ▸ Plugins.
 - **Queries** in `dataview` code blocks: `LIST` / `TABLE` with `FROM #tag` /
