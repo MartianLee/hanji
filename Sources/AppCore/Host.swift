@@ -48,6 +48,8 @@ public final class Host: PluginHost, UIRegistry, EditorContext, CommandRegistry,
     // EditorContext
     public var activeText: AnyPublisher<String, Never> { appState.$activeText.eraseToAnyPublisher() }
 
+    public var focusOffset: AnyPublisher<Int, Never> { appState.focusOffset }
+
     public var activeNotePath: AnyPublisher<String?, Never> {
         appState.$selectedFile.combineLatest(appState.$vaultRoot)
             .map { file, root -> String? in
@@ -70,6 +72,7 @@ public final class Host: PluginHost, UIRegistry, EditorContext, CommandRegistry,
         appState.createNote(relativePath: relativePath, text: text, cursorOffset: cursorOffset)
     }
     public func openNote(relativePath: String) { appState.openNote(relativePath: relativePath) }
+    public func reveal(offset: Int) { appState.reveal(offset: offset) }
 
     public func notePaths() -> [String] {
         guard let root = appState.vaultRoot else { return [] }

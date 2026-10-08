@@ -35,7 +35,12 @@ public final class AppState: ObservableObject {
     }
     @Published public var index: MetadataIndex = MetadataIndex()
     @Published public var recentVaults: [URL] = []
-    @Published public var pendingCursorOffset: Int?
+    @Published public var pendingCursorOffset: Int? {
+        didSet { if pendingCursorOffset == nil { pendingJumpToTop = false } }
+    }
+    /// The pending jump puts its line at the top of the editor (an outline
+    /// click), not merely in view. Cleared with the jump.
+    @Published public var pendingJumpToTop = false
     @Published public var tree: [FileNode] = []
     /// Sidebar sort order; persisted, applies on the next (immediate) reload.
     @Published public var treeSort: TreeSort = .nameAsc {
@@ -365,6 +370,8 @@ public final class AppState: ObservableObject {
         conflictPaused = (tab.externalConflict != nil) || tab.missingOnDisk
         pendingCursorOffset = 0
         liveCaret = 0
+        viewportTop = 0
+        sendFocus()
     }
 
     private func clearActive() {
@@ -454,7 +461,24 @@ public final class AppState: ObservableObject {
     /// Where the live editor's caret is; the editor reports each move, so Back
     /// can return to it.
     private var liveCaret = 0
-    public func caretMoved(to offset: Int) { liveCaret = offset }
+    public func caretMoved(to offset: Int) { liveCaret = offset; sendFocus() }
+
+    /// The start of the editor's top visible line, as it scrolls.
+    public func viewportMoved(top offset: Int) { viewportTop = offset; sendFocus() }
+    private var viewportTop = 0
+
+    /// Where the reader is (see EditorContext.focusOffset). A subject, not
+    /// @Published: it changes on every caret move, and objectWillChange would
+    /// redraw the window each time.
+    public var focusOffset: AnyPublisher<Int, Never> { focus.removeDuplicates().eraseToAnyPublisher() }
+    private let focus = CurrentValueSubject<Int, Never>(0)
+    private func sendFocus() { focus.send(isActiveTabReading ? viewportTop : liveCaret) }
+
+    /// Jump the editor to `offset` with its line at the top.
+    public func reveal(offset: Int) {
+        pendingJumpToTop = true
+        pendingCursorOffset = offset
+    }
 
     private var activeTabIndex: Int? {
         activePane.flatMap { pane in pane.tabs.firstIndex { $0.id == pane.activeTabID } }
@@ -956,6 +980,7 @@ public final class AppState: ObservableObject {
         objectWillChange.send()
         pane.tabs[idx].isReading.toggle()
         persistPins()
+        sendFocus()
     }
 
     /// Whether the active tab is in reading mode (View ▸ Reading Mode's check).

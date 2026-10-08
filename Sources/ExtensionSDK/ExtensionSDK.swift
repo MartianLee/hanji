@@ -54,6 +54,9 @@ public protocol EditorContext {
     var activeText: AnyPublisher<String, Never> { get }
     /// Vault-relative path of the open note (nil when none).
     var activeNotePath: AnyPublisher<String?, Never> { get }
+    /// Where the reader is in the open note (UTF-16 offset): the caret while
+    /// editing, the top visible line in reading mode.
+    var focusOffset: AnyPublisher<Int, Never> { get }
 }
 
 /// Capabilities handed to a plugin at activation (M0 subset of PluginHost).
@@ -124,6 +127,8 @@ public protocol WorkspaceActions: AnyObject {
     func readNote(relativePath: String) -> String?
     func createNote(relativePath: String, text: String, cursorOffset: Int?)
     func openNote(relativePath: String)
+    /// Move the open note's caret to `offset`, its line scrolled to the top.
+    func reveal(offset: Int)
     /// Vault-relative paths of every note / every folder, hidden ones (like
     /// `.obsidian`) excluded, sorted — for pickers and completion.
     func notePaths() -> [String]

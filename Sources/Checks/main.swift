@@ -46,6 +46,7 @@ runChecks([
     ("TokenizerCache", tokenizerCacheChecks),
     ("Decoration", decorationChecks),
     ("Outline", outlineChecks),
+    ("OutlineFocus", outlineFocusChecks),
     ("Styler", stylerChecks),
     ("LinkTokenizer", linkTokenizerChecks),
     ("LinkStyler", linkStylerChecks),

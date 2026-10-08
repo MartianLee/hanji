@@ -1,3 +1,5 @@
+import AppCore
+import Combine
 import Foundation
 import MarkdownCore
 
@@ -40,4 +42,48 @@ func outlineChecks() {
     let elapsed = Date().timeIntervalSince(t0)
     expectEqual(many.count, 1000, "every heading of a 4,000-line note")
     expect(elapsed < 0.25 * Check.timeSlack, "a 4,000-line note's outline in \(elapsed)s")
+}
+
+/// The outline's current heading follows the caret while editing and the top
+/// visible line while reading; a click's jump asks for the line at the top,
+/// and only that jump does.
+func outlineFocusChecks() {
+    let fm = FileManager.default
+    let vault = fm.temporaryDirectory.appendingPathComponent("mk-outline-\(UUID().uuidString)")
+    try? fm.createDirectory(at: vault, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: vault) }
+    for name in ["A.md", "B.md"] {
+        try? "# \(name)\ntext\n## Two\nmore\n".write(to: vault.appendingPathComponent(name), atomically: true, encoding: .utf8)
+    }
+    let suite = "mk-outline-\(UUID().uuidString)"
+    let s = AppState(defaults: UserDefaults(suiteName: suite)!)
+    defer { UserDefaults().removePersistentDomain(forName: suite) }
+    s.openVault(at: vault)
+    s.openNote(relativePath: "A.md", newTab: true)
+
+    var seen: [Int] = []
+    let token = s.focusOffset.sink { seen.append($0) }
+    defer { token.cancel() }
+
+    s.caretMoved(to: 12)
+    expectEqual(seen.last, 12, "editing: the caret")
+    s.viewportMoved(top: 30)
+    expectEqual(seen.last, 12, "editing: scrolling doesn't move it")
+    s.toggleReading(s.activeTabID!)
+    expectEqual(seen.last, 30, "reading: the top visible line")
+    s.caretMoved(to: 5)
+    expectEqual(seen.last, 30, "reading: a caret move doesn't move it")
+    s.toggleReading(s.activeTabID!)
+    expectEqual(seen.last, 5, "editing again: the caret")
+
+    s.openNote(relativePath: "B.md", newTab: true)
+    expectEqual(seen.last, 0, "another tab starts at its top")
+
+    s.reveal(offset: 9)
+    expectEqual(s.pendingCursorOffset, 9, "reveal jumps the editor")
+    expect(s.pendingJumpToTop, "with the line at the top")
+    s.pendingCursorOffset = nil                 // the editor applied the jump
+    expect(!s.pendingJumpToTop, "the placement goes with the jump")
+    s.pendingCursorOffset = 3                   // a search result's jump
+    expect(!s.pendingJumpToTop, "other jumps keep their placement")
 }
