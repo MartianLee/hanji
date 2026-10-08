@@ -468,7 +468,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
         if context.coordinator.appliedReading != isReading {
             context.coordinator.setReading(isReading, holdingView: !textWasReplaced && cursorOffset == nil)
         }
-        if let offset = cursorOffset,
+        // Every split pane is bound to the same pending jump, but its offset is
+        // meant for the active pane's text; an inactive editor applying it would
+        // land wrong and take focus, switching the active pane.
+        if isLive, let offset = cursorOffset,
            let tv = nsView.documentView as? NSTextView {
             let clamped = max(0, min(offset, (tv.string as NSString).length))
             tv.setSelectedRange(NSRange(location: clamped, length: 0))

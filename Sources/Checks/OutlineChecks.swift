@@ -112,3 +112,21 @@ func editorOutlineJumpChecks() {
     expectEqual(h.viewportTops.last, (note as NSString).range(of: "## Heading 40").location,
                 "scrolling reports the new top line")
 }
+
+/// In a split view every pane's editor is bound to the same pending jump; an
+/// editor that isn't the active pane's must neither move its selection nor
+/// take first responder, or the jump lands in the wrong text and the focus
+/// change switches the active pane.
+func editorInactivePaneIgnoresJumpChecks() {
+    let note = (0..<200).map { "## Heading \($0)\ntext under \($0)\n" }.joined()
+    guard let h = EditorHarness(note) else { expect(false, "editor found"); return }
+    defer { h.close() }
+    h.isLive = false
+    h.rebuild()
+    h.caret(at: 0)
+    h.window.makeFirstResponder(nil)
+    h.jump(to: (note as NSString).range(of: "## Heading 150").location)
+    h.pump(0.3)
+    expectEqual(h.textView.selectedRange().location, 0, "an inactive pane's selection stays put")
+    expect(h.window.firstResponder !== h.textView, "and it does not take first responder")
+}

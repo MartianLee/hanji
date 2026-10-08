@@ -16,6 +16,8 @@ final class EditorHarness {
     var codeFont = ""
     var linkTargets: [String] = []
     var isReading = false
+    /// False for a split pane that isn't the active one.
+    var isLive = true
     var jumpsToTop = false
     /// Top-line offsets the editor reported as it scrolled.
     var viewportTops: [Int] = []
@@ -36,7 +38,7 @@ final class EditorHarness {
         let offset = Binding(get: { box?.cursorOffset ?? initialOffset }, set: { box?.cursorOffset = $0 })
         let host = NSHostingView(rootView: MarkdownEditorView(text: binding, cursorOffset: offset,
                                                               lineHeight: lineHeight, maxLineWidth: maxLineWidth,
-                                                              linkTargets: { linkTargets }, isReading: isReading,
+                                                              linkTargets: { linkTargets }, isLive: true, isReading: isReading,
                                                               jumpsToTop: false, onViewportTopChange: { box?.viewportTops.append($0) }))
         hosting = host
         window.contentView = host
@@ -79,7 +81,7 @@ final class EditorHarness {
                                                                      set: { self.cursorOffset = $0 }),
                                                lineHeight: lineHeight, maxLineWidth: maxLineWidth,
                                                textFont: textFont, codeFont: codeFont,
-                                               linkTargets: { self.linkTargets }, isReading: isReading,
+                                               linkTargets: { self.linkTargets }, isLive: isLive, isReading: isReading,
                                                jumpsToTop: jumpsToTop, onViewportTopChange: { [weak self] in self?.viewportTops.append($0) })
         pump(0.4)
     }
