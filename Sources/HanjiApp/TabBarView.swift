@@ -74,6 +74,10 @@ struct TabBarView: View {
         .contentShape(Rectangle())
         .onTapGesture { appState.focusPane(pane.id); appState.switchTab(tab.id) }
         .contextMenu {
+            // A pinned tab doesn't close until it's unpinned, as with ⌘W.
+            Button("Close") { appState.focusPane(pane.id); appState.closeTab(tab.id) }
+                .disabled(tab.isPinned)
+            Divider()
             Button(tab.isPinned ? "Unpin" : "Pin") { appState.togglePin(tab.id) }
             Divider()
             Button("Move to Left Pane") { appState.moveTabToSide(tab.id, .left) }
