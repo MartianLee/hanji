@@ -16,6 +16,9 @@ final class EditorHarness {
     var codeFont = ""
     var linkTargets: [String] = []
     var isReading = false
+    var jumpsToTop = false
+    /// Top-line offsets the editor reported as it scrolled.
+    var viewportTops: [Int] = []
 
     init?(_ initial: String, cursorOffset initialOffset: Int? = nil, lineHeight: CGFloat = 1.3,
           maxLineWidth: CGFloat? = nil, width: CGFloat = 800, linkTargets: [String] = [],
@@ -33,7 +36,8 @@ final class EditorHarness {
         let offset = Binding(get: { box?.cursorOffset ?? initialOffset }, set: { box?.cursorOffset = $0 })
         let host = NSHostingView(rootView: MarkdownEditorView(text: binding, cursorOffset: offset,
                                                               lineHeight: lineHeight, maxLineWidth: maxLineWidth,
-                                                              linkTargets: { linkTargets }, isReading: isReading))
+                                                              linkTargets: { linkTargets }, isReading: isReading,
+                                                              jumpsToTop: false, onViewportTopChange: { box?.viewportTops.append($0) }))
         hosting = host
         window.contentView = host
         window.makeKeyAndOrderFront(nil)
@@ -75,7 +79,8 @@ final class EditorHarness {
                                                                      set: { self.cursorOffset = $0 }),
                                                lineHeight: lineHeight, maxLineWidth: maxLineWidth,
                                                textFont: textFont, codeFont: codeFont,
-                                               linkTargets: { self.linkTargets }, isReading: isReading)
+                                               linkTargets: { self.linkTargets }, isReading: isReading,
+                                               jumpsToTop: jumpsToTop, onViewportTopChange: { [weak self] in self?.viewportTops.append($0) })
         pump(0.4)
     }
 

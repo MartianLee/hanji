@@ -332,6 +332,12 @@ public struct MarkdownEditorView: NSViewRepresentable {
     /// Reading mode: no line shows its Markdown source, and only checkbox
     /// toggles change the note.
     public var isReading: Bool
+    /// The `cursorOffset` jump puts its line at the top of the view (an outline
+    /// click) instead of just bringing the caret into view.
+    public var jumpsToTop: Bool
+    /// Called with the start offset of the top visible line as the view scrolls
+    /// (live editor only), at most once per runloop turn.
+    public var onViewportTopChange: ((Int) -> Void)?
 
     public init(text: Binding<String>, renderers: RendererRegistry? = nil, vaultRoot: URL? = nil,
                 cursorOffset: Binding<Int?> = .constant(nil), fontSize: CGFloat = 15,
@@ -342,7 +348,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 onFocus: (() -> Void)? = nil, isLive: Bool = true,
                 onOpenTag: ((String) -> Void)? = nil,
                 onCaretMove: ((Int) -> Void)? = nil,
-                isReading: Bool = false) {
+                isReading: Bool = false,
+                jumpsToTop: Bool = false, onViewportTopChange: ((Int) -> Void)? = nil) {
+        self.jumpsToTop = jumpsToTop
+        self.onViewportTopChange = onViewportTopChange
         self.onOpenTag = onOpenTag
         self.onCaretMove = onCaretMove
         self.isLive = isLive
@@ -463,9 +472,13 @@ public struct MarkdownEditorView: NSViewRepresentable {
            let tv = nsView.documentView as? NSTextView {
             let clamped = max(0, min(offset, (tv.string as NSString).length))
             tv.setSelectedRange(NSRange(location: clamped, length: 0))
-            tv.scrollRangeToVisible(NSRange(location: clamped, length: 0))
+            if jumpsToTop {
+                context.coordinator.scrollLineToTop(at: clamped)
+            } else {
+                tv.scrollRangeToVisible(NSRange(location: clamped, length: 0))
+                context.coordinator.revealCaretAfterLayout()
+            }
             tv.window?.makeFirstResponder(tv)
-            context.coordinator.revealCaretAfterLayout()
             DispatchQueue.main.async { self.cursorOffset = nil }
         }
     }
@@ -649,6 +662,16 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// scrolled, taken before a mode switch restyles the note; the next widget
         /// pass puts it back once the lines above have their new heights.
         private var pendingScrollAnchor: (offset: Int, delta: CGFloat)?
+
+        /// Put the line holding `offset` at the top of the view. Through the scroll
+        /// anchor the widget pass restores, so it lands right even while the lines
+        /// above still have estimated heights.
+        func scrollLineToTop(at offset: Int) {
+            guard let textView else { return }
+            let line = (textView.string as NSString).lineRange(for: NSRange(location: offset, length: 0)).location
+            pendingScrollAnchor = (offset: line, delta: 0)
+            scheduleWidgetUpdate()
+        }
 
         private func scrollAnchor() -> (offset: Int, delta: CGFloat)? {
             guard let tv = textView, let tlm = tv.textLayoutManager, let tcs = tlm.textContentManager else { return nil }
@@ -1408,8 +1431,21 @@ public struct MarkdownEditorView: NSViewRepresentable {
         }
 
         @objc func clipViewDidScroll() {
+            reportViewportTop()
             guard let linkContext, linkPopup.isOpen, let window = textView?.window else { return }
             linkPopup.show(linkPopup.model.items, below: linkAnchor(linkContext), in: window)
+        }
+
+        private var viewportReportScheduled = false
+        /// One report per runloop turn: a scroll gesture sends many bounds changes.
+        private func reportViewportTop() {
+            guard parent.isLive, parent.onViewportTopChange != nil, !viewportReportScheduled else { return }
+            viewportReportScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.viewportReportScheduled = false
+                if let top = self.scrollAnchor()?.offset { self.parent.onViewportTopChange?(top) }
+            }
         }
 
         /// Keys while the list is open: ↑/↓ choose, Return/Tab take, Esc closes.

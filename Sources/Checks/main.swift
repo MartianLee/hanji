@@ -47,6 +47,7 @@ runChecks([
     ("Decoration", decorationChecks),
     ("Outline", outlineChecks),
     ("OutlineFocus", outlineFocusChecks),
+    ("EditorOutlineJump", editorOutlineJumpChecks),
     ("Styler", stylerChecks),
     ("LinkTokenizer", linkTokenizerChecks),
     ("LinkStyler", linkStylerChecks),

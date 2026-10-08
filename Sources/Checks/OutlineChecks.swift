@@ -87,3 +87,28 @@ func outlineFocusChecks() {
     s.pendingCursorOffset = 3                   // a search result's jump
     expect(!s.pendingJumpToTop, "other jumps keep their placement")
 }
+
+/// An outline click's jump puts the heading's line at the top of the view —
+/// even with a table above it whose height changes once laid out — and the
+/// editor reports its top line as it scrolls.
+func editorOutlineJumpChecks() {
+    let rows = (0..<30).map { "| r\($0) | v |" }.joined(separator: "\n")
+    let body = (0..<200).map { "## Heading \($0)\ntext under \($0)\n" }.joined()
+    let note = "| a | b |\n|---|---|\n" + rows + "\n\n" + body
+    guard let h = EditorHarness(note) else { expect(false, "editor found"); return }
+    defer { h.close() }
+    h.pump(0.4)
+    let target = (note as NSString).range(of: "## Heading 120").location
+
+    h.jumpsToTop = true
+    h.jump(to: target)
+    h.pump(0.3)
+    expectEqual(h.topLineOffset, target, "the heading's line is at the top")
+    expect(h.viewportTops.last == target, "and the editor reported that top line (\(String(describing: h.viewportTops.last)))")
+
+    h.viewportTops = []
+    h.scrollToTop(of: (note as NSString).range(of: "## Heading 40").location)
+    h.pump(0.2)
+    expectEqual(h.viewportTops.last, (note as NSString).range(of: "## Heading 40").location,
+                "scrolling reports the new top line")
+}
