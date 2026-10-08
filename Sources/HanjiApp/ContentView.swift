@@ -28,6 +28,16 @@ struct ContentView: View {
             }
         }
         .overlay { paletteOverlay }
+        .modifier(HiddenToolbarTitle())
+    }
+
+    /// The note's own title sits right below, so the toolbar doesn't repeat a
+    /// window title; the window keeps it for the Window menu and Mission Control.
+    /// macOS 14 has no way to drop it from the toolbar alone, so it stays there.
+    private struct HiddenToolbarTitle: ViewModifier {
+        func body(content: Content) -> some View {
+            if #available(macOS 15, *) { content.toolbar(removing: .title) } else { content }
+        }
     }
 
     @ViewBuilder private var splitView: some View {
@@ -439,12 +449,26 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
-                Button { appState.goBack() } label: { Image(systemName: "chevron.left") }
+                Button { appState.goBack() } label: { Image(systemName: "chevron.left").font(Self.navigationIcon) }
                     .help("Back (⌥⌘←)")
                     .disabled(!appState.canGoBack)
-                Button { appState.goForward() } label: { Image(systemName: "chevron.right") }
+                Button { appState.goForward() } label: { Image(systemName: "chevron.right").font(Self.navigationIcon) }
                     .help("Forward (⌥⌘→)")
                     .disabled(!appState.canGoForward)
+            }
+            // Pushes the rest to the trailing edge, where the window title used to.
+            // Before macOS 26 they stay next to Back/Forward.
+            if #available(macOS 26, *) { ToolbarSpacer(.flexible) }
+            ToolbarItem {
+                // As in Obsidian: the book switches to reading, the pencil back to editing.
+                let reading = appState.isActiveTabReading
+                Button {
+                    if let id = appState.activeTabID { appState.toggleReading(id) }
+                } label: {
+                    Image(systemName: reading ? "pencil" : "book")
+                }
+                .help(reading ? "Edit (⌘E)" : "Reading mode (⌘E)")
+                .disabled(appState.activeTabID == nil)
             }
             ToolbarItem { Button("Save", action: appState.save) }
             ToolbarItem {
@@ -456,6 +480,10 @@ struct ContentView: View {
             }
         }
     }
+
+    /// Back/Forward chevrons, smaller than the toolbar's default glyphs: they're
+    /// used often but needn't outweigh the note's title below them.
+    private static let navigationIcon = Font.system(size: 11, weight: .semibold)
 
     /// Settings ▸ Appearance ▸ Readable line length: the column width, or nil.
     private var readableWidth: CGFloat? {

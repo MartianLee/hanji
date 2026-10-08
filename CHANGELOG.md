@@ -7,8 +7,12 @@ based on [Keep a Changelog](https://keepachangelog.com/); this project will use
 ## [Unreleased]
 
 ### Editor
-- Reading mode (⌘E, View ▸ Reading Mode, or the command palette): a tab shows
-  its note fully rendered and takes no typing; checkboxes still toggle (#1).
+- Reading mode (⌘E, the toolbar's book button, View ▸ Reading Mode, or the
+  command palette): a tab shows its note fully rendered and takes no typing;
+  checkboxes still toggle (#1).
+
+### Workspace
+- The toolbar no longer repeats the window title, and Back/Forward are smaller.
 
 ## [0.1.0] - 2026-09-26
 

@@ -79,7 +79,7 @@ To reproduce the tables:
   source comes back while the caret is in the table.
 - Editable inline file title; clicking a `[[wikilink]]` or `[text](note.md)`
   opens the target note.
-- **Reading mode (⌘E)** per tab: the note fully rendered, the caret's line
+- **Reading mode (⌘E, or the toolbar's book button)** per tab: the note fully rendered, the caret's line
   included, and not editable — checkboxes still toggle. Kept through links
   and Back/Forward in the tab, and remembered for pinned tabs.
 - **Find & replace in the note** (⌘F, ⌘G / ⇧⌘G, ⌥⌘F) using AppKit's find bar.
