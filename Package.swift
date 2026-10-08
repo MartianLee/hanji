@@ -29,12 +29,13 @@ let package = Package(
         .target(name: "PeriodicNotesPlugin", dependencies: ["ExtensionSDK", "TemplateKit", "MarkdownCore"]),
         .target(name: "TemplaterPlugin", dependencies: ["ExtensionSDK", "TemplateKit"]),
         .target(name: "BacklinksPlugin", dependencies: ["ExtensionSDK"]),
+        .target(name: "OutlinePlugin", dependencies: ["ExtensionSDK", "MarkdownCore"]),
         .target(name: "CalendarPlugin", dependencies: ["ExtensionSDK"]),
         .executableTarget(name: "HanjiApp", dependencies: [
             "AppCore", "EditorEngine", "ExtensionSDK", "WordCountPlugin", "CoreRenderers",
             "VaultKit", "MarkdownCore", "TemplateKit", "PeriodicNotesPlugin", "TemplaterPlugin",
-            "MKSearchKit", "BacklinksPlugin", "CalendarPlugin"
+            "MKSearchKit", "BacklinksPlugin", "CalendarPlugin", "OutlinePlugin"
         ]),
-        .executableTarget(name: "Checks", dependencies: ["MarkdownCore", "VaultKit", "AppCore", "ExtensionSDK", "WordCountPlugin", "EditorEngine", "TemplateKit", "PeriodicNotesPlugin", "MKSearchKit", "BacklinksPlugin", "CalendarPlugin", "CoreRenderers", "TemplaterPlugin"]),
+        .executableTarget(name: "Checks", dependencies: ["MarkdownCore", "VaultKit", "AppCore", "ExtensionSDK", "WordCountPlugin", "EditorEngine", "TemplateKit", "PeriodicNotesPlugin", "MKSearchKit", "BacklinksPlugin", "CalendarPlugin", "OutlinePlugin", "CoreRenderers", "TemplaterPlugin"]),
     ]
 )

@@ -8,6 +8,7 @@ import TemplaterPlugin
 import CoreRenderers
 import VaultKit
 import BacklinksPlugin
+import OutlinePlugin
 import CalendarPlugin
 
 /// Saves every note before ⌘Q — the scene-phase flush alone doesn't wait for an
@@ -84,7 +85,7 @@ struct HanjiApp: App {
                     h.renderers.register(DataviewRenderer(query: { [weak appState] parsed in
                         (try? appState?.searchIndex?.dataview(parsed)) ?? []
                     }))
-                    let plugins: [any Plugin] = [WordCountPlugin(), PeriodicNotesPlugin(), TemplaterPlugin(), BacklinksPlugin(), CalendarPlugin()]
+                    let plugins: [any Plugin] = [WordCountPlugin(), PeriodicNotesPlugin(), TemplaterPlugin(), OutlinePlugin(), BacklinksPlugin(), CalendarPlugin()]
                     pluginManager.activate(plugins, host: h)
                     // First-party shell command: keyboard-driven move via the folder palette.
                     h.commands.register(Command(id: "tab.togglePin", title: "Pin or unpin this tab",
