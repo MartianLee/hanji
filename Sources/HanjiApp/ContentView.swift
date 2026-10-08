@@ -501,8 +501,8 @@ struct ContentView: View {
                 let fileURL = isActivePane ? (appState.selectedFile?.url ?? tab.file.url) : tab.file.url
                 InlineTitleView(fileURL: fileURL, maxLineWidth: readableWidth,
                                 font: EditorFonts.boldText(appState.textFont, size: 28),
-                                isReadOnly: tab.isReading, rename: { newName in
-                    _ = try? appState.rename(fileURL, to: newName)
+                                isReadOnly: tab.isReading, rename: { url, newName in
+                    _ = try? appState.rename(url, to: newName)
                 }, enterBody: { appState.pendingCursorOffset = 0 })
                 if isActivePane, appState.externalConflict != nil {
                     HStack(spacing: 12) {
@@ -666,31 +666,44 @@ private struct InlineTitleView: View {
     let font: NSFont
     /// Reading mode: the title is plain text, not a field, so it can't be renamed by accident.
     let isReadOnly: Bool
-    let rename: (String) -> Void
+    /// Rename a note — the one the title was typed for, which may no longer be the one shown.
+    let rename: (URL, String) -> Void
     let enterBody: () -> Void
-    @State private var title: String = ""
+    @State private var draft: TitleDraft
     @FocusState private var focused: Bool
 
-    private var base: String { fileURL.deletingPathExtension().lastPathComponent }
+    init(fileURL: URL, maxLineWidth: CGFloat?, font: NSFont, isReadOnly: Bool,
+         rename: @escaping (URL, String) -> Void, enterBody: @escaping () -> Void) {
+        self.fileURL = fileURL
+        self.maxLineWidth = maxLineWidth
+        self.font = font
+        self.isReadOnly = isReadOnly
+        self.rename = rename
+        self.enterBody = enterBody
+        _draft = State(initialValue: TitleDraft(url: fileURL))
+    }
 
     var body: some View {
         // Same font and padding in both branches, so the page doesn't shift when the mode flips.
         Group {
             if isReadOnly {
-                Text(base).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                Text(fileURL.deletingPathExtension().lastPathComponent)
+                    .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                TextField("Untitled", text: $title)
+                TextField("Untitled", text: $draft.text)
                     .textFieldStyle(.plain)
                     .lineLimit(1)
                     .focused($focused)
-                    .onAppear { title = base }
-                    .onChange(of: fileURL) { _, _ in title = base }     // switched notes → resync
                     .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
                     // Enter drops into the editor body. Space must NOT: titles have spaces
                     // in them, and stealing the first one made multi-word titles unwritable.
                     .onKeyPress(.return) { commit(); enterBody(); return .handled }
             }
         }
+        // Switched notes, or into reading mode, with an edit not yet committed: it
+        // still renames the note it was typed for (#20), not the one shown now.
+        .onChange(of: fileURL) { _, url in apply(draft.show(url)) }
+        .onChange(of: isReadOnly) { _, readOnly in if readOnly { commit() } }
         .font(Font(font as CTFont))
         .frame(maxWidth: maxLineWidth ?? .infinity, alignment: .leading)
         .frame(maxWidth: .infinity)
@@ -700,9 +713,16 @@ private struct InlineTitleView: View {
         .background(Color(nsColor: .textBackgroundColor))   // match the editor body
     }
 
+    /// Rename for the edit, if it asks for one. The draft goes back to the note's
+    /// current name either way: a rename that worked shows the new name once the
+    /// note's URL follows, and one that didn't leaves the real name, not the typo.
     private func commit() {
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed != base else { title = base; return }
-        rename(trimmed)
+        let pending = draft.rename
+        draft.revert()
+        apply(pending)
+    }
+
+    private func apply(_ pending: TitleDraft.Rename?) {
+        if let pending { rename(pending.url, pending.name) }
     }
 }

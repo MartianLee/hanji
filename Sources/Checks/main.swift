@@ -24,6 +24,7 @@ runChecks([
     ("Vanish", vanishChecks),
     ("Pin", pinChecks),
     ("ReadingTabs", readingTabChecks),
+    ("TitleDraft", titleDraftChecks),
     ("ReadingTabMerge", readingTabMergeChecks),
     ("EditorReading", editorReadingChecks),
     ("EditorReadingResync", editorReadingResyncChecks),
