@@ -780,6 +780,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
                                             body: (r.body.lowerBound - scope.location)..<(r.body.upperBound - scope.location),
                                             full: (r.full.lowerBound - scope.location)..<(r.full.upperBound - scope.location)) }
             LivePreviewStyler.highlightCode(inside, in: local)
+            if parent.isReading { hideFences(inside, in: local) }
             hideMarkers(spans: spans, sel: sel, text: text, in: local, offset: scope.location)
             reapplyReservations(in: local, text: text, caret: caret, offset: scope.location)
             LivePreviewStyler.commit(local, to: storage, at: scope.location)
@@ -927,6 +928,20 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 else { continue }   // edited since: the widget pass re-measures it
                 reserve(region: (r.region.lowerBound - offset)..<(r.region.upperBound - offset),
                         height: r.height, in: storage)
+            }
+        }
+
+        /// Reading mode: a code block's fence lines (```lang and the closing ```)
+        /// drawn invisible. Only the glyphs go — the lines keep their height, so
+        /// the slab reads as padding around the code and switching modes doesn't
+        /// move anything below the block. `regions` are relative to `storage`.
+        private func hideFences(_ regions: [CodeBlockRegion], in storage: NSTextStorage) {
+            for r in regions {
+                for fence in [r.full.lowerBound..<r.body.lowerBound, r.body.upperBound..<r.full.upperBound]
+                where !fence.isEmpty && fence.upperBound <= storage.length {
+                    storage.addAttribute(.foregroundColor, value: NSColor.clear,
+                                         range: NSRange(location: fence.lowerBound, length: fence.count))
+                }
             }
         }
 

@@ -30,6 +30,7 @@ runChecks([
     ("EditorReadingResync", editorReadingResyncChecks),
     ("EditorReadingCheckbox", editorReadingCheckboxChecks),
     ("EditorReadingSwitch", editorReadingSwitchChecks),
+    ("EditorReadingFence", editorReadingFenceChecks),
     ("EditorReadingTabSwitch", editorReadingTabSwitchChecks),
     ("EditorCheckboxScroll", editorCheckboxScrollChecks),
     ("SplitSafety", splitSafetyChecks),

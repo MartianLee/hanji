@@ -261,3 +261,38 @@ func editorCheckboxScrollChecks() {
         expectEqual(h.topLineOffset, before, "\(mode): the view stays where it was")
     }
 }
+
+/// Reading mode hides a code block's fence lines (```lang and ```), keeping
+/// their height, so the slab reads as padding and switching modes doesn't move
+/// anything below the block (#19). Editing still shows them.
+func editorReadingFenceChecks() {
+    let note = "Intro\n\n```swift\nlet x = 1\n```\n\nAfter the block"
+    let ns = note as NSString
+    let open = ns.range(of: "```swift").location
+    let close = ns.range(of: "```", options: .backwards).location
+    let code = ns.range(of: "let x").location
+    guard let h = EditorHarness(note) else { expect(false, "editor found"); return }
+    defer { h.close() }
+    let tv = h.textView
+    func clear(_ at: Int) -> Bool {
+        (tv.textStorage?.attribute(.foregroundColor, at: at, effectiveRange: nil) as? NSColor) == NSColor.clear
+    }
+    func top(_ needle: String) -> CGFloat {
+        let screen = tv.firstRect(forCharacterRange: NSRange(location: ns.range(of: needle).location, length: 1),
+                                  actualRange: nil)
+        guard let window = tv.window else { return -1 }
+        return tv.convert(window.convertFromScreen(screen), from: nil).minY
+    }
+    h.pump(0.3)
+    expect(!clear(open + 3) && !clear(close), "editing: the fences show")
+    let afterEditing = top("After the block")
+
+    h.isReading = true; h.rebuild()
+    expect(clear(open) && clear(open + 3), "reading: the opening fence and its language are hidden")
+    expect(clear(close), "reading: the closing fence is hidden")
+    expect(!clear(code), "reading: the code itself shows")
+    expectEqual(top("After the block"), afterEditing, "the block keeps its height, so nothing below moves")
+
+    h.isReading = false; h.rebuild()
+    expect(!clear(open + 3) && !clear(close), "editing again: the fences show")
+}
