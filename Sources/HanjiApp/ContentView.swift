@@ -457,8 +457,11 @@ struct ContentView: View {
                     .disabled(!appState.canGoForward)
             }
             // Pushes the rest to the trailing edge, where the window title used to.
-            // Before macOS 26 they stay next to Back/Forward.
+            // Before macOS 26 — or built with an SDK older than 26 (Swift < 6.2),
+            // which has no ToolbarSpacer — they stay next to Back/Forward.
+            #if compiler(>=6.2)
             if #available(macOS 26, *) { ToolbarSpacer(.flexible) }
+            #endif
             ToolbarItem {
                 // As in Obsidian: the book switches to reading, the pencil back to editing.
                 let reading = appState.isActiveTabReading
