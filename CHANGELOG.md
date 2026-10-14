@@ -15,6 +15,7 @@ based on [Keep a Changelog](https://keepachangelog.com/); this project will use
   jumps there, the current section highlighted (#3).
 
 ### Workspace
+- ⌘T (File ▸ New Tab) opens a new note in a new tab, like ⌘N.
 - The toolbar no longer repeats the window title, and Back/Forward are smaller.
 
 ## [0.1.0] - 2026-09-26

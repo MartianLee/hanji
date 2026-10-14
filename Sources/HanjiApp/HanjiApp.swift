@@ -117,10 +117,10 @@ struct HanjiApp: App {
         }
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("New Note") {
-                    if let url = appState.newNote() { uiState.renameRequest = url }
-                }
-                .keyboardShortcut("n", modifiers: .command)
+                Button("New Note") { newNoteInTab() }
+                    .keyboardShortcut("n", modifiers: .command)
+                Button("New Tab") { newNoteInTab() }   // ⌘T, as in VS Code and browsers
+                    .keyboardShortcut("t", modifiers: .command)
                 Button("New Folder") {
                     if let url = appState.newFolder() { uiState.renameRequest = url }
                 }
@@ -213,6 +213,11 @@ struct HanjiApp: App {
                 .environmentObject(appState)
                 .environmentObject(pluginManager)
         }
+    }
+
+    /// Create a note, open it in a new tab, and start renaming it in the sidebar.
+    private func newNoteInTab() {
+        if let url = appState.newNote() { uiState.renameRequest = url }
     }
 
     /// Drive AppKit's find bar on whichever text view is first responder.
