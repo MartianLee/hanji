@@ -815,3 +815,28 @@ func markerStaysOnListChecks() {
     expect(!isMarker("\n\n"), "no bullet on the blank line above the list after composing above it")
     expect(isMarker("- item"), "the list item keeps its bullet")
 }
+
+/// Tab, Shift-Tab and Return keep an ordered list counting: a nested item starts
+/// at 1, an outdented one takes its place, and Return after an item copied in
+/// from elsewhere follows the list rather than the copy. Each is one undo step.
+func editorListRenumberChecks() {
+    guard let h = EditorHarness("9. a\n10. b\n11. c") else { expect(false, "editor found"); return }
+    defer { h.close() }
+    h.caret(at: 10)                                    // end of "10. b"
+    h.key("\t", 48); h.pump()
+    expectEqual(h.text, "9. a\n\t1. b\n10. c", "Tab nests 10. under 9. as 1.")
+    expectEqual(h.textView.selectedRange().location, 10, "the caret stays at the end of the item")
+    h.textView.undoManager?.undo(); h.pump()
+    expectEqual(h.text, "9. a\n10. b\n11. c", "one undo puts it all back")
+    h.caret(at: 10)
+    h.key("\t", 48); h.pump()
+    h.key("\u{19}", 48, .shift); h.pump()
+    expectEqual(h.text, "9. a\n10. b\n11. c", "Shift-Tab brings it back as 10.")
+    expectEqual(h.textView.selectedRange().location, 10, "the caret follows the number's width")
+
+    guard let p = EditorHarness("1. a\n2. b\n3. c\n2. q") else { expect(false, "editor found"); return }
+    defer { p.close() }
+    p.caret(at: (p.text as NSString).length)
+    p.type("\nr")
+    expectEqual(p.text, "1. a\n2. b\n3. c\n4. q\n5. r", "Return after a pasted 2. counts on from the list")
+}

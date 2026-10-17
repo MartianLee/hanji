@@ -75,6 +75,7 @@ final class ClickableTextView: NSTextView {
             super.insertNewline(sender)
         case .continue(let marker):
             insertText("\n" + marker, replacementRange: selectedRange())
+            renumberList()
         case .end(let markerLength):
             insertText("", replacementRange: NSRange(location: line.range.location, length: markerLength))
         }
@@ -107,6 +108,7 @@ final class ClickableTextView: NSTextView {
         let caret = selectedRange().location
         insertText(unit, replacementRange: NSRange(location: line.range.location, length: 0))
         setSelectedRange(NSRange(location: caret + (unit as NSString).length, length: 0))
+        renumberList(moved: line.range.location)
     }
 
     /// Shift-Tab pulls the item back out one level.
@@ -119,6 +121,31 @@ final class ClickableTextView: NSTextView {
         let caret = selectedRange().location
         insertText("", replacementRange: NSRange(location: line.range.location, length: drop))
         setSelectedRange(NSRange(location: max(line.range.location, caret - drop), length: 0))
+        renumberList(moved: line.range.location)
+    }
+
+    /// Make the ordered list around the caret count in order again after Return,
+    /// Tab or Shift-Tab reshuffled it (`moved` is the line Tab/Shift-Tab moved).
+    /// The new numbers go in as one replacement, joined to the key's own edit so
+    /// a single undo takes back both.
+    private func renumberList(moved: Int? = nil) {
+        guard let storage = textStorage else { return }
+        let caret = selectedRange().location
+        let edits = ListRenumber.edits(in: storage.string, around: caret, moved: moved,
+                                       isCode: { [weak self] in self?.isInsideCodeBlock?($0) == true })
+        guard let first = edits.first, let last = edits.last else { return }
+        let span = NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location)
+        let replacement = NSMutableString(string: (storage.string as NSString).substring(with: span))
+        var shift = 0
+        for e in edits.reversed() {
+            replacement.replaceCharacters(in: NSRange(location: e.range.location - span.location, length: e.range.length),
+                                          with: e.number)
+            if NSMaxRange(e.range) <= caret { shift += (e.number as NSString).length - e.range.length }
+        }
+        guard shouldChangeText(in: span, replacementString: replacement as String) else { return }
+        storage.replaceCharacters(in: span, with: replacement as String)
+        didChangeText()
+        setSelectedRange(NSRange(location: caret + shift, length: 0))
     }
 
     /// The caret's line when it is a list item that list editing owns — nil inside a

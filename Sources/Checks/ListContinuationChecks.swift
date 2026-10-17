@@ -1,3 +1,4 @@
+import Foundation
 import MarkdownCore
 
 func listContinuationChecks() {
@@ -61,4 +62,47 @@ func listIndentChecks() {
     expectEqual(ListIndent.outdent(for: "      - item"), 4, "six spaces drop one level, not all")
     expectEqual(ListIndent.outdent(for: "- item"), nil, "a top-level item has nothing to outdent")
     expectEqual(ListIndent.outdent(for: "\tplain"), nil, "indented plain text is not a list")
+}
+
+func listRenumberChecks() {
+    /// Renumber around the line holding `marker` (the first occurrence of it).
+    func renumber(_ text: String, at marker: String, moved: Bool = false,
+                  code: [Range<Int>] = []) -> String {
+        let ns = text as NSString
+        let offset = ns.range(of: marker).location
+        let edits = ListRenumber.edits(in: text, around: offset, moved: moved ? offset : nil,
+                                       isCode: { o in code.contains { $0.contains(o) } })
+        let out = NSMutableString(string: text)
+        for e in edits.reversed() { out.replaceCharacters(in: e.range, with: e.number) }
+        return out as String
+    }
+
+    // Tab: a nested item starts its own count; the outer list closes ranks.
+    expectEqual(renumber("9. a\n\t10. quest\n10. font\n11. hp", at: "quest", moved: true),
+                "9. a\n\t1. quest\n10. font\n11. hp", "an item nested under 9. becomes 1.")
+    expectEqual(renumber("1. a\n\t2. b\n3. c", at: "b", moved: true),
+                "1. a\n\t1. b\n2. c", "the items after it move up a number")
+    expectEqual(renumber("1. a\n\t1. x\n\t7. b", at: "b", moved: true),
+                "1. a\n\t1. x\n\t2. b", "nesting under an existing sublist continues it")
+    // Shift-Tab: back in the outer list, at its place in the count.
+    expectEqual(renumber("1. a\n1. b\n2. c", at: "b", moved: true),
+                "1. a\n2. b\n3. c", "an outdented item takes the next outer number")
+    // Return after an item copied from elsewhere: the count follows the list, not the copy.
+    expectEqual(renumber("1. a\n2. b\n3. c\n2. q\n3. ", at: "q"),
+                "1. a\n2. b\n3. c\n4. q\n5. ", "a pasted 2. is renumbered in place")
+
+    expectEqual(renumber("5. a\n7. b", at: "b"), "5. a\n6. b", "a list keeps the number it starts at")
+    expectEqual(renumber("1. a\n2. b", at: "b"), "1. a\n2. b", "a list in order is left alone")
+    expectEqual(ListRenumber.edits(in: "1. a\n2. b", around: 6), [], "and no edits are made")
+    expectEqual(renumber("1. a\n\n5. b", at: "b"), "1. a\n\n5. b", "a blank line ends the list")
+    expectEqual(renumber("1. a\n\t- x\n\t- y\n3. b", at: "b"), "1. a\n\t- x\n\t- y\n2. b",
+                "a nested bullet list doesn't break the count")
+    expectEqual(renumber("1. a\n   more\n3. b", at: "b"), "1. a\n   more\n2. b",
+                "nor does an item's continuation line")
+    expectEqual(renumber("1. a\n- x\n4. b", at: "b"), "1. a\n- x\n4. b", "a bullet at the same level starts a new list")
+    expectEqual(renumber("1. a\n1) b", at: "b"), "1. a\n1) b", "so does a different delimiter")
+    expectEqual(renumber("1. a\n\t```\n\t5. code\n\t```\n3. b", at: "b", code: [5..<24]),
+                "1. a\n\t```\n\t5. code\n\t```\n2. b", "numbers inside code are code")
+    expectEqual(renumber("8. a\n9. b\n13. c", at: "a"), "8. a\n9. b\n10. c", "renumbering reaches below the line too")
+    expectEqual(renumber("    1. a\n    5. b", at: "b"), "    1. a\n    2. b", "spaces nest like tabs")
 }

@@ -109,3 +109,124 @@ public enum ListIndent {
         return spaces > 0 ? spaces : nil
     }
 }
+
+/// Keeps an ordered list counting 1, 2, 3 after the edits that reshuffle it:
+/// Tab nests an item (it starts the sublist's own count), Shift-Tab brings it
+/// back (it takes its place in the outer count), and Return continues a list
+/// whose items were copied in from elsewhere. Markdown itself would render the
+/// numbers as written, so the text is what has to change.
+public enum ListRenumber {
+    /// Put `number` where `range` is.
+    public struct Edit: Equatable {
+        public let range: NSRange
+        public let number: String
+    }
+
+    private struct Item {
+        let width: Int            // indent, a tab counting as ListIndent.spacesPerUnit
+        let ordered: Bool
+        let delimiter: UInt16
+        let number: Int
+        let numberRange: NSRange
+    }
+
+    /// The edits that renumber the list around `offset`, in text order; empty when
+    /// the list already counts right. A run of items is one indent level under one
+    /// parent; it keeps the number it starts at, except the line holding `moved`
+    /// (one Tab or Shift-Tab just moved), which starts its run at 1 when it leads
+    /// it. The list is the lines around `offset` up to a blank line or a line of
+    /// text at the left edge; lines `isCode` claims are code, never items.
+    public static func edits(in text: String, around offset: Int, moved: Int? = nil,
+                             isCode: (Int) -> Bool = { _ in false }) -> [Edit] {
+        let ns = text as NSString
+        guard offset <= ns.length else { return [] }
+        let lines = block(ns, around: offset, isCode: isCode)
+        let movedLine = moved.map { ns.lineRange(for: NSRange(location: $0, length: 0)).location }
+        // The open run at each indent, innermost last: its kind and last number.
+        var runs: [(width: Int, ordered: Bool, delimiter: UInt16, last: Int)] = []
+        var out: [Edit] = []
+        for line in lines {
+            guard !isCode(line.location), let item = item(ns, line) else { continue }
+            while let top = runs.last, top.width > item.width { runs.removeLast() }
+            var number = item.number
+            if let top = runs.last, top.width == item.width {
+                if top.ordered && item.ordered && top.delimiter == item.delimiter {
+                    number = top.last + 1
+                } else if item.ordered && line.location == movedLine {
+                    number = 1
+                }
+                runs.removeLast()
+            } else if item.ordered && line.location == movedLine {
+                number = 1
+            }
+            runs.append((item.width, item.ordered, item.delimiter, number))
+            if item.ordered && number != item.number {
+                out.append(Edit(range: item.numberRange, number: String(number)))
+            }
+        }
+        return out
+    }
+
+    /// The list's lines (each without its newline) around `offset`.
+    private static func block(_ ns: NSString, around offset: Int, isCode: (Int) -> Bool) -> [NSRange] {
+        func content(_ r: NSRange) -> NSRange {
+            var length = r.length
+            while length > 0, ns.character(at: r.location + length - 1) == 0x0A
+                    || ns.character(at: r.location + length - 1) == 0x0D { length -= 1 }
+            return NSRange(location: r.location, length: length)
+        }
+        func belongs(_ r: NSRange) -> Bool {
+            guard r.length > 0 else { return false }
+            let first = ns.character(at: r.location)
+            if first == 0x20 || first == 0x09 || isCode(r.location) { return true }
+            return item(ns, r) != nil
+        }
+        let here = content(ns.lineRange(for: NSRange(location: offset, length: 0)))
+        guard belongs(here) else { return [] }
+        var above: [NSRange] = []
+        var start = here.location
+        while start > 0 {
+            let r = content(ns.lineRange(for: NSRange(location: start - 1, length: 0)))
+            guard belongs(r) else { break }
+            above.append(r)
+            start = r.location
+        }
+        var lines = above.reversed() + [here]
+        var end = NSMaxRange(ns.lineRange(for: NSRange(location: offset, length: 0)))
+        while end < ns.length {
+            let full = ns.lineRange(for: NSRange(location: end, length: 0))
+            let r = content(full)
+            guard belongs(r) else { break }
+            lines.append(r)
+            end = NSMaxRange(full)
+        }
+        return lines
+    }
+
+    /// The list item on `line`, or nil when it isn't one.
+    private static func item(_ ns: NSString, _ line: NSRange) -> Item? {
+        var i = line.location, width = 0
+        let end = NSMaxRange(line)
+        while i < end {
+            let c = ns.character(at: i)
+            if c == 0x20 { width += 1 } else if c == 0x09 { width += ListIndent.spacesPerUnit } else { break }
+            i += 1
+        }
+        guard i < end else { return nil }
+        let c = ns.character(at: i)
+        if c == 0x2D || c == 0x2A || c == 0x2B {   // - * +
+            guard i + 1 < end, ns.character(at: i + 1) == 0x20 else { return nil }
+            return Item(width: width, ordered: false, delimiter: c, number: 0, numberRange: NSRange())
+        }
+        var j = i, number = 0
+        while j < end, j - i < 9, ns.character(at: j) >= 0x30, ns.character(at: j) <= 0x39 {
+            number = number * 10 + Int(ns.character(at: j) - 0x30)
+            j += 1
+        }
+        guard j > i, j + 1 < end else { return nil }
+        let delimiter = ns.character(at: j)
+        guard delimiter == 0x2E || delimiter == 0x29, ns.character(at: j + 1) == 0x20 else { return nil }
+        return Item(width: width, ordered: true, delimiter: delimiter, number: number,
+                    numberRange: NSRange(location: i, length: j - i))
+    }
+}
