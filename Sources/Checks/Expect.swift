@@ -1,7 +1,9 @@
 import Foundation
 
 // Minimal zero-dependency test harness (XCTest is unavailable with Command Line
-// Tools only). Run with `swift run Checks [GroupName]`. Exits non-zero on failure.
+// Tools only). Run with `swift run Checks [GroupName …]`, or `--changed [--slow]
+// [--base REF]` for just the groups a change reaches (see ChangedChecks).
+// Exits non-zero on failure.
 
 enum Check {
     static var passed = 0
@@ -30,12 +32,30 @@ func expectEqual<T: Equatable>(_ actual: @autoclosure () -> T,
 }
 
 func runChecks(_ groups: [(name: String, run: () -> Void)]) -> Never {
-    let filter = CommandLine.arguments.dropFirst().first
-    let selected = filter.map { f in groups.filter { $0.name == f } } ?? groups
-    if let f = filter, selected.isEmpty {
-        print("No check group named '\(f)'. Available: \(groups.map(\.name).joined(separator: ", "))")
+    var args = Array(CommandLine.arguments.dropFirst())
+    let includeSlow = args.contains("--slow")
+    args.removeAll { $0 == "--slow" }
+    var names: [String]
+    if args.contains("--changed") {
+        var base = "HEAD"
+        if let b = args.firstIndex(of: "--base"), b + 1 < args.count { base = args[b + 1] }
+        let selection = ChangedChecks.select(base: base, includeSlow: includeSlow)
+        for note in selection.notes { print("ℹ️  \(note)") }
+        if !selection.skippedSlow.isEmpty {
+            print("⏭  Skipped slow (add --slow): \(selection.skippedSlow.joined(separator: ", "))")
+        }
+        guard !selection.groups.isEmpty else { print("✅ No check group is affected by the change"); exit(0) }
+        print("▶︎ \(selection.groups.count) affected group(s)")
+        names = selection.groups
+    } else {
+        names = args.filter { !$0.hasPrefix("--") }
+    }
+    let byName = Dictionary(groups.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+    if let unknown = names.first(where: { byName[$0] == nil }) {
+        print("No check group named '\(unknown)'. Available: \(groups.map(\.name).joined(separator: ", "))")
         exit(2)
     }
+    let selected = names.isEmpty ? groups : names.compactMap { byName[$0] }
     for g in selected { g.run() }
     if Check.failures.isEmpty {
         print("✅ All checks passed (\(Check.passed) assertions, \(selected.count) group(s))")

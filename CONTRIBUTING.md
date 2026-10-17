@@ -23,10 +23,19 @@ This project does **not** use XCTest (Command Line Tools ships no XCTest). Tests
 live in a tiny zero-dependency runner under `Sources/Checks`:
 
 ```sh
-swift run Checks            # run all checks
-swift run Checks <Group>    # run one group, e.g. `swift run Checks LinkParser`
+swift run Checks            # run all checks (what CI runs)
+swift run Checks <Group>…   # run named groups, e.g. `swift run Checks LinkParser Tags`
+swift run Checks --changed  # only the groups your uncommitted change can reach
 ./Scripts/e2e.sh           # headless end-to-end scenario + bundle + launch smoke
 ```
+
+`--changed` works the reach out from the sources: the files that differ from
+`HEAD` (or `--base REF`), every module that depends on a changed one per
+`Package.swift`, and the check files that import one of those modules or were
+edited themselves. Groups marked `// slow` in `main.swift` (the long restyle,
+paste and randomized-model runs) are listed but skipped unless you add `--slow`;
+add it when you touch what they guard. A change to `Package.swift` or the shared
+harness (`Expect.swift`, `ProbeSupport.swift`) runs everything.
 
 Add a test by writing a `func myChecks()` (using `expect`/`expectEqual`) in a
 `Sources/Checks/*.swift` file and registering `("MyGroup", myChecks)` in

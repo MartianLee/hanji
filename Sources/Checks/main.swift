@@ -1,4 +1,5 @@
 runChecks([
+    ("ChangedChecks", changedChecksChecks),
     ("TitleExtractor", titleExtractorChecks),
     ("Vault", vaultChecks),
     ("VaultWrite", vaultWriteChecks),
@@ -35,7 +36,7 @@ runChecks([
     ("EditorCheckboxScroll", editorCheckboxScrollChecks),
     ("SplitSafety", splitSafetyChecks),
     ("SplitCloseDedupe", splitCloseAndDedupeChecks),
-    ("ModelRandom", probeRandomChecks),
+    ("ModelRandom", probeRandomChecks),   // slow
     ("AutosaveRace", autosaveRaceChecks),
     ("SaveChecksDiskFirst", saveChecksDiskFirstChecks),
     ("WatcherChurn", watcherChurnChecks),
@@ -63,7 +64,7 @@ runChecks([
     ("CodeBlockTokenizer", codeBlockTokenizerChecks),
     ("CodeBlockStyler", codeBlockStylerChecks),
     ("CodeHighlightStyler", codeHighlightStylerChecks),
-    ("CodeSlabStaysOnCode", codeSlabStaysOnCodeChecks),
+    ("CodeSlabStaysOnCode", codeSlabStaysOnCodeChecks),   // slow
     ("MarkerStaysOnList", markerStaysOnListChecks),
     ("CodeBlockRegion", codeBlockRegionChecks),
     ("RendererRegistry", rendererRegistryChecks),
@@ -118,12 +119,12 @@ runChecks([
     ("EditorFonts", editorFontChecks),
     ("EditorLinkCompletion", editorLinkCompletionChecks),
     ("EditorNestedFence", editorNestedFenceChecks),
-    ("EditorCodeIndent", editorCodeIndentChecks),
+    ("EditorCodeIndent", editorCodeIndentChecks),   // slow
     ("EditorListRenumber", editorListRenumberChecks),
     ("EditorPerf", editorPerfProbe),
     ("EditorTable", editorTableChecks),
-    ("PastePerf", pastePerfChecks),
-    ("IncrementalRestyle", incrementalRestyleChecks),
+    ("PastePerf", pastePerfChecks),   // slow
+    ("IncrementalRestyle", incrementalRestyleChecks),   // slow
     ("KeystrokeCost", keystrokeCostChecks),
     ("KeystrokeWork", keystrokeWorkChecks),
     ("EditorCaretTracking", editorCaretTrackingChecks),
