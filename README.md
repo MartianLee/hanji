@@ -74,6 +74,12 @@ To reproduce the tables:
   list item (the `    ```swift` under `- ` that GitHub READMEs use) is code
   too, its slab starting under the item's text.
 - Inline images, **mermaid** diagrams, and horizontal rules render in place.
+- `~~strikethrough~~` and `==highlight==`; **footnotes** (`[^1]` shows as a
+  raised mark — click it to reach its `[^1]:` definition, and the label to come
+  back).
+- **Math**: `$…$` is set in STIX italic; a `$$` block (or ```` ```math ````)
+  renders as a formula with KaTeX — loaded from a CDN, so it needs network
+  access, like mermaid.
 - **Tables** (GFM pipe tables) render as a grid — column alignment, and
   bold / links / `code` / tags inside cells (`[[note\|alias]]` works); the
   source comes back while the caret is in the table.

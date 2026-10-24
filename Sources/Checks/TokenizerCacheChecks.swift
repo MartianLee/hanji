@@ -10,7 +10,8 @@ func tokenizerCacheChecks() {
     let lines = ["---", "title: x", "# Head #h", "Some **bold** and `c` #tag [[L]]", "- item", "- [ ] task", "1. one",
                  "> quote", "> [!note] call", "```swift", "let x = 1 #no", "```", "~~~", "    ```", "", "plain text",
                  "`open", "#123 #2026년", "tab\t#t", "a#b", "---", "> - [x] done", "![alt](x.png)", "* star",
-                 "    ```swift", "\t```", "  continued", "    code #x", "        ```", "\t- nested"]
+                 "    ```swift", "\t```", "  continued", "    code #x", "        ```", "\t- nested",
+                 "$$", "$x$ ~~s~~ ==h== [^1]", "[^1]: def", "  $$ "]
     let cache = TokenizerCache()
     var text = (0..<60).map { _ in lines[next(lines.count)] }.joined(separator: "\n")
     for round in 0..<1500 {
@@ -33,7 +34,7 @@ func tokenizerCacheChecks() {
         case 0: ls[i] = lines[next(lines.count)]
         case 1: ls.insert(lines[next(lines.count)], at: i)
         case 2: if ls.count > 1 { ls.remove(at: i) }
-        case 3: ls[i] += ["x", " ", "`", "*", "#", "]"][next(6)]
+        case 3: ls[i] += ["x", " ", "`", "*", "#", "]", "$", "~", "=", "^"][next(10)]
         default: break
         }
         text = ls.joined(separator: "\n")

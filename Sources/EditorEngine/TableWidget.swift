@@ -64,6 +64,7 @@ struct TableWidgetView: View {
     private static func font(for style: CellRun.Style, bold: Bool) -> NSFont {
         let base = LivePreviewStyler.baseFont
         if style.contains(.code) { return LivePreviewStyler.codeFont(ofSize: max(4, base.pointSize - 1)) }
+        if style.contains(.math) { return LivePreviewStyler.mathFont(ofSize: base.pointSize) }
         var font = bold || style.contains(.bold) ? NSFontManager.shared.convert(base, toHaveTrait: .boldFontMask) : base
         if style.contains(.italic) { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
         return font
@@ -85,6 +86,11 @@ struct TableWidgetView: View {
                 piece.foregroundColor = Color(nsColor: .controlAccentColor)
                 piece.backgroundColor = Color(nsColor: NSColor.controlAccentColor.withAlphaComponent(0.14))
             }
+            if run.style.contains(.strike) {
+                piece.strikethroughStyle = .single
+                piece.foregroundColor = Color(nsColor: .secondaryLabelColor)
+            }
+            if run.style.contains(.highlight) { piece.backgroundColor = Color(nsColor: LivePreviewStyler.highlightColor) }
             out += piece
         }
         return out

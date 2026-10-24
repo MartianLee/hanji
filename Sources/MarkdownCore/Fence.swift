@@ -3,13 +3,14 @@ import Foundation
 /// A code fence line, as CommonMark defines it — the one rule every parser uses
 /// to decide where code starts and ends.
 public struct Fence: Hashable {
-    public let marker: Character   // ` or ~
+    public let marker: Character   // `, ~ or $ (a `$$` math block)
     public let length: Int
     public let info: String        // the language, on an opening fence
     /// Columns of indent before the marker (a tab runs to the next multiple of 4).
     public let indent: Int
 
-    /// The fence `line` opens: 3+ backticks or tildes after at most 3 columns of
+    /// The fence `line` opens: 3+ backticks or tildes (or a bare `$$`, opening a
+    /// math block whose info is always `math`) after at most 3 columns of
     /// indent (4 is an indented code line, not a fence) — or deeper inside a list
     /// item (`inList`, see `ListContext`), whose fences count their indent from
     /// the item's text: GitHub READMEs nest `    ```swift` under `- `. A trailing
@@ -26,7 +27,7 @@ public struct Fence: Hashable {
     /// than the fence itself.
     public func isClosed(by line: String) -> Bool {
         guard let other = Fence.parse(line), other.indent <= (indent <= 3 ? 3 : indent + 3) else { return false }
-        return other.marker == marker && other.length >= length && other.info.isEmpty
+        return other.marker == marker && other.length >= length && (other.info.isEmpty || marker == "$")
     }
 
     /// A fence-shaped line at any indent.
@@ -38,7 +39,13 @@ public struct Fence: Hashable {
             indent = c == "\t" ? (indent / 4 + 1) * 4 : indent + 1
             chars = chars.dropFirst()
         }
-        guard let marker = chars.first, marker == "`" || marker == "~" else { return nil }
+        guard let marker = chars.first, marker == "`" || marker == "~" || marker == "$" else { return nil }
+        // `$$` alone on its line opens and closes a math block (rendered under the
+        // language `math`, like GitHub's ```math).
+        if marker == "$" {
+            guard chars.trimmingCharacters(in: .whitespaces) == "$$" else { return nil }
+            return Fence(marker: "$", length: 2, info: "math", indent: indent)
+        }
         let length = chars.prefix { $0 == marker }.count
         guard length >= 3 else { return nil }
         let info = chars.dropFirst(length).trimmingCharacters(in: .whitespaces)

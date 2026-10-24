@@ -140,6 +140,9 @@ public enum TableParser {
             case .inlineCode: style = .code
             case .link: style = .link
             case .tag: style = .tag
+            case .strikethrough: style = .strike
+            case .highlight: style = .highlight
+            case .math: style = .math
             default: continue
             }
             for k in span.content where k < ns.length { styles[k].insert(style) }
@@ -207,6 +210,9 @@ public struct CellRun: Equatable {
         public static let code = Style(rawValue: 4)
         public static let link = Style(rawValue: 8)
         public static let tag = Style(rawValue: 16)
+        public static let strike = Style(rawValue: 32)
+        public static let highlight = Style(rawValue: 64)
+        public static let math = Style(rawValue: 128)
     }
     public let text: String
     public let style: Style

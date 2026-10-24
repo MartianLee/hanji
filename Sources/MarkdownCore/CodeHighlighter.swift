@@ -28,6 +28,7 @@ public enum CodeHighlighter {
     }
 
     public static func tokens(in code: String, language: String) -> [Token] {
+        guard language != "math" else { return [] }   // TeX isn't a C-like language
         let g = grammar(for: language)
         let ns = code as NSString
         let n = ns.length

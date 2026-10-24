@@ -104,9 +104,21 @@ public enum InlineTokenizer {
     private static let dot = UInt16(UnicodeScalar(".").value)
     private static let zero = UInt16(UnicodeScalar("0").value)
     private static let nine = UInt16(UnicodeScalar("9").value)
+    private static let tilde = UInt16(UnicodeScalar("~").value)
+    private static let equals = UInt16(UnicodeScalar("=").value)
+    private static let dollar = UInt16(UnicodeScalar("$").value)
+    private static let backslash = UInt16(UnicodeScalar("\\").value)
+    private static let caret = UInt16(UnicodeScalar("^").value)
+    private static let colon = UInt16(UnicodeScalar(":").value)
+    private static let tab = UInt16(9)
 
     private static func parseLine(_ ns: NSString, lineStart: Int, lineRange: Range<Int>,
                                   into result: inout [MarkSpan]) {
+        if let (def, contentOffset) = footnoteDefSpan(ns, lineStart: lineStart, lineRange: lineRange) {
+            result.append(def)
+            scanInline(ns, from: contentOffset, lineStart: lineStart, lineRange: lineRange, into: &result)
+            return
+        }
         if let heading = headingSpan(ns, lineStart: lineStart, lineRange: lineRange) {
             result.append(heading)
             // Inline styles compose with the heading font (trait-based styler).
@@ -149,7 +161,24 @@ public enum InlineTokenizer {
             if c == backtick, let (span, next) = codeSpan(ns, from: i, lineStart: lineStart, lineRange: lineRange) {
                 result.append(span); i = next; continue
             }
+            if c == backslash, i + 1 < n, ns.character(at: i + 1) == dollar { i += 2; continue }
+            if c == dollar, let (span, next) = mathSpan(ns, from: i, lineStart: lineStart, lineRange: lineRange) {
+                result.append(span); i = next; continue
+            }
+            if c == openBracket, let (span, next) = footnoteRefSpan(ns, from: i, lineStart: lineStart, lineRange: lineRange) {
+                result.append(span); i = next; continue
+            }
             if c == openBracket, let (span, next) = bracketSpan(ns, from: i, ahead: &ahead, lineStart: lineStart, lineRange: lineRange) {
+                result.append(span); i = next; continue
+            }
+            if c == tilde, i + 1 < n, ns.character(at: i + 1) == tilde,
+               let (span, next) = pairSpan(ns, marker: "~~", style: .strikethrough, tight: true,
+                                           from: i, lineStart: lineStart, lineRange: lineRange) {
+                result.append(span); i = next; continue
+            }
+            if c == equals, i + 1 < n, ns.character(at: i + 1) == equals,
+               let (span, next) = pairSpan(ns, marker: "==", style: .highlight, tight: true,
+                                           from: i, lineStart: lineStart, lineRange: lineRange) {
                 result.append(span); i = next; continue
             }
             if c == star {
@@ -245,7 +274,9 @@ public enum InlineTokenizer {
         return (span, j + 1)
     }
 
-    private static func pairSpan(_ ns: NSString, marker: String, style: SpanStyle,
+    /// `tight`: the content may neither start nor end with a blank, so
+    /// `a == b == c` isn't a highlight.
+    private static func pairSpan(_ ns: NSString, marker: String, style: SpanStyle, tight: Bool = false,
                                  from start: Int, lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {
         let m = marker as NSString
         let mlen = m.length
@@ -258,6 +289,10 @@ public enum InlineTokenizer {
                     j += 1; continue   // a '**' is not an italic close
                 }
                 guard j > contentStart else { return nil }
+                if tight {
+                    func blank(_ k: Int) -> Bool { ns.character(at: k) == space || ns.character(at: k) == tab }
+                    guard !blank(contentStart), !blank(j - 1) else { return nil }
+                }
                 let span = MarkSpan(
                     style: style,
                     content: (lineStart + contentStart)..<(lineStart + j),
@@ -269,6 +304,67 @@ public enum InlineTokenizer {
             j += 1
         }
         return nil
+    }
+
+    /// `$x$` (or `$$x$$` written on one line): the opening delimiter before a
+    /// non-blank, the closing one after a non-blank and — for `$` — not before a
+    /// digit, so `$5 and $10` stays text. `\$` is never a delimiter.
+    private static func mathSpan(_ ns: NSString, from start: Int, lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {
+        let n = ns.length
+        let mlen = start + 1 < n && ns.character(at: start + 1) == dollar ? 2 : 1
+        let contentStart = start + mlen
+        func blank(_ k: Int) -> Bool { ns.character(at: k) == space || ns.character(at: k) == tab }
+        guard contentStart < n, !blank(contentStart), ns.character(at: contentStart) != dollar else { return nil }
+        var j = contentStart
+        while j < n {
+            let c = ns.character(at: j)
+            if c == backslash { j += 2; continue }
+            if c == dollar {
+                guard mlen == 1 || (j + 1 < n && ns.character(at: j + 1) == dollar) else { j += 1; continue }
+                guard !blank(j - 1) else { return nil }
+                let after = j + mlen
+                if mlen == 1, after < n, ns.character(at: after) >= zero, ns.character(at: after) <= nine { return nil }
+                let span = MarkSpan(style: .math,
+                                    content: (lineStart + contentStart)..<(lineStart + j),
+                                    markers: [(lineStart + start)..<(lineStart + contentStart),
+                                              (lineStart + j)..<(lineStart + after)],
+                                    line: lineRange)
+                return (span, after)
+            }
+            j += 1
+        }
+        return nil
+    }
+
+    /// The index of the `]` closing a footnote label `[^id]` that starts at
+    /// `start`, or nil: an id is one or more characters, none blank or a bracket.
+    private static func footnoteLabelEnd(_ ns: NSString, from start: Int) -> Int? {
+        let n = ns.length
+        guard start + 2 < n, ns.character(at: start) == openBracket, ns.character(at: start + 1) == caret else { return nil }
+        var j = start + 2
+        while j < n {
+            let c = ns.character(at: j)
+            if c == closeBracket { return j > start + 2 ? j : nil }
+            if c == space || c == tab || c == openBracket { return nil }
+            j += 1
+        }
+        return nil
+    }
+
+    private static func footnoteRefSpan(_ ns: NSString, from start: Int, lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {
+        guard let close = footnoteLabelEnd(ns, from: start) else { return nil }
+        let span = MarkSpan(style: .footnoteRef, content: (lineStart + start + 2)..<(lineStart + close),
+                            markers: [(lineStart + start)..<(lineStart + start + 2),
+                                      (lineStart + close)..<(lineStart + close + 1)],
+                            line: lineRange)
+        return (span, close + 1)
+    }
+
+    /// `[^id]:` opening a line: the definition's label, kept visible.
+    private static func footnoteDefSpan(_ ns: NSString, lineStart: Int, lineRange: Range<Int>) -> (MarkSpan, Int)? {
+        guard let close = footnoteLabelEnd(ns, from: 0), close + 1 < ns.length,
+              ns.character(at: close + 1) == colon else { return nil }
+        return (MarkSpan(style: .footnoteDef, content: lineStart..<(lineStart + close + 2), markers: [], line: lineRange), close + 2)
     }
 
     /// Where the next `]]`, `|`, `]` and `)` are. Every `[` on the line asks,

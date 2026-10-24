@@ -14,6 +14,11 @@ public enum SpanStyle: Equatable {
     case codeBlock
     case callout
     case tag          // `#tag` (see Tags.occurrences); no markers to hide
+    case strikethrough // `~~text~~`
+    case highlight     // `==text==`
+    case math          // `$x$` — styled, not rendered (a `$$` block is a fence)
+    case footnoteRef   // `[^id]` — the id shows raised
+    case footnoteDef   // `[^id]:` at a line's start — the label stays visible
 }
 
 /// A recognized markdown construct, in UTF-16 code-unit offsets (NSRange-compatible).

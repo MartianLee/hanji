@@ -13,6 +13,11 @@ based on [Keep a Changelog](https://keepachangelog.com/); this project will use
 - Reading mode hides code blocks' ``` fence lines; the code and its slab stay (#19).
 - Outline panel in the right sidebar: headings indented by level, a click
   jumps there, the current section highlighted (#3).
+- `~~strikethrough~~` and `==highlight==`.
+- Footnotes: `[^1]` shows as a raised mark; a click goes to its `[^1]:`
+  definition, and a click on the definition's label comes back.
+- Math: inline `$…$` set in STIX italic; `$$` blocks (and ```` ```math ````)
+  rendered with KaTeX.
 - Numbered lists keep counting: Tab nests an item as 1., Shift-Tab gives it back its
   place, and Return after an item copied in from elsewhere follows the list.
 

@@ -10,66 +10,9 @@ public struct MermaidRenderer: CodeBlockRenderer {
     public let language = "mermaid"
     public init() {}
     public func makeView(source: String) -> AnyView {
-        AnyView(MermaidView(source: source))
-    }
-}
-
-private final class MermaidHeight: ObservableObject {
-    @Published var height: CGFloat = 60
-}
-
-private struct MermaidView: View {
-    let source: String
-    @StateObject private var model = MermaidHeight()
-    var body: some View {
-        MermaidWeb(source: source, model: model)
-            .frame(height: model.height)
-    }
-}
-
-private struct MermaidWeb: NSViewRepresentable {
-    let source: String
-    @ObservedObject var model: MermaidHeight
-
-    func makeCoordinator() -> Coordinator { Coordinator(model: model) }
-
-    func makeNSView(context: Context) -> WKWebView {
-        let config = WKWebViewConfiguration()
-        // Nothing a diagram does should outlive it or be visible to another note's.
-        config.websiteDataStore = .nonPersistent()
-        config.userContentController.add(context.coordinator, name: "mkHeight")
-        let web = WKWebView(frame: .zero, configuration: config)
-        web.navigationDelegate = context.coordinator
-        return web
-    }
-
-    func updateNSView(_ web: WKWebView, context: Context) {
-        context.coordinator.model = model
-        let nonce = UUID().uuidString.replacingOccurrences(of: "-", with: "")
-        web.loadHTMLString(MermaidPage.html(source: source, nonce: nonce), baseURL: MermaidPage.baseURL)
-    }
-
-    final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
-        var model: MermaidHeight
-        init(model: MermaidHeight) { self.model = model }
-
-        func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
-                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            let allowed = action.targetFrame?.isMainFrame == true
-                && MermaidPage.allowsNavigation(to: action.request.url, type: action.navigationType)
-            decisionHandler(allowed ? .allow : .cancel)
-        }
-
-        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard let value = message.body as? Double else { return }
-            let clamped = min(max(40, CGFloat(value) + 8), 600)
-            guard abs(clamped - model.height) > 1 else { return }
-            DispatchQueue.main.async {
-                self.model.height = clamped
-                // Let the editor re-measure and re-reserve the inline widget's space.
-                NotificationCenter.default.post(name: .hanjiWidgetDidResize, object: nil)
-            }
-        }
+        AnyView(WebBlockView(minHeight: 40, maxHeight: 600,
+                             page: { MermaidPage.html(source: source, nonce: $0) },
+                             allowsNavigation: MermaidPage.allowsNavigation, baseURL: MermaidPage.baseURL))
     }
 }
 
@@ -103,7 +46,7 @@ public enum MermaidPage {
           if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.mkHeight)
             window.webkit.messageHandlers.mkHeight.postMessage(Math.ceil(h));
         }
-        document.getElementById('d').textContent = \(jsStringLiteral(source));
+        document.getElementById('d').textContent = \(PageText.jsStringLiteral(source));
         (async function(){
           try { mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' }); await mermaid.run({ querySelector: '.mermaid' }); }
           catch(e) {}
@@ -118,13 +61,5 @@ public enum MermaidPage {
     /// script tries (`location = …`) are refused.
     public static func allowsNavigation(to url: URL?, type: WKNavigationType) -> Bool {
         type == .other && url == baseURL
-    }
-
-    /// `text` as a JavaScript string literal that is also inert inside a
-    /// `<script>` element: JSON escaping plus every `<` as `\u003C`, so neither
-    /// `</script>` nor `<!--` can change how the HTML parser reads the block.
-    private static func jsStringLiteral(_ text: String) -> String {
-        let json = (try? JSONEncoder().encode(text)).flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
-        return json.replacingOccurrences(of: "<", with: "\\u003C")
     }
 }

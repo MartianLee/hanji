@@ -1069,6 +1069,13 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// the overlay). Returns true when handled (skip the default placement).
         public func handleClick(at index: Int) -> Bool {
             if toggleCheckbox(at: index) { return true }
+            // A footnote mark jumps to its definition, and a definition's label back.
+            if let textView, let target = Footnotes.jumpTarget(at: index, in: textView.string) {
+                textView.window?.makeFirstResponder(textView)
+                textView.setSelectedRange(NSRange(location: target, length: 0))
+                scrollLineToTop(at: target)
+                return true
+            }
             // Clicking a #tag searches for it.
             if let onOpenTag, let text = textView?.string,
                let tag = Tags.occurrences(in: text).first(where: { $0.range.contains(index) }) {

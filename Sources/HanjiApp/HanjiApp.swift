@@ -82,6 +82,7 @@ struct HanjiApp: App {
                     host = h   // retain for the app's lifetime
                     h.renderers.register(CardRenderer())
                     h.renderers.register(MermaidRenderer())
+                    h.renderers.register(MathRenderer())
                     h.renderers.register(DataviewRenderer(query: { [weak appState] parsed in
                         (try? appState?.searchIndex?.dataview(parsed)) ?? []
                     }))

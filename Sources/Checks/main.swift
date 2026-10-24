@@ -10,6 +10,10 @@ runChecks([
     ("LinkCompletion", linkCompletionChecks),
     ("NestedFence", nestedFenceChecks),
     ("ParserEquivalence", parserEquivalenceChecks),
+    ("InlineSyntax", inlineSyntaxChecks),
+    ("InlineSyntaxStyler", inlineSyntaxStylerChecks),
+    ("Footnotes", footnoteChecks),
+    ("MathFence", mathFenceChecks),
     ("PaneProxy", paneProxyChecks),
     ("PaneSplit", paneSplitChecks),
     ("TabReorder", tabReorderChecks),
@@ -161,6 +165,7 @@ runChecks([
     ("CalendarGrid", calendarGridChecks),
     ("CalendarPlugin", calendarPluginChecks),
     ("MermaidPage", mermaidPageChecks),
+    ("MathPage", mathPageChecks),
     ("ParserPerf", parserPerfChecks),
     ("E2E", e2eChecks),
 ])

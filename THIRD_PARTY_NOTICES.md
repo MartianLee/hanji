@@ -23,3 +23,10 @@ Not bundled. When a note contains a `mermaid` code block, Hanji loads
 `mermaid@10.9.8` from jsDelivr (pinned, integrity-checked) to draw it.
 Mermaid is released under the MIT License.
 <https://github.com/mermaid-js/mermaid>
+
+## KaTeX
+
+Not bundled. When a note contains a `$$` math block (or a `math` code block),
+Hanji loads `katex@0.18.11` from jsDelivr (pinned, integrity-checked) to draw it.
+KaTeX is released under the MIT License.
+<https://github.com/KaTeX/KaTeX>

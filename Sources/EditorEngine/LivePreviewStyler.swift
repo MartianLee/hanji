@@ -108,7 +108,7 @@ public enum LivePreviewStyler {
 
     static func isTraitStyle(_ style: SpanStyle) -> Bool {
         switch style {
-        case .bold, .italic, .inlineCode: return true
+        case .bold, .italic, .inlineCode, .math: return true
         default: return false
         }
     }
@@ -127,6 +127,8 @@ public enum LivePreviewStyler {
                 let size = max(4, current.pointSize - 1)
                 storage.addAttributes([.font: codeFont(ofSize: size),
                                        .backgroundColor: NSColor.quaternaryLabelColor], range: sub)
+            case .math:
+                storage.addAttributes([.font: mathFont(ofSize: current.pointSize), .foregroundColor: mathColor], range: sub)
             default:
                 break
             }
@@ -202,7 +204,34 @@ public enum LivePreviewStyler {
             p.headIndent = 16
             return [.backgroundColor: NSColor.systemBlue.withAlphaComponent(0.12),
                     .paragraphStyle: p]
+        case .strikethrough:
+            return [.strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                    .foregroundColor: NSColor.secondaryLabelColor]
+        case .highlight:
+            return [.backgroundColor: highlightColor]
+        case .math:
+            return [.font: mathFont(ofSize: baseFontSize), .foregroundColor: mathColor]
+        case .footnoteRef:
+            // Raised and small, like a printed footnote mark.
+            return [.font: EditorFonts.text(textFont, size: (baseFontSize * 0.72).rounded()),
+                    .baselineOffset: (baseFontSize * 0.35).rounded(),
+                    .foregroundColor: NSColor.controlAccentColor]
+        case .footnoteDef:
+            return [.foregroundColor: NSColor.secondaryLabelColor]
         }
+    }
+
+    /// Inline math is set, not rendered: STIX (shipped with macOS) italic.
+    static func mathFont(ofSize size: CGFloat) -> NSFont {
+        NSFont(name: "STIXGeneral-Italic", size: size)
+            ?? NSFontManager.shared.convert(EditorFonts.text(textFont, size: size), toHaveTrait: .italicFontMask)
+    }
+    static let mathColor = NSColor.systemIndigo
+
+    /// `==highlight==`: a marker-pen yellow, fainter on a dark background.
+    static let highlightColor = NSColor(name: nil) { appearance in
+        let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return NSColor.systemYellow.withAlphaComponent(dark ? 0.3 : 0.45)
     }
 
     static func clamp(_ r: Range<Int>, length: Int) -> NSRange {
