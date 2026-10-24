@@ -101,7 +101,7 @@ To reproduce the tables:
 **Workspace**
 - **Tabs and split panes**: drag to reorder, drop a tab on either edge to split,
   or send the active tab to the next pane with ⌥⇧⌘← / ⌥⇧⌘→.
-  **Pin** a tab (its context menu, File ▸ Pin Tab, or ⌘P) to keep it from
+  **Pin** a tab (its context menu or File ▸ Pin Tab) to keep it from
   closing; the vault reopens its pinned notes next time.
 - **`[[` link suggestions**: type `[[` and pick a note (↑/↓, Return or Tab);
   the link is closed for you, and a name two notes share links by path.
