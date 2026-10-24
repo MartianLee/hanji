@@ -539,7 +539,8 @@ struct ContentView: View {
                     onCaretMove: { appState.caretMoved(to: $0) },
                     isReading: tab.isReading,
                     jumpsToTop: isActivePane && appState.pendingJumpToTop,
-                    onViewportTopChange: { appState.viewportMoved(top: $0) })
+                    onViewportTopChange: { appState.viewportMoved(top: $0) },
+                    notePreview: { appState.notePreview(for: $0) })
                 .opacity(isActivePane ? 1 : 0.92)
             } else {
                 Text("Open a vault, then select a note")

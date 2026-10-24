@@ -319,6 +319,16 @@ public final class AppState: ObservableObject {
         open(match, newTab: newTab)
     }
 
+    /// The note a link target names, for embeds and link previews: its title
+    /// and text — an open tab's, unsaved edits included.
+    public func notePreview(for target: String) -> NotePreview? {
+        let paths = files.map { relativePath(of: $0.url) }
+        guard let path = LinkTarget.resolve(target, in: paths),
+              let file = files.first(where: { relativePath(of: $0.url) == path }) else { return nil }
+        guard let text = buffer(for: file)?.text ?? (try? vault?.read(file)) else { return nil }
+        return NotePreview(title: file.url.deletingPathExtension().lastPathComponent, text: text)
+    }
+
     /// `url` relative to the vault root (its file name when outside it).
     func relativePath(of url: URL) -> String {
         guard let root = vaultRoot?.standardizedFileURL.path else { return url.lastPathComponent }

@@ -18,6 +18,10 @@ based on [Keep a Changelog](https://keepachangelog.com/); this project will use
   definition, and a click on the definition's label comes back.
 - Math: inline `$…$` set in STIX italic; `$$` blocks (and ```` ```math ````)
   rendered with KaTeX.
+- Note embeds: an own-line `![[Note]]` / `![[Note#Heading]]` shows the note
+  rendered in a card.
+- Link previews: resting on a link with ⌘ held (in reading mode, without)
+  shows the note in a popover.
 - Numbered lists keep counting: Tab nests an item as 1., Shift-Tab gives it back its
   place, and Return after an item copied in from elsewhere follows the list.
 

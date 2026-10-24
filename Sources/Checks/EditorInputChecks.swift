@@ -21,11 +21,13 @@ final class EditorHarness {
     var jumpsToTop = false
     /// Top-line offsets the editor reported as it scrolled.
     var viewportTops: [Int] = []
+    var notePreview: ((String) -> NotePreview?)?
 
     init?(_ initial: String, cursorOffset initialOffset: Int? = nil, lineHeight: CGFloat = 1.3,
           maxLineWidth: CGFloat? = nil, width: CGFloat = 800, linkTargets: [String] = [],
-          isReading: Bool = false) {
+          isReading: Bool = false, notePreview: ((String) -> NotePreview?)? = nil) {
         text = initial
+        self.notePreview = notePreview
         self.linkTargets = linkTargets
         self.isReading = isReading
         cursorOffset = initialOffset
@@ -39,7 +41,8 @@ final class EditorHarness {
         let host = NSHostingView(rootView: MarkdownEditorView(text: binding, cursorOffset: offset,
                                                               lineHeight: lineHeight, maxLineWidth: maxLineWidth,
                                                               linkTargets: { linkTargets }, isLive: true, isReading: isReading,
-                                                              jumpsToTop: false, onViewportTopChange: { box?.viewportTops.append($0) }))
+                                                              jumpsToTop: false, onViewportTopChange: { box?.viewportTops.append($0) },
+                                                              notePreview: notePreview))
         hosting = host
         window.contentView = host
         window.makeKeyAndOrderFront(nil)
@@ -82,7 +85,8 @@ final class EditorHarness {
                                                lineHeight: lineHeight, maxLineWidth: maxLineWidth,
                                                textFont: textFont, codeFont: codeFont,
                                                linkTargets: { self.linkTargets }, isLive: isLive, isReading: isReading,
-                                               jumpsToTop: jumpsToTop, onViewportTopChange: { [weak self] in self?.viewportTops.append($0) })
+                                               jumpsToTop: jumpsToTop, onViewportTopChange: { [weak self] in self?.viewportTops.append($0) },
+                                               notePreview: notePreview)
         pump(0.4)
     }
 

@@ -85,6 +85,9 @@ To reproduce the tables:
   source comes back while the caret is in the table.
 - Editable inline file title; clicking a `[[wikilink]]` or `[text](note.md)`
   opens the target note.
+- **Embeds**: `![[Note]]` (or `![[Note#Heading]]`) on its own line shows that
+  note, rendered, in a card. **Link previews**: rest the pointer on a link with
+  ⌘ held (in reading mode, without) to see the note in a popover.
 - **Reading mode (⌘E, or the toolbar's book button)** per tab: the note fully rendered, the caret's line
   included, and not editable — checkboxes still toggle. Kept through links
   and Back/Forward in the tab, and remembered for pinned tabs.

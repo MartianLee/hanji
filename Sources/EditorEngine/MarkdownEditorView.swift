@@ -44,6 +44,37 @@ final class ClickableTextView: NSTextView {
     /// (which keeps the regions fresh). Inside a fence a line like `- name: foo` is
     /// code, not a list, so Return and Tab must behave as they do in any editor.
     var isInsideCodeBlock: ((Int) -> Bool)?
+    /// The pointer resting on text: the character under it (nil when it left
+    /// the view) and the modifier keys held — for link previews.
+    var onHover: ((Int?, NSEvent.ModifierFlags) -> Void)?
+    private var hoverArea: NSTrackingArea?
+    private var hoverPoint: NSPoint?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverArea { removeTrackingArea(hoverArea) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                                  owner: self, userInfo: nil)
+        addTrackingArea(area)
+        hoverArea = area
+    }
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        let p = convert(event.locationInWindow, from: nil)
+        hoverPoint = p
+        onHover?(characterIndexForInsertion(at: p), event.modifierFlags)
+    }
+    override func flagsChanged(with event: NSEvent) {
+        super.flagsChanged(with: event)
+        // ⌘ pressed while already resting on a link counts.
+        if let hoverPoint { onHover?(characterIndexForInsertion(at: hoverPoint), event.modifierFlags) }
+    }
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        hoverPoint = nil
+        onHover?(nil, [])
+    }
+
     override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         let idx = characterIndexForInsertion(at: p)
@@ -365,6 +396,9 @@ public struct MarkdownEditorView: NSViewRepresentable {
     /// Called with the start offset of the top visible line as the view scrolls
     /// (live editor only), at most once per runloop turn.
     public var onViewportTopChange: ((Int) -> Void)?
+    /// The note a link target names (title and text), for embeds and link
+    /// previews; nil when there's no such note.
+    public var notePreview: ((String) -> NotePreview?)?
 
     public init(text: Binding<String>, renderers: RendererRegistry? = nil, vaultRoot: URL? = nil,
                 cursorOffset: Binding<Int?> = .constant(nil), fontSize: CGFloat = 15,
@@ -376,7 +410,9 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 onOpenTag: ((String) -> Void)? = nil,
                 onCaretMove: ((Int) -> Void)? = nil,
                 isReading: Bool = false,
-                jumpsToTop: Bool = false, onViewportTopChange: ((Int) -> Void)? = nil) {
+                jumpsToTop: Bool = false, onViewportTopChange: ((Int) -> Void)? = nil,
+                notePreview: ((String) -> NotePreview?)? = nil) {
+        self.notePreview = notePreview
         self.jumpsToTop = jumpsToTop
         self.onViewportTopChange = onViewportTopChange
         self.onOpenTag = onOpenTag
@@ -452,6 +488,9 @@ public struct MarkdownEditorView: NSViewRepresentable {
         }
         textView.onBecameFirstResponder = { [weak coordinator = context.coordinator] in coordinator?.onFocus?() }
         textView.onResignedFirstResponder = { [weak coordinator = context.coordinator] in coordinator?.closeLinkCompletion() }
+        textView.onHover = { [weak coordinator = context.coordinator] offset, modifiers in
+            coordinator?.hover(at: offset, modifiers: modifiers)
+        }
         textView.onCommand = { [weak coordinator = context.coordinator] selector in
             coordinator?.handleLinkCompletionCommand(selector) ?? false
         }
@@ -573,6 +612,13 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// Take the latest values SwiftUI handed the view — `parent` included: it
         /// carries the text binding, which in split view changes as focus moves
         /// between panes. A stale one sends edits to another note's buffer.
+        lazy var linkPreview = LinkPreviewController(coordinator: self)
+        /// The pointer rests at `offset` (nil: it left) with `modifiers` held.
+        public func hover(at offset: Int?, modifiers: NSEvent.ModifierFlags) {
+            linkPreview.hover(at: offset, modifiers: modifiers)
+        }
+        public var isPreviewShown: Bool { linkPreview.isShown }
+
         public func sync(with view: MarkdownEditorView) {
             parent = view
             renderers = view.renderers
@@ -725,6 +771,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// where the view belongs.
         func setReading(_ reading: Bool, holdingView: Bool) {
             guard let textView else { return }
+            linkPreview.close()
             appliedReading = reading
             if textView.hasMarkedText() {
                 textView.unmarkText()
@@ -1068,6 +1115,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// predictable, not a hit-test guess against the collapsed text behind
         /// the overlay). Returns true when handled (skip the default placement).
         public func handleClick(at index: Int) -> Bool {
+            linkPreview.close()
             if toggleCheckbox(at: index) { return true }
             // A footnote mark jumps to its definition, and a definition's label back.
             if let textView, let target = Footnotes.jumpTarget(at: index, in: textView.string) {
@@ -1121,10 +1169,11 @@ public struct MarkdownEditorView: NSViewRepresentable {
                                             view: renderer.makeView(source: body)))
                 }
             }
-            specs.append(contentsOf: imageWidgets(caret: caret, nstext: nstext))
-            specs.append(contentsOf: hrWidgets(caret: caret, nstext: nstext))
             let inset = textView.textContainerInset.width
             let width = max(50, textView.bounds.width - inset * 2)
+            specs.append(contentsOf: imageWidgets(caret: caret, nstext: nstext))
+            specs.append(contentsOf: noteEmbedWidgets(caret: caret, nstext: nstext, width: width))
+            specs.append(contentsOf: hrWidgets(caret: caret, nstext: nstext))
             specs.append(contentsOf: tableWidgets(caret: caret, nstext: nstext, width: width,
                                                   codeRanges: unchanged ? tokenizer.codeRanges : nil))
             widgetRegions = specs.map(\.region)   // for click-to-reveal caret snapping
@@ -1255,6 +1304,19 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 out.append(WidgetSpec(key: "img", region: ref.line, view: view))
             }
             return out
+        }
+
+        /// Own-line `![[Note]]`: the note, rendered, as a card. Its text is part
+        /// of the key, so an edit to the embedded note redraws the card.
+        func noteEmbedWidgets(caret: Range<Int>?, nstext: NSString, width: CGFloat) -> [WidgetSpec] {
+            guard let notePreview = parent.notePreview else { return [] }
+            return NoteEmbeds.embeds(in: nstext as String).compactMap { embed in
+                if intersects(embed.line, caret) { return nil }
+                let preview = notePreview(embed.target)
+                let view = AnyView(NoteCardView(title: preview?.title ?? embed.target, markdown: preview?.text,
+                                                heading: embed.heading, width: width, maxHeight: 400))
+                return WidgetSpec(key: "embed-\(preview?.text.hashValue ?? 0)", region: embed.line, view: view, maxHeight: 400)
+            }
         }
 
         /// Horizontal rules (`---` lines) drawn as real divider lines; the raw
@@ -1484,6 +1546,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
         @objc func clipViewDidScroll() {
             reportViewportTop()
+            linkPreview.close()
             guard let linkContext, linkPopup.isOpen, let window = textView?.window else { return }
             linkPopup.show(linkPopup.model.items, below: linkAnchor(linkContext), in: window)
         }
@@ -1564,6 +1627,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
         public func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
+            linkPreview.close()
             parent.text = textView.string
             revealCaret = true
             lastCaretParagraph = (textView.string as NSString).paragraphRange(for: textView.selectedRange())
