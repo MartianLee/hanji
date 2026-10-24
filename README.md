@@ -107,13 +107,19 @@ To reproduce the tables:
   mouse's back/forward buttons). A pinned tab, ⌘-click on a link, or
   "Open in New Tab" in the file tree opens a new tab instead.
 - Full file tree: sort, multi-select, drag-and-drop, rename, trash, undo, import.
+- **Links follow renames**: renaming or moving a note (or a folder) rewrites
+  every `[[link]]`, embed and markdown link to it across the vault, in the form
+  it was written; the status bar says how many, and ⌥⌘Z undoes the rename and
+  the rewrites together.
 - **Command palette (⌘P)**, **quick switcher (⌘O)**, **global search (⇧⌘F)** over
   a persistent SQLite FTS5 index (Korean-friendly trigram tokenizer).
 - **Vault-wide find & replace (⌥⇧⌘F)**: literal match with a case toggle, a
   confirmation that states how many occurrences in how many notes, and one
   **⌥⌘Z** that reverts the entire batch.
 - Show or hide the file sidebar with **⌘B**; **Backlinks**, **Outline** and **Calendar** side
-  panels on the right (collapsible, ⌥⌘B).
+  panels on the right (collapsible, ⌥⌘B). Backlinks also lists **unlinked
+  mentions** — notes naming the note without a link (`한지는` counts for
+  `한지`) — each with a **Link** button.
 - Settings: editor font size, recent vaults, and **live plugin toggles**.
 
 **Plugins / SDK (compile-time, Swift)**

@@ -57,3 +57,30 @@ func backlinksPluginChecks() {
     let backs = host.query.backlinks(toNoteAt: "Target.md")
     expectEqual(backs.first?.sourcePath, "Source.md", "panel's data source finds the backlink")
 }
+
+/// The SDK's unlinked-mention query: candidates from the index, offsets from
+/// the file, the note itself and linked mentions left out.
+func unlinkedMentionQueryChecks() {
+    let fm = FileManager.default
+    let vault = fm.temporaryDirectory.appendingPathComponent("mk-um-\(UUID().uuidString)")
+    try? fm.createDirectory(at: vault, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: vault) }
+    try? "Target is me".write(to: vault.appendingPathComponent("Target.md"), atomically: true, encoding: .utf8)
+    try? "---\ntags: [x]\n---\nthe target, and [[Target]]".write(to: vault.appendingPathComponent("A.md"), atomically: true, encoding: .utf8)
+    try? "한지는 종이".write(to: vault.appendingPathComponent("한지.md"), atomically: true, encoding: .utf8)
+    try? "한지는 종이다".write(to: vault.appendingPathComponent("B.md"), atomically: true, encoding: .utf8)
+
+    let appState = AppState(defaults: UserDefaults(suiteName: "mk-um-\(UUID().uuidString)")!)
+    appState.openVault(at: vault)
+    defer { try? fm.removeItem(at: SearchIndex.indexFileURL(forVault: vault)) }
+    let host = Host(appState: appState, pluginManager: PluginManager())
+    try? appState.searchIndex?.reindexAll(vault: vault)
+
+    let mentions = host.query.unlinkedMentions(ofNoteAt: "Target.md")
+    expectEqual(mentions.map(\.sourcePath), ["A.md"], "one unlinked mention, not the note itself")
+    expectEqual(mentions.first?.range, 22..<28, "its range is in the file's text (frontmatter included)")
+    expectEqual(host.query.unlinkedMentions(ofNoteAt: "한지.md").map(\.sourcePath), ["B.md"], "a two-letter Korean name")
+    expect(host.workspace.linkMention(sourcePath: "A.md", range: 22..<28, targetPath: "Target.md"), "the Link action")
+    expectEqual(try? String(contentsOf: vault.appendingPathComponent("A.md"), encoding: .utf8),
+                "---\ntags: [x]\n---\nthe [[Target|target]], and [[Target]]", "writes the link")
+}

@@ -249,6 +249,23 @@ public final class SearchIndex {
                                            query: q, score: $0.score) }
     }
 
+    /// Paths of the notes whose text holds `text` (ignoring case) — candidates
+    /// for an exact search of the files. 3+ characters use the trigram index;
+    /// shorter ones a LIKE scan, as `search` does.
+    public func notes(containing text: String, limit: Int) throws -> [String] {
+        let q = text.trimmingCharacters(in: .whitespacesAndNewlines).precomposedStringWithCanonicalMapping
+        guard !q.isEmpty else { return [] }
+        return try dbQueue.read { db in
+            if q.count >= 3 {
+                let match = "\"" + q.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+                return try String.fetchAll(db, sql: "SELECT path FROM note_fts WHERE body MATCH ? LIMIT ?",
+                                           arguments: [match, limit])
+            }
+            return try String.fetchAll(db, sql: "SELECT path FROM note_fts WHERE body LIKE ? ESCAPE '\\' LIMIT ?",
+                                       arguments: ["%" + Self.likeEscaped(q) + "%", limit])
+        }
+    }
+
     /// `s` with LIKE's wildcards and the escape character escaped (ESCAPE '\\').
     static func likeEscaped(_ s: String) -> String {
         s.replacingOccurrences(of: "\\", with: "\\\\")

@@ -302,10 +302,9 @@ public final class AppState: ObservableObject {
     /// Every note a `[[` link can point at: vault-relative paths without `.md`
     /// (what `openLink` resolves).
     public var linkTargets: [String] {
-        guard let root = vaultRoot?.standardizedFileURL.path else { return [] }
+        guard vaultRoot != nil else { return [] }
         return files.map { file in
-            let path = file.url.standardizedFileURL.path
-            let rel = path.hasPrefix(root + "/") ? String(path.dropFirst(root.count + 1)) : file.url.lastPathComponent
+            let rel = relativePath(of: file.url)
             return rel.lowercased().hasSuffix(".md") ? String(rel.dropLast(3)) : rel
         }
     }
@@ -313,23 +312,18 @@ public final class AppState: ObservableObject {
     /// Open the note a wiki/markdown link targets (filename base or vault-relative
     /// path, Obsidian-style, case-insensitive). No-op if nothing matches.
     public func openLink(_ target: String, newTab: Bool = false) {
-        guard let root = vaultRoot else { return }
-        var t = target.trimmingCharacters(in: .whitespaces)
-        if let hash = t.firstIndex(of: "#") { t = String(t[..<hash]) }   // drop heading anchor
-        if t.lowercased().hasSuffix(".md") { t = String(t.dropLast(3)) }
-        let wanted = t.lowercased()
-        guard !wanted.isEmpty else { return }
-        let prefix = root.standardizedFileURL.path + "/"
-        func relBase(_ u: URL) -> String {
-            let p = u.standardizedFileURL.path
-            var r = p.hasPrefix(prefix) ? String(p.dropFirst(prefix.count)) : u.lastPathComponent
-            if r.lowercased().hasSuffix(".md") { r = String(r.dropLast(3)) }
-            return r.lowercased()
-        }
-        if let match = files.first(where: { relBase($0.url) == wanted
-            || $0.url.deletingPathExtension().lastPathComponent.lowercased() == wanted }) {
-            open(match, newTab: newTab)
-        }
+        guard vaultRoot != nil else { return }
+        let paths = files.map { relativePath(of: $0.url) }
+        guard let path = LinkTarget.resolve(target, in: paths),
+              let match = files.first(where: { relativePath(of: $0.url) == path }) else { return }
+        open(match, newTab: newTab)
+    }
+
+    /// `url` relative to the vault root (its file name when outside it).
+    func relativePath(of url: URL) -> String {
+        guard let root = vaultRoot?.standardizedFileURL.path else { return url.lastPathComponent }
+        let path = url.standardizedFileURL.path
+        return path.hasPrefix(root + "/") ? String(path.dropFirst(root.count + 1)) : url.lastPathComponent
     }
 
     /// Compare two file URLs that may have different symlink representations (macOS /var ↔ /private/var).
@@ -1053,16 +1047,20 @@ public final class AppState: ObservableObject {
     // MARK: - File management (file tree)
 
     /// An undoable sidebar file operation (see `undoLastFileOperation`).
+    /// A file's text before and after Hanji rewrote it (a replace, a rename's links).
+    public typealias RewrittenNote = (url: URL, previous: String, replaced: String)
+
     public enum FileOperation {
         case created(URL)
-        case renamed(from: URL, to: URL)
-        case moved(from: URL, to: URL)
+        /// `links`: the notes whose links to it were rewritten, undone with it.
+        case renamed(from: URL, to: URL, links: [RewrittenNote])
+        case moved(from: URL, to: URL, links: [RewrittenNote])
         case trashed(original: URL, trashed: URL)
         case copied(URL)          // duplicate / import results
         /// A vault-wide replace, with each rewritten file's text before and after.
         /// One entry covers the whole batch so undo can't leave the vault
         /// half-replaced; the "after" text lets undo skip files changed since.
-        case replaced([(url: URL, previous: String, replaced: String)])
+        case replaced([RewrittenNote])
     }
 
     @Published public private(set) var fileOperations: [FileOperation] = []
@@ -1094,7 +1092,9 @@ public final class AppState: ObservableObject {
                 break
             }
             _ = try? v.delete(url)                          // to Trash, still recoverable
-        case .renamed(let from, let to), .moved(let from, let to):
+        case .renamed(let from, let to, let links), .moved(let from, let to, let links):
+            // The rewritten notes first: their URLs are the ones after the move.
+            reportUnrestored(restore(links), after: "the rename")
             let followers = tabsFollowing(to)
             if (try? fm.moveItem(at: to, to: from)) != nil { retarget(followers, to: from) }
         case .trashed(let original, let trashed):
@@ -1103,22 +1103,99 @@ public final class AppState: ObservableObject {
             if fm.fileExists(atPath: original.path) { _ = try? v.delete(original) }
             try? fm.moveItem(at: trashed, to: original)
         case .replaced(let entries):
-            // Only files that still hold exactly what the replace wrote. One edited
-            // since keeps the newer text, and one moved or deleted since stays
-            // gone — an undo must not destroy newer work or resurrect a note.
-            // Same atomic write path the replace used.
-            var skipped: [String] = []
-            for entry in entries {
-                let file = MarkdownFile(url: entry.url)
-                guard (try? v.read(file)) == entry.replaced else { skipped.append(file.name); continue }
-                try? v.write(entry.previous, to: file)
-            }
-            if !skipped.isEmpty {
-                notice = Notice(title: "Some notes weren\u{2019}t reverted",
-                                message: "\(Self.list(skipped)) changed after the replace, so Hanji left \(skipped.count == 1 ? "it" : "them") as \(skipped.count == 1 ? "it is" : "they are").")
-            }
+            reportUnrestored(restore(entries), after: "the replace")
         }
         reloadTree()
+    }
+
+    /// Put back the texts Hanji rewrote — only in files that still hold exactly
+    /// what it wrote. One edited since keeps the newer text, and one moved or
+    /// deleted since stays gone: an undo must not destroy newer work or
+    /// resurrect a note. Same atomic write path the rewrite used. Returns the
+    /// names of the files left alone.
+    private func restore(_ notes: [RewrittenNote]) -> [String] {
+        guard let v = vault else { return [] }
+        var skipped: [String] = []
+        for entry in notes {
+            let file = MarkdownFile(url: entry.url)
+            guard (try? v.read(file)) == entry.replaced else { skipped.append(file.name); continue }
+            try? v.write(entry.previous, to: file)
+        }
+        return skipped
+    }
+
+    private func reportUnrestored(_ skipped: [String], after what: String) {
+        guard !skipped.isEmpty else { return }
+        notice = Notice(title: "Some notes weren\u{2019}t reverted",
+                        message: "\(Self.list(skipped)) changed after \(what), so Hanji left \(skipped.count == 1 ? "it" : "them") as \(skipped.count == 1 ? "it is" : "they are").")
+    }
+
+    /// Rewrite every link to the notes `url` → `newURL` moved (one note, or every
+    /// note under a folder), announcing how many changed. `before`: every
+    /// note's path before the move, in file order.
+    private func rewriteLinks(from url: URL, to newURL: URL, before: [String]) -> [RewrittenNote] {
+        guard let v = vault else { return [] }
+        let afterFiles = (try? v.markdownFiles()) ?? []
+        let after = afterFiles.map { relativePath(of: $0.url) }
+        let oldRel = relativePath(of: url), newRel = relativePath(of: newURL)
+        var moves: [String: String] = [:]
+        for path in after {
+            if path == newRel { moves[oldRel] = path }
+            else if path.hasPrefix(newRel + "/") { moves[oldRel + path.dropFirst(newRel.count)] = path }
+        }
+        guard !moves.isEmpty else { return [] }
+        // Every form of link to a note contains its file name, so a note without
+        // one of the names can't link to them — skip it without parsing.
+        let names = Set(moves.keys.map { (($0 as NSString).lastPathComponent as NSString).deletingPathExtension })
+        var rewritten: [RewrittenNote] = []
+        var count = 0
+        for file in afterFiles {
+            guard let text = try? v.read(file),
+                  names.contains(where: { text.range(of: $0, options: .caseInsensitive) != nil }) else { continue }
+            let result = LinkRewrite.rewrite(text, moves: moves, before: before, after: after)
+            guard result.count > 0, (try? v.write(result.text, to: file)) != nil else { continue }
+            rewritten.append((file.url, text, result.text))
+            count += result.count
+        }
+        if count > 0 {
+            announce("Updated \(count) link\(count == 1 ? "" : "s") in \(rewritten.count) note\(rewritten.count == 1 ? "" : "s")")
+        }
+        return rewritten
+    }
+
+    /// A short message for the status bar ("Updated 3 links in 2 notes"),
+    /// cleared after a few seconds.
+    @Published public private(set) var status: String?
+    private var statusClear: DispatchWorkItem?
+
+    private func announce(_ message: String) {
+        status = message
+        statusClear?.cancel()
+        let clear = DispatchWorkItem { [weak self] in self?.status = nil }
+        statusClear = clear
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: clear)
+    }
+
+    /// Turn the unlinked mention at `range` in `sourcePath` into a link to
+    /// `targetPath` — `[[Name|text]]` when the text's case differs, path form
+    /// when another note shares the name. Writes nothing (false) when that
+    /// range no longer holds such a mention. Undoable like a replace.
+    public func linkMention(sourcePath: String, range: Range<Int>, targetPath: String) -> Bool {
+        guard let v = vault, let url = urlInsideVault(sourcePath) else { return false }
+        settleSaves()
+        let file = MarkdownFile(url: url)
+        let name = ((targetPath as NSString).lastPathComponent as NSString).deletingPathExtension
+        guard let text = try? v.read(file), Mentions.unlinked(of: name, in: text).contains(range) else { return false }
+        let ns = text as NSString
+        let nsRange = NSRange(location: range.lowerBound, length: range.count)
+        let shown = ns.substring(with: nsRange)
+        let paths = files.map { relativePath(of: $0.url) }
+        let target = LinkTarget.resolve(name, in: paths) == targetPath ? name : String(targetPath.dropLast(3))
+        let updated = ns.replacingCharacters(in: nsRange, with: shown == target ? "[[\(target)]]" : "[[\(target)|\(shown)]]")
+        guard (try? v.write(updated, to: file)) != nil else { return false }
+        record(.replaced([(url, text, updated)]))
+        reloadTree()
+        return true
     }
 
     // MARK: - Vault-wide find & replace
@@ -1209,9 +1286,11 @@ public final class AppState: ObservableObject {
         // exists and stat(2) can compare inodes reliably — including every open
         // note inside a renamed folder.
         let followers = tabsFollowing(url)
+        let before = files.map { relativePath(of: $0.url) }
         let newURL = try v.rename(url, to: newName)
         if newURL.standardizedFileURL != url.standardizedFileURL {
-            record(.renamed(from: url, to: newURL))
+            let links = rewriteLinks(from: url, to: newURL, before: before)
+            record(.renamed(from: url, to: newURL, links: links))
             retarget(followers, to: newURL)
             retargetHistory(from: url, to: newURL)
         }
@@ -1226,9 +1305,11 @@ public final class AppState: ObservableObject {
         guard let v = vault else { throw VaultError.invalidName }
         settleSaves()
         let followers = tabsFollowing(url)   // before the move, while inodes are valid
+        let before = files.map { relativePath(of: $0.url) }
         let newURL = try v.move(url, into: folder)
         if newURL.standardizedFileURL != url.standardizedFileURL {
-            record(.moved(from: url, to: newURL))
+            let links = rewriteLinks(from: url, to: newURL, before: before)
+            record(.moved(from: url, to: newURL, links: links))
             retarget(followers, to: newURL)
             retargetHistory(from: url, to: newURL)
         }

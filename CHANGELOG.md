@@ -25,6 +25,9 @@ based on [Keep a Changelog](https://keepachangelog.com/); this project will use
 - ⌘T (File ▸ New Tab) opens a new note in a new tab, like ⌘N.
 - The toolbar no longer repeats the window title, and Back/Forward are smaller.
 - Move Tab Left/Right is now ⌥⇧⌘← / ⌥⇧⌘→, so it no longer switches Spaces (#8).
+- Renaming or moving a note or folder rewrites the links to it across the
+  vault; the status bar reports the count, and ⌥⌘Z undoes both (#12).
+- Backlinks lists unlinked mentions, each with a Link button (#12).
 
 ## [0.1.0] - 2026-09-26
 

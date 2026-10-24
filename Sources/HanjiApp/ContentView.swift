@@ -554,11 +554,15 @@ struct ContentView: View {
         }
     }
 
-    /// Thin footer bar with plugin status items (e.g. word count).
+    /// Thin footer bar with plugin status items (e.g. word count), and on the
+    /// left a passing message from the app ("Updated 3 links in 2 notes").
     @ViewBuilder private var statusBar: some View {
-        if appState.selectedFile != nil, !pluginManager.statusItems.isEmpty {
+        if appState.status != nil || (appState.selectedFile != nil && !pluginManager.statusItems.isEmpty) {
             Divider()
             HStack(spacing: 12) {
+                if let status = appState.status {
+                    Text(status).font(.caption).foregroundStyle(.secondary)
+                }
                 Spacer()
                 ForEach(pluginManager.statusItems) { item in
                     item.makeView()

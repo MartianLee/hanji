@@ -67,7 +67,7 @@ public enum LinkParser {
     /// non-empty and stops at `)` or whitespace. Hand-rolled because the regex
     /// retried every `[` and rescanned to the same `]` — or to the end of the note
     /// when there is none: 20k `[[` on one line took seconds on each click.
-    private static func markdownLinks(_ ns: NSString) -> [(whole: NSRange, dest: NSRange)] {
+    static func markdownLinks(_ ns: NSString) -> [(whole: NSRange, dest: NSRange)] {
         var out: [(whole: NSRange, dest: NSRange)] = []
         var closes = ForwardScan(ns) { ns, j in ns.character(at: j) == closeBracket }
         // `\s` in ICU is `\p{White_Space}`, which has no surrogates, so a lone

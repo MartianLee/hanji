@@ -135,6 +135,34 @@ public protocol WorkspaceActions: AnyObject {
     func folderPaths() -> [String]
     func pickNote(title: String, startingFolder: String?) -> String?
     func promptNewNotePath(suggestedName: String) -> String?
+    /// Turn the unlinked mention at `range` in `sourcePath` into a link to
+    /// `targetPath`; false (nothing written) when it is no longer there.
+    func linkMention(sourcePath: String, range: Range<Int>, targetPath: String) -> Bool
+}
+
+public extension WorkspaceActions {
+    func linkMention(sourcePath: String, range: Range<Int>, targetPath: String) -> Bool { false }
+}
+
+public extension MetadataQuerying {
+    func unlinkedMentions(ofNoteAt relativePath: String) -> [SDKMention] { [] }
+}
+
+/// A note naming another without linking to it (SDK-owned type).
+public struct SDKMention: Identifiable {
+    public let sourcePath: String
+    public let sourceTitle: String
+    public let snippet: String
+    public let matchRanges: [Range<Int>]   // UTF-16 ranges inside `snippet`
+    public let range: Range<Int>           // the mention, in the source note's text
+    public var id: String { "\(sourcePath):\(range.lowerBound)" }
+    public init(sourcePath: String, sourceTitle: String, snippet: String, matchRanges: [Range<Int>], range: Range<Int>) {
+        self.sourcePath = sourcePath
+        self.sourceTitle = sourceTitle
+        self.snippet = snippet
+        self.matchRanges = matchRanges
+        self.range = range
+    }
 }
 
 /// One backlink (SDK-owned type — the index implementation stays hidden).
@@ -172,6 +200,8 @@ public protocol ServiceRegistry: AnyObject {
 /// Surface ② (metadata queries): read access to the vault index.
 public protocol MetadataQuerying: AnyObject {
     func backlinks(toNoteAt relativePath: String) -> [SDKBacklink]
+    /// Places other notes name the note at `relativePath` without linking to it.
+    func unlinkedMentions(ofNoteAt relativePath: String) -> [SDKMention]
     /// Fires after the index absorbs changes (debounced upstream).
     var indexDidUpdate: AnyPublisher<Void, Never> { get }
 }

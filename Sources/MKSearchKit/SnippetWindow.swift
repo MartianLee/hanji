@@ -3,8 +3,8 @@ import Foundation
 /// Builds a context snippet around a position in a body: ±40 UTF-16 units,
 /// snapped to composed-character boundaries (surrogate-pair safe), newlines
 /// flattened, ellipses added, with highlight ranges for a needle (cap 5).
-enum SnippetWindow {
-    static func make(body: String, around center: NSRange, highlight needle: String)
+public enum SnippetWindow {
+    public static func make(body: String, around center: NSRange, highlight needle: String)
         -> (text: String, ranges: [Range<Int>]) {
         let ns = body as NSString
         let start = max(0, center.location - 40)

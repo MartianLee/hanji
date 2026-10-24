@@ -5,6 +5,7 @@ import Combine
 import ExtensionSDK
 import MKSearchKit
 import VaultKit
+import MarkdownCore
 
 /// Concrete host wiring AppState + PluginManager to the SDK surfaces.
 public final class Host: PluginHost, UIRegistry, EditorContext, CommandRegistry, WorkspaceActions, MetadataQuerying, ServiceRegistry {
@@ -127,6 +128,29 @@ public final class Host: PluginHost, UIRegistry, EditorContext, CommandRegistry,
             SDKBacklink(sourcePath: $0.sourcePath, sourceTitle: $0.sourceTitle,
                         snippet: $0.snippet, matchRanges: $0.matchRanges)
         }
+    }
+
+    public func unlinkedMentions(ofNoteAt relativePath: String) -> [SDKMention] {
+        let name = ((relativePath as NSString).lastPathComponent as NSString).deletingPathExtension
+        let candidates = (try? appState.searchIndex?.notes(containing: name, limit: 200)) ?? []
+        var out: [SDKMention] = []
+        // The index only narrows the search: offsets come from the file itself,
+        // which is what the Link button will edit.
+        for path in candidates where path != relativePath {
+            guard let text = appState.readNote(relativePath: path) else { continue }
+            let title = ((path as NSString).lastPathComponent as NSString).deletingPathExtension
+            for range in Mentions.unlinked(of: name, in: text) {
+                let (snippet, ranges) = SnippetWindow.make(body: text, around: NSRange(location: range.lowerBound, length: range.count),
+                                                           highlight: name)
+                out.append(SDKMention(sourcePath: path, sourceTitle: title, snippet: snippet, matchRanges: ranges, range: range))
+                if out.count == 50 { return out }
+            }
+        }
+        return out
+    }
+
+    public func linkMention(sourcePath: String, range: Range<Int>, targetPath: String) -> Bool {
+        appState.linkMention(sourcePath: sourcePath, range: range, targetPath: targetPath)
     }
 
     public var indexDidUpdate: AnyPublisher<Void, Never> {
