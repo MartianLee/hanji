@@ -148,11 +148,11 @@ struct HanjiApp: App {
                 Button("Move Tab Right") {
                     if let id = appState.activeTabID { appState.moveTabToSide(id, .right) }
                 }
-                .keyboardShortcut(.rightArrow, modifiers: [.control, .command])
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .option, .shift])   // ⌃⌘ can belong to Spaces (#8)
                 Button("Move Tab Left") {
                     if let id = appState.activeTabID { appState.moveTabToSide(id, .left) }
                 }
-                .keyboardShortcut(.leftArrow, modifiers: [.control, .command])
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .option, .shift])
             }
             CommandGroup(after: .textEditing) {
                 // Routed to whatever NSTextView is first responder; AppKit reads the

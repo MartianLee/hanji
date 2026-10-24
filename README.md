@@ -90,7 +90,8 @@ To reproduce the tables:
   detection** and a non-modal reload / keep-mine banner; ⌘S saves on demand.
 
 **Workspace**
-- **Tabs and split panes**: drag to reorder, drop a tab on either edge to split.
+- **Tabs and split panes**: drag to reorder, drop a tab on either edge to split,
+  or send the active tab to the next pane with ⌥⇧⌘← / ⌥⇧⌘→.
   **Pin** a tab (its context menu, File ▸ Pin Tab, or ⌘P) to keep it from
   closing; the vault reopens its pinned notes next time.
 - **`[[` link suggestions**: type `[[` and pick a note (↑/↓, Return or Tab);
@@ -178,9 +179,6 @@ no XCTest). See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the design records in
 v0.1 — early, and under active development.
 
 - **Not built yet**: export / print.
-- **Move Tab Left/Right (⌃⌘←/→) collides with macOS Spaces switching** if you
-  have that enabled in System Settings ▸ Keyboard. Use the File menu items, or
-  rebind Spaces.
 - Vault-wide replace is literal only — no regex, and no per-occurrence review;
   it replaces every match at once (⌥⌘Z reverts the whole batch).
 - A few interactions (link-click navigation, checkbox toggle) are verified by
