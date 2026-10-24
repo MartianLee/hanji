@@ -71,3 +71,20 @@ func editorLinkPreviewChecks() {
     h.isReading = false; h.rebuild()
     expect(!c.isPreviewShown, "a mode switch closes it")
 }
+
+/// The pointer turns into a hand over what a click acts on.
+func editorClickableChecks() {
+    let note = "See [[Plan]], #tag and a mark[^1] but [x](https://a.b) is not a note.\n\n[^1]: Def"
+    let ns = note as NSString
+    guard let h = EditorHarness(note, cursorOffset: ns.length) else { expect(false, "editor"); return }
+    defer { h.close() }
+    guard let c = h.textView.delegate as? MarkdownEditorView.Coordinator else { expect(false, "coordinator"); return }
+    expect(c.isClickable(at: ns.range(of: "Plan").location), "a wikilink")
+    expect(c.isClickable(at: ns.range(of: "#tag").location + 1), "a tag")
+    expect(c.isClickable(at: ns.range(of: "[^1]").location + 2), "a footnote mark")
+    expect(c.isClickable(at: ns.range(of: "[^1]:").location + 1), "a footnote label")
+    expect(!c.isClickable(at: ns.range(of: "See").location), "plain text")
+    expect(!c.isClickable(at: ns.range(of: "https").location), "an external link isn't followed, so no hand")
+    h.type("x")
+    expect(c.isClickable(at: ns.range(of: "Plan").location + 1), "still right after an edit")
+}

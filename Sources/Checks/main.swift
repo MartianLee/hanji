@@ -24,6 +24,7 @@ runChecks([
     ("RenderedText", renderedTextChecks),
     ("EditorEmbed", editorEmbedChecks),
     ("EditorLinkPreview", editorLinkPreviewChecks),
+    ("EditorClickable", editorClickableChecks),
     ("PaneProxy", paneProxyChecks),
     ("PaneSplit", paneSplitChecks),
     ("TabReorder", tabReorderChecks),

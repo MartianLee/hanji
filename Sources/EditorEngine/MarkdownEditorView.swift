@@ -47,6 +47,9 @@ final class ClickableTextView: NSTextView {
     /// The pointer resting on text: the character under it (nil when it left
     /// the view) and the modifier keys held — for link previews.
     var onHover: ((Int?, NSEvent.ModifierFlags) -> Void)?
+    /// Whether a click at an offset does something (a link, a tag, a footnote
+    /// mark) — the pointer becomes a hand there.
+    var isClickable: ((Int) -> Bool)?
     private var hoverArea: NSTrackingArea?
     private var hoverPoint: NSPoint?
 
@@ -62,7 +65,15 @@ final class ClickableTextView: NSTextView {
         super.mouseMoved(with: event)
         let p = convert(event.locationInWindow, from: nil)
         hoverPoint = p
-        onHover?(characterIndexForInsertion(at: p), event.modifierFlags)
+        let offset = characterIndexForInsertion(at: p)
+        onHover?(offset, event.modifierFlags)
+        // After super, which puts the I-beam back on every move.
+        if isClickable?(offset) == true { NSCursor.pointingHand.set() }
+    }
+    override func cursorUpdate(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        if isClickable?(characterIndexForInsertion(at: p)) == true { NSCursor.pointingHand.set() }
+        else { super.cursorUpdate(with: event) }
     }
     override func flagsChanged(with event: NSEvent) {
         super.flagsChanged(with: event)
@@ -488,6 +499,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
         }
         textView.onBecameFirstResponder = { [weak coordinator = context.coordinator] in coordinator?.onFocus?() }
         textView.onResignedFirstResponder = { [weak coordinator = context.coordinator] in coordinator?.closeLinkCompletion() }
+        textView.isClickable = { [weak coordinator = context.coordinator, weak textView] offset in
+            guard let coordinator, let textView else { return false }
+            return coordinator.clickTargets.isClickable(at: offset, in: textView.string as NSString)
+        }
         textView.onHover = { [weak coordinator = context.coordinator] offset, modifiers in
             coordinator?.hover(at: offset, modifiers: modifiers)
         }
@@ -613,6 +628,12 @@ public struct MarkdownEditorView: NSViewRepresentable {
         /// carries the text binding, which in split view changes as focus moves
         /// between panes. A stale one sends edits to another note's buffer.
         lazy var linkPreview = LinkPreviewController(coordinator: self)
+        let clickTargets = ClickTargets()
+        /// Whether a click at `offset` acts on something (for the pointer).
+        public func isClickable(at offset: Int) -> Bool {
+            guard let textView else { return false }
+            return clickTargets.isClickable(at: offset, in: textView.string as NSString)
+        }
         /// The pointer rests at `offset` (nil: it left) with `modifiers` held.
         public func hover(at offset: Int?, modifiers: NSEvent.ModifierFlags) {
             linkPreview.hover(at: offset, modifiers: modifiers)

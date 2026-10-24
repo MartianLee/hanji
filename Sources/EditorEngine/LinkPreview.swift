@@ -17,8 +17,6 @@ final class LinkPreviewController {
     private var shownLink: Range<Int>?
     private var pending: (link: Range<Int>, work: DispatchWorkItem)?
     private var closing: DispatchWorkItem?
-    /// The note's links, kept until the text changes (asked on every pointer move).
-    private var links: (text: NSString, refs: [LinkRef])?
 
     init(coordinator: MarkdownEditorView.Coordinator) { self.coordinator = coordinator }
 
@@ -27,7 +25,7 @@ final class LinkPreviewController {
     func hover(at offset: Int?, modifiers: NSEvent.ModifierFlags) {
         guard let coordinator, let textView = coordinator.textView else { return }
         let allowed = coordinator.parent.isReading || modifiers.contains(.command)
-        guard allowed, let offset, let link = link(at: offset, in: textView.string as NSString) else {
+        guard allowed, let offset, let link = coordinator.clickTargets.link(at: offset, in: textView.string as NSString) else {
             pending?.work.cancel(); pending = nil
             scheduleClose()
             return
@@ -47,13 +45,6 @@ final class LinkPreviewController {
         popover?.close()
         popover = nil
         shownLink = nil
-    }
-
-    private func link(at offset: Int, in text: NSString) -> LinkRef? {
-        if links.map({ !$0.text.isEqual(to: text as String) }) ?? true {
-            links = (text.copy() as! NSString, LinkParser.links(in: text as String))
-        }
-        return links?.refs.first { $0.range.lowerBound <= offset && offset < $0.range.upperBound }
     }
 
     private func show(_ link: LinkRef) {
