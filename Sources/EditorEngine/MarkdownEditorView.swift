@@ -404,9 +404,17 @@ public struct MarkdownEditorView: NSViewRepresentable {
     /// The `cursorOffset` jump puts its line at the top of the view (an outline
     /// click) instead of just bringing the caret into view.
     public var jumpsToTop: Bool
+    /// The `cursorOffset` jump puts this offset's line at the top of the view
+    /// (a tab shown again where it was left), whatever the caret's line.
+    public var jumpTopLine: Int?
     /// Called with the start offset of the top visible line as the view scrolls
-    /// (live editor only), at most once per runloop turn.
+    /// (an inactive pane's editor too), at most once per runloop turn.
     public var onViewportTopChange: ((Int) -> Void)?
+    /// Where the editor starts when it's made with no jump pending for it: the
+    /// caret, and the line at the top. How an inactive pane — which jumps
+    /// don't reach — comes back where its note was left. Applied once.
+    public var startCaret: Int?
+    public var startTopLine: Int?
     /// The note a link target names (title and text), for embeds and link
     /// previews; nil when there's no such note.
     public var notePreview: ((String) -> NotePreview?)?
@@ -421,10 +429,15 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 onOpenTag: ((String) -> Void)? = nil,
                 onCaretMove: ((Int) -> Void)? = nil,
                 isReading: Bool = false,
-                jumpsToTop: Bool = false, onViewportTopChange: ((Int) -> Void)? = nil,
-                notePreview: ((String) -> NotePreview?)? = nil) {
+                jumpsToTop: Bool = false, jumpTopLine: Int? = nil,
+                onViewportTopChange: ((Int) -> Void)? = nil,
+                notePreview: ((String) -> NotePreview?)? = nil,
+                startCaret: Int? = nil, startTopLine: Int? = nil) {
         self.notePreview = notePreview
         self.jumpsToTop = jumpsToTop
+        self.jumpTopLine = jumpTopLine
+        self.startCaret = startCaret
+        self.startTopLine = startTopLine
         self.onViewportTopChange = onViewportTopChange
         self.onOpenTag = onOpenTag
         self.onCaretMove = onCaretMove
@@ -557,11 +570,14 @@ public struct MarkdownEditorView: NSViewRepresentable {
         // Every split pane is bound to the same pending jump, but its offset is
         // meant for the active pane's text; an inactive editor applying it would
         // land wrong and take focus, switching the active pane.
+        let length = (textView.string as NSString).length
         if isLive, let offset = cursorOffset,
            let tv = nsView.documentView as? NSTextView {
-            let clamped = max(0, min(offset, (tv.string as NSString).length))
+            let clamped = max(0, min(offset, length))
             tv.setSelectedRange(NSRange(location: clamped, length: 0))
-            if jumpsToTop {
+            if let top = jumpTopLine {
+                context.coordinator.scrollLineToTop(at: max(0, min(top, length)))
+            } else if jumpsToTop {
                 context.coordinator.scrollLineToTop(at: clamped)
             } else {
                 tv.scrollRangeToVisible(NSRange(location: clamped, length: 0))
@@ -569,7 +585,13 @@ public struct MarkdownEditorView: NSViewRepresentable {
             }
             tv.window?.makeFirstResponder(tv)
             DispatchQueue.main.async { self.cursorOffset = nil }
+        } else if !context.coordinator.appliedStart, startCaret != nil || startTopLine != nil {
+            // Not focused, not a jump: just this editor's view of its own note.
+            if let caret = startCaret { textView.setSelectedRange(NSRange(location: max(0, min(caret, length)), length: 0)) }
+            if let top = startTopLine { context.coordinator.scrollLineToTop(at: max(0, min(top, length))) }
+            else { textView.scrollRangeToVisible(textView.selectedRange()) }
         }
+        context.coordinator.appliedStart = true
     }
 
     public func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -656,6 +678,8 @@ public struct MarkdownEditorView: NSViewRepresentable {
 
         /// `isLive` as last applied, to catch this editor's pane taking focus.
         var appliedLive = true
+        /// The start position has had its one chance (the first update).
+        var appliedStart = false
 
         /// This editor's pane took focus (a click in its text, its tab) and the
         /// note it shows became the live one, with no jump: it stays scrolled
@@ -1598,7 +1622,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         private var viewportReportScheduled = false
         /// One report per runloop turn: a scroll gesture sends many bounds changes.
         private func reportViewportTop() {
-            guard parent.isLive, parent.onViewportTopChange != nil, !viewportReportScheduled else { return }
+            guard parent.onViewportTopChange != nil, !viewportReportScheduled else { return }
             viewportReportScheduled = true
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }

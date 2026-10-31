@@ -108,11 +108,11 @@ struct HanjiApp: App {
                     }
                     if let vaultPath = ProcessInfo.processInfo.environment["HANJI_OPEN_VAULT"] {
                         let url = URL(fileURLWithPath: (vaultPath as NSString).expandingTildeInPath)
-                        appState.openVault(at: url)
+                        appState.openVault(at: url, restoringWorkspace: false)   // probes start from a known state
                         if let first = appState.files.first { appState.open(first) }
                     } else if let recent = appState.recentVaults.first,
                               FileManager.default.fileExists(atPath: recent.path) {
-                        appState.openVault(at: recent)   // reopen last vault; user picks a note via ⌘O / the list
+                        appState.openVault(at: recent)   // reopen last vault, with the tabs it had open
                     }
                 }
         }

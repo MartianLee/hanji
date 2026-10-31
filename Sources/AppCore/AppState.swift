@@ -35,12 +35,19 @@ public final class AppState: ObservableObject {
     }
     @Published public var index: MetadataIndex = MetadataIndex()
     @Published public var recentVaults: [URL] = []
+    /// A caret jump for the live editor. Setting it (or clearing it) drops the
+    /// previous jump's placement below: a jump that wants one sets it after —
+    /// a search hit set right after opening a note mustn't be scrolled to the
+    /// line the note had at the top.
     @Published public var pendingCursorOffset: Int? {
-        didSet { if pendingCursorOffset == nil { pendingJumpToTop = false } }
+        didSet { pendingJumpToTop = false; pendingJumpTopLine = nil }
     }
     /// The pending jump puts its line at the top of the editor (an outline
     /// click), not merely in view. Cleared with the jump.
     @Published public var pendingJumpToTop = false
+    /// The pending jump puts this offset's line at the top (a tab shown again,
+    /// where it was left), with the caret wherever the jump puts it.
+    @Published public var pendingJumpTopLine: Int?
     @Published public var tree: [FileNode] = []
     /// Sidebar sort order; persisted, applies on the next (immediate) reload.
     @Published public var treeSort: TreeSort = .nameAsc {
@@ -95,6 +102,7 @@ public final class AppState: ObservableObject {
     private var vault: Vault?
     private var watcher: VaultWatcher?
     private var autosaveCancellable: AnyCancellable?
+    private var workspaceCancellable: AnyCancellable?
     private var conflictPaused = false
     private let autosaveInterval: TimeInterval
     public private(set) var searchIndex: SearchIndex?
@@ -123,6 +131,7 @@ public final class AppState: ObservableObject {
     private static let codeFontKey = "io.hanji.codeFont"
     private static func readingKey(_ root: URL) -> String { "io.hanji.reading.\(root.standardizedFileURL.path)" }
     private static func pinsKey(_ root: URL) -> String { "io.hanji.pinned.\(root.standardizedFileURL.path)" }
+    private static func workspaceKey(_ root: URL) -> String { "io.hanji.workspace.\(root.standardizedFileURL.path)" }
 
     public init(defaults: UserDefaults = .standard, autosaveInterval: TimeInterval = 0.8) {
         self.defaults = defaults
@@ -144,9 +153,16 @@ public final class AppState: ObservableObject {
         autosaveCancellable = $activeText
             .debounce(for: .seconds(autosaveInterval), scheduler: RunLoop.main)
             .sink { [weak self] _ in self?.autosave() }
+        // The workspace is also written on quit; this keeps a crash from losing
+        // more than the last second of tab changes.
+        workspaceCancellable = objectWillChange
+            .debounce(for: .seconds(1), scheduler: RunLoop.main)
+            .sink { [weak self] _ in self?.persistWorkspace() }
     }
 
-    public func openVault(at root: URL) {
+    /// Open a vault, bringing back the tabs it had open when it was last closed
+    /// (`restoringWorkspace: false` opens it with none — the test hook).
+    public func openVault(at root: URL, restoringWorkspace: Bool = true) {
         // Don't lose edits when switching vaults: save everything, and stay put if
         // some note's edits can't be written yet.
         let unsaved = saveAllForClose()
@@ -176,7 +192,8 @@ public final class AppState: ObservableObject {
         watcher = VaultWatcher(root: root) { [weak self] in self?.reloadTree() }
         searchIndex = try? SearchIndex(vaultRoot: root)
         scheduleReindex()
-        restorePins()
+        guard restoringWorkspace else { return }
+        if !restoreWorkspace() { restorePins() }
     }
 
     /// Rebuild tree/files/index from disk (our ops and the FS watcher both call
@@ -364,21 +381,24 @@ public final class AppState: ObservableObject {
         conflictPaused = b.externalConflict != nil || b.missingOnDisk
     }
 
-    /// Load the working fields from a tab's note (its buffer), and start the
-    /// editor at the note's top — unless the editor already shows the note
-    /// where the reader left it (`startAtTop: false`, a pane taking focus); it
-    /// then reports its own caret and top line.
-    private func hydrate(from tab: OpenTab, startAtTop: Bool = true) {
+    /// Load the working fields from a tab's note (its buffer), and take the
+    /// editor to where the tab left the note — unless the editor already shows
+    /// it there (`keepingView`, a pane taking focus); it then reports its own
+    /// caret and top line.
+    private func hydrate(from tab: OpenTab, keepingView: Bool = false) {
         selectedFile = tab.file
         activeText = tab.text
         savedText = tab.savedText
         externalConflict = tab.externalConflict
         missingOnDisk = tab.missingOnDisk
         conflictPaused = (tab.externalConflict != nil) || tab.missingOnDisk
-        guard startAtTop else { return }
-        pendingCursorOffset = 0
-        liveCaret = 0
-        viewportTop = 0
+        guard !keepingView else { return }
+        let length = (tab.text as NSString).length
+        let caret = min(max(tab.position.caret, 0), length)
+        pendingCursorOffset = caret
+        pendingJumpTopLine = tab.position.top.map { min(max($0, 0), length) }
+        liveCaret = caret
+        viewportTop = pendingJumpTopLine ?? 0
         sendFocus()
     }
 
@@ -469,11 +489,36 @@ public final class AppState: ObservableObject {
     /// Where the live editor's caret is; the editor reports each move, so Back
     /// can return to it.
     private var liveCaret = 0
-    public func caretMoved(to offset: Int) { liveCaret = offset; sendFocus() }
+    public func caretMoved(to offset: Int) {
+        liveCaret = offset
+        updateLiveTab { $0.position.caret = offset }
+        sendFocus()
+    }
 
     /// The start of the editor's top visible line, as it scrolls.
-    public func viewportMoved(top offset: Int) { viewportTop = offset; sendFocus() }
+    public func viewportMoved(top offset: Int) {
+        viewportTop = offset
+        updateLiveTab { $0.position.top = offset }
+        sendFocus()
+    }
     private var viewportTop = 0
+
+    /// The top visible line of the editor showing `tabID` — also an inactive
+    /// pane's, which can be scrolled without taking focus. Only the live tab's
+    /// moves the reader's focus.
+    public func viewportMoved(top offset: Int, inTab tabID: UUID) {
+        if let pane = activePane, pane.activeTabID == tabID { return viewportMoved(top: offset) }
+        for pane in panes {
+            if let idx = pane.tabs.firstIndex(where: { $0.id == tabID }) { pane.tabs[idx].position.top = offset }
+        }
+    }
+
+    /// Change the live tab in place. Not a published change: it runs on every
+    /// caret move.
+    private func updateLiveTab(_ change: (inout OpenTab) -> Void) {
+        guard let pane = activePane, let idx = pane.tabs.firstIndex(where: { $0.id == pane.activeTabID }) else { return }
+        change(&pane.tabs[idx])
+    }
 
     /// Where the reader is (see EditorContext.focusOffset). A subject, not
     /// @Published: it changes on every caret move, and objectWillChange would
@@ -484,8 +529,8 @@ public final class AppState: ObservableObject {
 
     /// Jump the editor to `offset` with its line at the top.
     public func reveal(offset: Int) {
-        pendingJumpToTop = true
         pendingCursorOffset = offset
+        pendingJumpToTop = true                  // after: setting the offset clears it
     }
 
     private var activeTabIndex: Int? {
@@ -522,11 +567,8 @@ public final class AppState: ObservableObject {
                 return
             }
             let leaving = here(pane.tabs[idx])
-            guard show(file, inTabAt: idx, of: pane) else { putBack(); return }
+            guard show(file, inTabAt: idx, of: pane, at: NotePosition(caret: entry.caret)) else { putBack(); return }
             if back { pane.tabs[idx].forward.append(leaving) } else { pane.tabs[idx].back.append(leaving) }
-            let caret = min(entry.caret, (activeText as NSString).length)
-            pendingCursorOffset = caret
-            liveCaret = caret
             return
         }
         objectWillChange.send()   // entries were dropped: the buttons may change
@@ -536,7 +578,9 @@ public final class AppState: ObservableObject {
     /// note it leaves is saved first; if that can't happen (a conflict or a
     /// missing file waiting on the user, a failed write), the tab stays where it
     /// is — unless another tab still shows that note, which keeps it open.
-    private func show(_ file: MarkdownFile, inTabAt idx: Int, of pane: Pane) -> Bool {
+    /// The note starts at `position`: its top, or a history entry's caret.
+    private func show(_ file: MarkdownFile, inTabAt idx: Int, of pane: Pane,
+                      at position: NotePosition = NotePosition()) -> Bool {
         let current = pane.tabs[idx]
         let buffer: NoteBuffer
         if let open = openBuffers().first(where: { urlSameFile($0.file.url, file.url) }) {
@@ -563,6 +607,7 @@ public final class AppState: ObservableObject {
         }
         objectWillChange.send()
         pane.tabs[idx].buffer = buffer
+        pane.tabs[idx].position = position
         hydrate(from: pane.tabs[idx])
         return true
     }
@@ -667,7 +712,7 @@ public final class AppState: ObservableObject {
         guard id != activePaneID, let target = panes.first(where: { $0.id == id }) else { return }
         flushPendingSave()
         activePaneID = id
-        if let tab = target.tabs.first(where: { $0.id == target.activeTabID }) { hydrate(from: tab, startAtTop: false) }
+        if let tab = target.tabs.first(where: { $0.id == target.activeTabID }) { hydrate(from: tab, keepingView: true) }
         else { clearActive() }
     }
 
@@ -780,6 +825,7 @@ public final class AppState: ObservableObject {
     /// in flight. Returns the notes whose edits are still only in memory — a
     /// failed write or an unresolved conflict — so the caller can stop and say so.
     public func saveAllForClose() -> [String] {
+        persistWorkspace()                       // the tabs to reopen with the vault
         applyAutosaveFailures()                  // waits for in-flight autosaves too
         var unsaved: [String] = []
         if !flushPendingSave(), let file = selectedFile { unsaved.append(file.name) }
@@ -1033,6 +1079,92 @@ public final class AppState: ObservableObject {
         }
         if let first = pane.tabs.first, first.id != pane.activeTabID { switchTab(first.id) }
         persistPins()
+    }
+
+    // MARK: - Workspace
+
+    /// The open tabs of a vault, as stored for the next time it's opened.
+    private struct Workspace: Codable {
+        struct Tab: Codable {
+            var path: String                     // vault-relative
+            var pinned: Bool
+            var reading: Bool
+            var position: NotePosition
+        }
+        struct PaneLayout: Codable {
+            var tabs: [Tab]
+            var shown: Int?                      // index of the tab the pane shows
+        }
+        var panes: [PaneLayout]
+        var activePane: Int
+    }
+
+    /// Remember the vault's tabs: every pane's, in order, with pins, reading
+    /// mode, which one each pane shows, the active pane, and where each note
+    /// was left. Notes outside the vault aren't kept.
+    private func persistWorkspace() {
+        guard let root = vaultRoot else { return }
+        let prefix = root.standardizedFileURL.path + "/"
+        let layouts = panes.map { pane -> Workspace.PaneLayout in
+            var tabs: [Workspace.Tab] = []
+            var shown: Int?
+            for tab in pane.tabs {
+                let path = tab.file.url.standardizedFileURL.path
+                guard path.hasPrefix(prefix) else { continue }
+                if tab.id == pane.activeTabID { shown = tabs.count }
+                tabs.append(Workspace.Tab(path: String(path.dropFirst(prefix.count)), pinned: tab.isPinned,
+                                          reading: tab.isReading, position: tab.position))
+            }
+            return Workspace.PaneLayout(tabs: tabs, shown: shown)
+        }
+        let workspace = Workspace(panes: layouts, activePane: panes.firstIndex { $0.id == activePaneID } ?? 0)
+        // The debounced save follows every pause in typing; most find nothing new.
+        guard let data = try? JSONEncoder().encode(workspace), data != storedWorkspace[root] else { return }
+        defaults.set(data, forKey: Self.workspaceKey(root))
+        storedWorkspace[root] = data
+    }
+    /// What `persistWorkspace` last wrote, per vault.
+    private var storedWorkspace: [URL: Data] = [:]
+
+    /// Reopen the vault's stored tabs, each note where it was left. Notes gone
+    /// since (or no longer readable) drop out, a pane left without tabs goes,
+    /// and a pane whose shown tab went shows its neighbour, as on close. False
+    /// when nothing is stored (a vault last opened by an older build).
+    private func restoreWorkspace() -> Bool {
+        guard let root = vaultRoot, let vault, let data = defaults.data(forKey: Self.workspaceKey(root)),
+              let workspace = try? JSONDecoder().decode(Workspace.self, from: data) else { return false }
+        var opened: [String: OpenTab] = [:]      // a note in both panes is one buffer
+        var restored: [(pane: Pane, wasActive: Bool)] = []
+        for (paneIndex, layout) in workspace.panes.enumerated() {
+            var tabs: [OpenTab] = []
+            var shown: UUID?
+            for (i, saved) in layout.tabs.enumerated() {
+                guard let url = urlInsideVault(saved.path),
+                      let file = files.first(where: { $0.url.standardizedFileURL == url }),
+                      !tabs.contains(where: { $0.file.url.standardizedFileURL == url }) else { continue }
+                var tab: OpenTab
+                if let other = opened[saved.path] {
+                    tab = OpenTab(sharing: other)
+                } else {
+                    guard let text = try? vault.read(file) else { continue }
+                    tab = OpenTab(file: file, text: text)
+                    opened[saved.path] = tab
+                }
+                tab.isPinned = saved.pinned
+                tab.isReading = saved.reading
+                tab.position = saved.position
+                if i == layout.shown || (shown == nil && layout.shown.map { i > $0 } == true) { shown = tab.id }
+                tabs.append(tab)
+            }
+            guard !tabs.isEmpty else { continue }
+            restored.append((Pane(tabs: tabs, activeTabID: shown ?? tabs.last?.id), paneIndex == workspace.activePane))
+        }
+        guard !restored.isEmpty else { return true }
+        panes = restored.map(\.pane)
+        let active = restored.first(where: \.wasActive)?.pane ?? panes[0]
+        activePaneID = active.id
+        if let tab = active.tabs.first(where: { $0.id == active.activeTabID }) { hydrate(from: tab) }
+        return true
     }
 
     // MARK: - Recent vaults

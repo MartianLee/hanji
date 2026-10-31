@@ -39,6 +39,9 @@ public struct OpenTab: Identifiable, Equatable {
     /// the ones back navigation stepped away from, for forward.
     public internal(set) var back: [NavigationEntry] = []
     public internal(set) var forward: [NavigationEntry] = []
+    /// Where its note was left: kept up to date while the tab is shown, and
+    /// where showing it again (or reopening the vault) goes back to.
+    public internal(set) var position = NotePosition()
 
     public var file: MarkdownFile {
         get { buffer.file } nonmutating set { buffer.file = newValue }
@@ -67,10 +70,23 @@ public struct OpenTab: Identifiable, Equatable {
     init(sharing other: OpenTab) {
         self.id = UUID()
         self.buffer = other.buffer
+        self.position = other.position
     }
 
     public static func == (a: OpenTab, b: OpenTab) -> Bool {
         a.id == b.id && a.buffer === b.buffer && a.isPinned == b.isPinned && a.isReading == b.isReading
+    }
+}
+
+/// Where a note was left in a tab: the caret, and the start of the line at the
+/// top of the view — nil until the view has said, and then showing the note
+/// just brings the caret into view.
+public struct NotePosition: Equatable, Codable {
+    public var caret: Int
+    public var top: Int?
+    public init(caret: Int = 0, top: Int? = nil) {
+        self.caret = caret
+        self.top = top
     }
 }
 

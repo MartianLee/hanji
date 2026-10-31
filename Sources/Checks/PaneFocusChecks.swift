@@ -4,9 +4,10 @@ import AppCore
 import EditorEngine
 import MKSearchKit
 
-/// The two panes of a split, wired to the editor the way ContentView's
-/// `paneView` wires them: the active pane edits the live buffer, the other one
-/// shows a snapshot, and focusing an editor makes its pane the active one.
+/// The panes of a split, wired to the editor the way ContentView's `paneView`
+/// wires them: the active pane edits the live buffer, the other one shows a
+/// snapshot, focusing an editor makes its pane the active one, and each
+/// editor starts where its tab was left.
 private struct SplitEditors: View {
     @ObservedObject var appState: AppState
     var body: some View {
@@ -21,56 +22,43 @@ private struct SplitEditors: View {
                         isLive: isActive,
                         onCaretMove: { appState.caretMoved(to: $0) },
                         jumpsToTop: isActive && appState.pendingJumpToTop,
-                        onViewportTopChange: { appState.viewportMoved(top: $0) })
+                        jumpTopLine: isActive ? appState.pendingJumpTopLine : nil,
+                        onViewportTopChange: { appState.viewportMoved(top: $0, inTab: tab.id) },
+                        startCaret: tab.position.caret, startTopLine: tab.position.top)
                 }
             }
         }
     }
 }
 
-/// Moving into the other pane of a split — a click anywhere in its text, or on
-/// its tab — makes that pane the active one and leaves it where it was: the
-/// scroll stays, a click puts the caret where it landed, and typing goes there.
-/// (It used to jump the pane to its top with the caret at the start, so the
-/// only way across without losing your place was not to cross at all.)
-func paneFocusChecks() {
-    _ = NSApplication.shared
-    let fm = FileManager.default
-    let vault = fm.temporaryDirectory.appendingPathComponent("mk-panefocus-\(UUID().uuidString)")
-    try? fm.createDirectory(at: vault, withIntermediateDirectories: true)
-    defer { try? fm.removeItem(at: SearchIndex.indexFileURL(forVault: vault)); try? fm.removeItem(at: vault) }
-    func note(_ name: String) -> String { (0..<200).map { "## \(name) \($0)\ntext under \($0)\n" }.joined() }
-    let left = note("Left"), right = note("Right")
-    try? left.write(to: vault.appendingPathComponent("A.md"), atomically: true, encoding: .utf8)
-    try? right.write(to: vault.appendingPathComponent("B.md"), atomically: true, encoding: .utf8)
-    let suite = "mk-panefocus-\(UUID().uuidString)"
-    let s = AppState(defaults: UserDefaults(suiteName: suite)!)
-    defer { UserDefaults().removePersistentDomain(forName: suite) }
-    s.openVault(at: vault)
-    s.openNote(relativePath: "A.md", newTab: true)
-    s.openNote(relativePath: "B.md", newTab: true)
-    s.moveTabToSide(s.activeTabID!, .right)            // [[A], [B]], the right pane active
-    guard s.panes.count == 2 else { expect(false, "setup: two panes"); return }
-    let leftPane = s.panes[0].id, rightPane = s.panes[1].id
+/// A window showing `SplitEditors` for an AppState, and the left and right
+/// editors in it.
+private final class SplitHarness {
+    let window: NSWindow
+    let views: [NSTextView]
 
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 600),
+    init?(_ state: AppState) {
+        _ = NSApplication.shared
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 600),
                           styleMask: [.titled, .resizable], backing: .buffered, defer: false)
-    window.contentView = NSHostingView(rootView: SplitEditors(appState: s))
-    window.makeKeyAndOrderFront(nil)
-    func pump(_ t: Double = 0.3) { RunLoop.main.run(until: Date().addingTimeInterval(t)) }
-    pump(0.6)
-    func find(_ v: NSView) -> [NSTextView] { (v as? NSTextView).map { [$0] } ?? v.subviews.flatMap(find) }
-    let views = find(window.contentView!).sorted {
-        $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX
+        window.contentView = NSHostingView(rootView: SplitEditors(appState: state))
+        window.makeKeyAndOrderFront(nil)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        func find(_ v: NSView) -> [NSTextView] { (v as? NSTextView).map { [$0] } ?? v.subviews.flatMap(find) }
+        views = find(window.contentView!).sorted {
+            $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX
+        }
+        guard views.count == 2 else { expect(false, "setup: two editors, found \(views.count)"); return nil }
     }
-    guard views.count == 2 else { expect(false, "setup: two editors, found \(views.count)"); return }
-    let (leftView, rightView) = (views[0], views[1])
-    window.makeFirstResponder(rightView)
-    pump()
 
-    // A pane that has never been the active one may not be laid out for real
-    // yet (a reader scrolling it would lay it out as they go): lay it out, and
-    // make the view as tall as that, as the editor's own layOutNote does.
+    var left: NSTextView { views[0] }
+    var right: NSTextView { views[1] }
+
+    func pump(_ t: Double = 0.3) { RunLoop.main.run(until: Date().addingTimeInterval(t)) }
+
+    /// A pane that has never been the active one may not be laid out for real
+    /// yet (a reader scrolling it would lay it out as they go): lay it out, and
+    /// make the view as tall as that, as the editor's own layOutNote does.
     func frame(of offset: Int, in tv: NSTextView) -> NSRect? {
         guard let tlm = tv.textLayoutManager, let tcs = tlm.textContentManager else { return nil }
         tlm.ensureLayout(for: tlm.documentRange)
@@ -80,17 +68,21 @@ func paneFocusChecks() {
               let frag = tlm.textLayoutFragment(for: loc) else { return nil }
         return frag.layoutFragmentFrame.offsetBy(dx: tv.textContainerOrigin.x, dy: tv.textContainerOrigin.y)
     }
+
     func scroll(_ tv: NSTextView, toLineOf offset: Int) {
         guard let f = frame(of: offset, in: tv) else { return }
         tv.scroll(NSPoint(x: 0, y: f.minY))
         pump()
     }
+
+    /// Where the line at the top of `tv`'s view starts.
     func topLine(_ tv: NSTextView) -> Int? {
         guard let tlm = tv.textLayoutManager, let tcs = tlm.textContentManager else { return nil }
         let y = tv.visibleRect.minY - tv.textContainerOrigin.y
         guard let frag = tlm.textLayoutFragment(for: CGPoint(x: 0, y: max(0, y) + 1)) else { return nil }
         return tcs.offset(from: tcs.documentRange.location, to: frag.rangeInElement.location)
     }
+
     func click(_ tv: NSTextView, atLineOf offset: Int) {
         guard let f = frame(of: offset, in: tv) else { expect(false, "no line to click"); return }
         let p = tv.convert(NSPoint(x: f.minX + 30, y: f.midY), to: nil)
@@ -108,44 +100,127 @@ func paneFocusChecks() {
         tv.mouseDown(with: event(.leftMouseDown))
         pump()
     }
-    func offset(of line: String, in text: String) -> Int { (text as NSString).range(of: line + "\n").location }
+
+    func type(_ chars: String) {
+        window.sendEvent(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                          windowNumber: window.windowNumber, context: nil, characters: chars,
+                                          charactersIgnoringModifiers: chars, isARepeat: false, keyCode: 6)!)
+        pump()
+    }
+}
+
+/// A vault holding a long note per name ("## Name 0" … "## Name 199", each
+/// with a line of text under it), and the notes' text.
+private func longNoteVault(_ tag: String, _ names: [String: String]) -> (URL, [String: String]) {
+    let fm = FileManager.default
+    let vault = fm.temporaryDirectory.appendingPathComponent("mk-\(tag)-\(UUID().uuidString)")
+    try? fm.createDirectory(at: vault, withIntermediateDirectories: true)
+    var texts: [String: String] = [:]
+    for (file, heading) in names {
+        let text = (0..<200).map { "## \(heading) \($0)\ntext under \($0)\n" }.joined()
+        try? text.write(to: vault.appendingPathComponent(file), atomically: true, encoding: .utf8)
+        texts[file] = text
+    }
+    return (vault, texts)
+}
+
+private func offset(of line: String, in text: String) -> Int { (text as NSString).range(of: line + "\n").location }
+
+/// Moving into the other pane of a split — a click anywhere in its text, or on
+/// its tab — makes that pane the active one and leaves it where it was: the
+/// scroll stays, a click puts the caret where it landed, and typing goes there.
+/// (It used to jump the pane to its top with the caret at the start, so the
+/// only way across without losing your place was not to cross at all.)
+func paneFocusChecks() {
+    let (vault, texts) = longNoteVault("panefocus", ["A.md": "Left", "B.md": "Right"])
+    defer { try? FileManager.default.removeItem(at: SearchIndex.indexFileURL(forVault: vault))
+            try? FileManager.default.removeItem(at: vault) }
+    let (left, right) = (texts["A.md"]!, texts["B.md"]!)
+    let suite = "mk-panefocus-\(UUID().uuidString)"
+    let s = AppState(defaults: UserDefaults(suiteName: suite)!)
+    defer { UserDefaults().removePersistentDomain(forName: suite) }
+    s.openVault(at: vault)
+    s.openNote(relativePath: "A.md", newTab: true)
+    s.openNote(relativePath: "B.md", newTab: true)
+    s.moveTabToSide(s.activeTabID!, .right)            // [[A], [B]], the right pane active
+    guard s.panes.count == 2 else { expect(false, "setup: two panes"); return }
+    let leftPane = s.panes[0].id, rightPane = s.panes[1].id
+    guard let h = SplitHarness(s) else { return }
+    defer { h.window.close() }
+    h.window.makeFirstResponder(h.right)
+    h.pump()
 
     // The inactive left pane, scrolled down the note, gets a click in its text.
     let leftTop = offset(of: "## Left 100", in: left)
     let leftClicked = offset(of: "## Left 104", in: left)
-    scroll(leftView, toLineOf: leftTop)
-    expectEqual(topLine(leftView), leftTop, "setup: the left pane is scrolled to its line 100")
+    h.scroll(h.left, toLineOf: leftTop)
+    expectEqual(h.topLine(h.left), leftTop, "setup: the left pane is scrolled to its line 100")
     var carets: [Int] = []
     let token = s.focusOffset.sink { carets.append($0) }
     defer { token.cancel() }
-    click(leftView, atLineOf: leftClicked)
-    pump(0.4)
+    h.click(h.left, atLineOf: leftClicked)
+    h.pump(0.4)
     expectEqual(s.activePaneID, leftPane, "a click in the other pane's text makes it the active pane")
-    expectEqual(topLine(leftView), leftTop, "and the pane stays where it was scrolled")
-    let caret = leftView.selectedRange().location
+    expectEqual(h.topLine(h.left), leftTop, "and the pane stays where it was scrolled")
+    let caret = h.left.selectedRange().location
     expect(caret >= leftClicked && caret <= leftClicked + "## Left 104".count,
            "the caret goes where the click landed (\(caret), line at \(leftClicked))")
-    expect(window.firstResponder === leftView, "typing goes to the clicked pane")
+    expect(h.window.firstResponder === h.left, "typing goes to the clicked pane")
     expectEqual(carets.last, caret, "the app knows where that pane's caret is (outline, Back)")
 
     // What's typed there lands in its note.
-    window.sendEvent(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
-                                      windowNumber: window.windowNumber, context: nil, characters: "Z",
-                                      charactersIgnoringModifiers: "Z", isARepeat: false, keyCode: 6)!)
-    pump()
+    h.type("Z")
     expect(s.activeText.contains("Z") && s.selectedFile?.name == "A.md", "a key typed after the click edits the left note")
     expect(!(s.panes[1].tabs.first?.text.contains("Z") ?? true), "and not the right one")
 
     // Back across by its tab (TabBarView: focus the pane, switch to the tab it shows).
     let rightTop = offset(of: "## Right 60", in: right)
-    scroll(rightView, toLineOf: rightTop)
+    h.scroll(h.right, toLineOf: rightTop)
     s.focusPane(rightPane)
     if let shown = s.panes[1].activeTabID { s.switchTab(shown) }
-    pump(0.4)
+    h.pump(0.4)
     expectEqual(s.activePaneID, rightPane, "its tab makes the right pane active")
-    expectEqual(topLine(rightView), rightTop, "and it too stays where it was scrolled")
-    expect(window.firstResponder === rightView, "typing follows to the right pane")
-    expectEqual(carets.last, rightView.selectedRange().location, "and the app learns that pane's caret")
-    expectEqual(topLine(leftView), leftTop, "the left pane, left behind, doesn't move either")
-    window.close()
+    expectEqual(h.topLine(h.right), rightTop, "and it too stays where it was scrolled")
+    expect(h.window.firstResponder === h.right, "typing follows to the right pane")
+    expectEqual(carets.last, h.right.selectedRange().location, "and the app learns that pane's caret")
+    expectEqual(h.topLine(h.left), leftTop, "the left pane, left behind, doesn't move either")
+}
+
+/// Reopening the vault brings both panes of a split back where they were: the
+/// active pane through its jump, the other one through its editor's start
+/// position (jumps only reach the active pane).
+func workspaceRestoreEditorsChecks() {
+    let (vault, texts) = longNoteVault("restore-editors", ["A.md": "Left", "B.md": "Right"])
+    defer { try? FileManager.default.removeItem(at: SearchIndex.indexFileURL(forVault: vault))
+            try? FileManager.default.removeItem(at: vault) }
+    let (left, right) = (texts["A.md"]!, texts["B.md"]!)
+    let suite = "mk-restore-editors-\(UUID().uuidString)"
+    defer { UserDefaults().removePersistentDomain(forName: suite) }
+    let leftTop = offset(of: "## Left 100", in: left), leftCaret = offset(of: "## Left 104", in: left) + 3
+    let rightTop = offset(of: "## Right 60", in: right), rightCaret = offset(of: "## Right 62", in: right) + 4
+
+    // The session before: what the editors would have reported as the reader worked.
+    let before = AppState(defaults: UserDefaults(suiteName: suite)!)
+    before.openVault(at: vault)
+    before.openNote(relativePath: "A.md", newTab: true)
+    before.openNote(relativePath: "B.md", newTab: true)
+    before.moveTabToSide(before.activeTabID!, .right)
+    before.caretMoved(to: rightCaret)
+    before.viewportMoved(top: rightTop)
+    before.focusPane(before.panes[0].id)
+    before.caretMoved(to: leftCaret)
+    before.viewportMoved(top: leftTop)
+    _ = before.saveAllForClose()
+
+    let s = AppState(defaults: UserDefaults(suiteName: suite)!)
+    s.openVault(at: vault)
+    guard s.panes.count == 2 else { expect(false, "the split comes back (\(s.panes.count) panes)"); return }
+    guard let h = SplitHarness(s) else { return }
+    defer { h.window.close() }
+    h.pump(0.6)
+    expectEqual(h.topLine(h.left), leftTop, "the active left pane is back at its line 100")
+    expectEqual(h.left.selectedRange().location, leftCaret, "with its caret where it was")
+    expectEqual(h.topLine(h.right), rightTop, "the right pane is back at its line 60")
+    expectEqual(h.right.selectedRange().location, rightCaret, "with its caret where it was")
+    expect(h.window.firstResponder !== h.right, "the inactive pane doesn't take the keyboard")
 }

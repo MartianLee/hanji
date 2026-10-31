@@ -3,8 +3,8 @@ import AppCore
 import MKSearchKit
 
 /// Pinned tabs, as in Obsidian: a pinned tab can't be closed until it's
-/// unpinned, and the vault remembers its pinned notes — reopening the vault
-/// brings them back, pinned.
+/// unpinned, and reopening the vault brings it back pinned (with the vault's
+/// other tabs — see WorkspaceRestore).
 func pinChecks() {
     let fm = FileManager.default
     let vault = fm.temporaryDirectory.appendingPathComponent("mk-pin-\(UUID().uuidString)")
@@ -36,26 +36,27 @@ func pinChecks() {
     s.closeTab(tab("B.md")!.id)
     expect(tab("B.md") == nil, "unpinned, it closes normally")
 
-    // The vault remembers its pins — in tab order, and only the pinned ones.
+    // The vault remembers its tabs, in order, the pinned ones still pinned.
     open("Notes/D.md")
     s.togglePin(tab("D.md")!.id)
     s.togglePin(tab("A.md")!.id)
     s.openVault(at: other)
     expect(s.tabs.isEmpty, "another vault starts without them")
     s.openVault(at: vault)
-    expectEqual(s.tabs.map(\.file.name), ["A.md", "D.md"], "reopening the vault restores its pinned notes, in tab order")
-    expect(s.tabs.allSatisfy(\.isPinned), "still pinned")
-    expectEqual(s.selectedFile?.name, "A.md", "the first pinned note is the open one")
+    expectEqual(s.tabs.map(\.file.name), ["A.md", "C.md", "D.md"], "reopening the vault restores its tabs, in order")
+    expectEqual(s.tabs.filter(\.isPinned).map(\.file.name), ["A.md", "D.md"], "the pinned ones still pinned")
+    expectEqual(s.selectedFile?.name, "D.md", "the note that was showing shows again")
 
     // A pinned note that's renamed stays pinned under its new name.
     _ = try? s.rename(vault.appendingPathComponent("A.md"), to: "Renamed")
     s.openVault(at: other); s.openVault(at: vault)
-    expectEqual(s.tabs.map(\.file.name), ["Renamed.md", "D.md"], "a rename carries the pin along")
+    expectEqual(s.tabs.map(\.file.name), ["Renamed.md", "C.md", "D.md"], "a rename carries the tab along")
+    expect(s.tabs.first?.isPinned == true, "and its pin")
 
     // One deleted from Hanji is dropped from the pins.
     s.delete(vault.appendingPathComponent("Renamed.md"))
     s.openVault(at: other); s.openVault(at: vault)
-    expectEqual(s.tabs.map(\.file.name), ["D.md"], "a deleted note is no longer restored")
+    expectEqual(s.tabs.map(\.file.name), ["C.md", "D.md"], "a deleted note is no longer restored")
     if case .trashed(_, let trashed)? = s.fileOperations.last { try? fm.removeItem(at: trashed) }
 
     // The pin travels with the tab to the other pane.

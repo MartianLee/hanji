@@ -35,6 +35,12 @@ based on [Keep a Changelog](https://keepachangelog.com/); this project will use
 - Split view: clicking into the other pane — its text, its title or its tab —
   makes it the active pane and leaves it where it was. It used to jump to the
   top of the note with the caret at the start.
+- Reopening a vault (or relaunching Hanji) brings back its workspace: every
+  tab in both panes, which one each pane showed, the active pane, pins and
+  reading mode, and each note's caret and scroll. Only pinned tabs came back
+  before, the first one showing.
+- Going back to a tab returns to where its note was left, caret and scroll,
+  instead of the top.
 
 ## [0.1.0] - 2026-09-26
 

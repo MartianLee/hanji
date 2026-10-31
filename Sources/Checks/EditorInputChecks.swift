@@ -19,14 +19,23 @@ final class EditorHarness {
     /// False for a split pane that isn't the active one.
     var isLive = true
     var jumpsToTop = false
+    /// The line the jump puts at the top, when not the caret's.
+    var jumpTopLine: Int?
+    /// Where the editor starts when made with no jump pending.
+    var startCaret: Int?
+    var startTopLine: Int?
     /// Top-line offsets the editor reported as it scrolled.
     var viewportTops: [Int] = []
     var notePreview: ((String) -> NotePreview?)?
 
     init?(_ initial: String, cursorOffset initialOffset: Int? = nil, lineHeight: CGFloat = 1.3,
           maxLineWidth: CGFloat? = nil, width: CGFloat = 800, linkTargets: [String] = [],
-          isReading: Bool = false, notePreview: ((String) -> NotePreview?)? = nil) {
+          isReading: Bool = false, notePreview: ((String) -> NotePreview?)? = nil,
+          isLive: Bool = true, startCaret: Int? = nil, startTopLine: Int? = nil) {
         text = initial
+        self.isLive = isLive
+        self.startCaret = startCaret
+        self.startTopLine = startTopLine
         self.notePreview = notePreview
         self.linkTargets = linkTargets
         self.isReading = isReading
@@ -40,9 +49,10 @@ final class EditorHarness {
         let offset = Binding(get: { box?.cursorOffset ?? initialOffset }, set: { box?.cursorOffset = $0 })
         let host = NSHostingView(rootView: MarkdownEditorView(text: binding, cursorOffset: offset,
                                                               lineHeight: lineHeight, maxLineWidth: maxLineWidth,
-                                                              linkTargets: { linkTargets }, isLive: true, isReading: isReading,
+                                                              linkTargets: { linkTargets }, isLive: isLive, isReading: isReading,
                                                               jumpsToTop: false, onViewportTopChange: { box?.viewportTops.append($0) },
-                                                              notePreview: notePreview))
+                                                              notePreview: notePreview,
+                                                              startCaret: startCaret, startTopLine: startTopLine))
         hosting = host
         window.contentView = host
         window.makeKeyAndOrderFront(nil)
@@ -54,7 +64,8 @@ final class EditorHarness {
         // The initial jump happened during the pump above, before `box` existed to
         // take the editor's clearing of it; as in the app, it is spent by now.
         self.cursorOffset = nil
-        window.makeFirstResponder(tv)
+        // An inactive pane's editor doesn't have the keyboard.
+        if isLive { window.makeFirstResponder(tv) }
     }
 
     func pump(_ s: Double = 0.1) { RunLoop.main.run(until: Date().addingTimeInterval(s)) }
@@ -85,8 +96,10 @@ final class EditorHarness {
                                                lineHeight: lineHeight, maxLineWidth: maxLineWidth,
                                                textFont: textFont, codeFont: codeFont,
                                                linkTargets: { self.linkTargets }, isLive: isLive, isReading: isReading,
-                                               jumpsToTop: jumpsToTop, onViewportTopChange: { [weak self] in self?.viewportTops.append($0) },
-                                               notePreview: notePreview)
+                                               jumpsToTop: jumpsToTop, jumpTopLine: jumpTopLine,
+                                               onViewportTopChange: { [weak self] in self?.viewportTops.append($0) },
+                                               notePreview: notePreview,
+                                               startCaret: startCaret, startTopLine: startTopLine)
         pump(0.4)
     }
 

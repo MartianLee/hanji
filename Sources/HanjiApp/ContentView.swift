@@ -540,8 +540,11 @@ struct ContentView: View {
                     onCaretMove: { appState.caretMoved(to: $0) },
                     isReading: tab.isReading,
                     jumpsToTop: isActivePane && appState.pendingJumpToTop,
-                    onViewportTopChange: { appState.viewportMoved(top: $0) },
-                    notePreview: { appState.notePreview(for: $0) })
+                    jumpTopLine: isActivePane ? appState.pendingJumpTopLine : nil,
+                    onViewportTopChange: { appState.viewportMoved(top: $0, inTab: tab.id) },
+                    notePreview: { appState.notePreview(for: $0) },
+                    // A rebuilt editor (a relaunch, the panes changing) starts where its note was left.
+                    startCaret: tab.position.caret, startTopLine: tab.position.top)
                 .opacity(isActivePane ? 1 : 0.92)
             } else {
                 Text("Open a vault, then select a note")

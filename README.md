@@ -90,7 +90,7 @@ To reproduce the tables:
   ⌘ held (in reading mode, without) to see the note in a popover.
 - **Reading mode (⌘E, or the toolbar's book button)** per tab: the note fully rendered, the caret's line
   included, and not editable — checkboxes still toggle. Kept through links
-  and Back/Forward in the tab, and remembered for pinned tabs.
+  and Back/Forward in the tab, and when the vault is reopened.
 - **Outline** panel (right sidebar): the note's headings, indented by level;
   click one to jump there (its line at the top), and the section you're
   reading is highlighted.
@@ -102,7 +102,9 @@ To reproduce the tables:
 - **Tabs and split panes**: drag to reorder, drop a tab on either edge to split,
   or send the active tab to the next pane with ⌥⇧⌘← / ⌥⇧⌘→.
   **Pin** a tab (its context menu or File ▸ Pin Tab) to keep it from
-  closing; the vault reopens its pinned notes next time.
+  closing. Each tab goes back to where its note was left (caret and scroll)
+  when you return to it, and the vault reopens with the tabs, split and
+  places it had.
 - **`[[` link suggestions**: type `[[` and pick a note (↑/↓, Return or Tab);
   the link is closed for you, and a name two notes share links by path.
 - **Back / forward**, as in Obsidian: opening a note shows it in the current tab,
