@@ -32,12 +32,12 @@ private struct SplitEditors: View {
 }
 
 /// A window showing `SplitEditors` for an AppState, and the left and right
-/// editors in it.
+/// editors in it (`panes: 1` — one pane, its editor as `left`).
 private final class SplitHarness {
     let window: NSWindow
     let views: [NSTextView]
 
-    init?(_ state: AppState) {
+    init?(_ state: AppState, panes: Int = 2) {
         _ = NSApplication.shared
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 600),
                           styleMask: [.titled, .resizable], backing: .buffered, defer: false)
@@ -48,7 +48,7 @@ private final class SplitHarness {
         views = find(window.contentView!).sorted {
             $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX
         }
-        guard views.count == 2 else { expect(false, "setup: two editors, found \(views.count)"); return nil }
+        guard views.count == panes else { expect(false, "setup: \(panes) editor(s), found \(views.count)"); return nil }
     }
 
     var left: NSTextView { views[0] }
@@ -223,4 +223,46 @@ func workspaceRestoreEditorsChecks() {
     expectEqual(h.topLine(h.right), rightTop, "the right pane is back at its line 60")
     expectEqual(h.right.selectedRange().location, rightCaret, "with its caret where it was")
     expect(h.window.firstResponder !== h.right, "the inactive pane doesn't take the keyboard")
+}
+
+/// Clicking another tab and then back: the first tab comes back where it was
+/// left — scrolled to the same line, the caret where it was — not at the top.
+func tabSwitchKeepsPlaceChecks() {
+    let (vault, texts) = longNoteVault("tabswitch", ["A.md": "Left", "B.md": "Right"])
+    defer { try? FileManager.default.removeItem(at: SearchIndex.indexFileURL(forVault: vault))
+            try? FileManager.default.removeItem(at: vault) }
+    let (left, right) = (texts["A.md"]!, texts["B.md"]!)
+    let suite = "mk-tabswitch-\(UUID().uuidString)"
+    let s = AppState(defaults: UserDefaults(suiteName: suite)!)
+    defer { UserDefaults().removePersistentDomain(forName: suite) }
+    s.openVault(at: vault)
+    s.openNote(relativePath: "A.md", newTab: true)
+    s.openNote(relativePath: "B.md", newTab: true)
+    let (a, b) = (s.tabs[0].id, s.tabs[1].id)
+    s.switchTab(a)
+    guard let h = SplitHarness(s, panes: 1) else { return }
+    defer { h.window.close() }
+    let editor = h.left
+
+    let aTop = offset(of: "## Left 100", in: left)
+    h.scroll(editor, toLineOf: aTop)
+    h.click(editor, atLineOf: offset(of: "## Left 104", in: left))
+    let aCaret = editor.selectedRange().location
+    h.pump(0.3)
+    expectEqual(h.topLine(editor), aTop, "setup: A scrolled to its line 100")
+
+    s.switchTab(b)                                   // TabBarView's click on B
+    h.pump(0.5)
+    expect(editor.string.hasPrefix("## Right 0"), "setup: B is showing")
+    let bTop = offset(of: "## Right 40", in: right)
+    h.scroll(editor, toLineOf: bTop)
+    h.pump(0.3)
+
+    s.switchTab(a)                                   // and back on A
+    h.pump(0.5)
+    expectEqual(h.topLine(editor), aTop, "A comes back at the line it was scrolled to, not the top")
+    expectEqual(editor.selectedRange().location, aCaret, "with its caret where it was")
+    s.switchTab(b)
+    h.pump(0.5)
+    expectEqual(h.topLine(editor), bTop, "and so does B")
 }

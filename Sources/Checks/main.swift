@@ -70,6 +70,7 @@ runChecks([
     ("WorkspaceRestore", workspaceRestoreChecks),
     ("WorkspaceRestoreLegacyPins", workspaceRestoreLegacyPinsChecks),
     ("WorkspaceRestoreEditors", workspaceRestoreEditorsChecks),
+    ("TabSwitchKeepsPlace", tabSwitchKeepsPlaceChecks),
     ("TabPosition", tabPositionChecks),
     ("EditorJumpTopLine", editorJumpTopLineChecks),
     ("EditorStartPosition", editorStartPositionChecks),
