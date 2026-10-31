@@ -32,6 +32,9 @@ based on [Keep a Changelog](https://keepachangelog.com/); this project will use
 - Renaming or moving a note or folder rewrites the links to it across the
   vault; the status bar reports the count, and ⌥⌘Z undoes both (#12).
 - Backlinks lists unlinked mentions, each with a Link button (#12).
+- Split view: clicking into the other pane — its text, its title or its tab —
+  makes it the active pane and leaves it where it was. It used to jump to the
+  top of the note with the caret at the start.
 
 ## [0.1.0] - 2026-09-26
 

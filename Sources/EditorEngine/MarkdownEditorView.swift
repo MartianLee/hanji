@@ -516,6 +516,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         NotificationCenter.default.addObserver(context.coordinator, selector: #selector(Coordinator.storageDidProcessEditing(_:)),
                                                name: NSTextStorage.didProcessEditingNotification, object: textView.textStorage)
         context.coordinator.appliedReading = isReading
+        context.coordinator.appliedLive = isLive
         context.coordinator.refresh()
         return scroll
     }
@@ -548,6 +549,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
         // new mode at once, and the old note's top line means nothing in the new one.
         if context.coordinator.appliedReading != isReading {
             context.coordinator.setReading(isReading, holdingView: !textWasReplaced && cursorOffset == nil)
+        }
+        if context.coordinator.appliedLive != isLive {
+            context.coordinator.appliedLive = isLive
+            if isLive { context.coordinator.becameLive() }
         }
         // Every split pane is bound to the same pending jump, but its offset is
         // meant for the active pane's text; an inactive editor applying it would
@@ -647,6 +652,24 @@ public struct MarkdownEditorView: NSViewRepresentable {
             onOpenLink = view.onOpenLink
             onOpenTag = view.onOpenTag
             onFocus = view.onFocus
+        }
+
+        /// `isLive` as last applied, to catch this editor's pane taking focus.
+        var appliedLive = true
+
+        /// This editor's pane took focus (a click in its text, its tab) and the
+        /// note it shows became the live one, with no jump: it stays scrolled
+        /// where it was, caret included. Tell the app where that is (outline,
+        /// Back), and take the keyboard from the other pane's editor, which now
+        /// shows a snapshot that couldn't save what's typed. A title field being
+        /// edited keeps it.
+        func becameLive() {
+            guard let textView else { return }
+            if let other = textView.window?.firstResponder as? ClickableTextView, other !== textView {
+                textView.window?.makeFirstResponder(textView)
+            }
+            if !textView.hasMarkedText() { parent.onCaretMove?(textView.selectedRange().location) }
+            reportViewportTop()
         }
 
         @objc private func widgetDidResize() {

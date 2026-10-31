@@ -364,14 +364,18 @@ public final class AppState: ObservableObject {
         conflictPaused = b.externalConflict != nil || b.missingOnDisk
     }
 
-    /// Load the working fields from a tab's note (its buffer).
-    private func hydrate(from tab: OpenTab) {
+    /// Load the working fields from a tab's note (its buffer), and start the
+    /// editor at the note's top — unless the editor already shows the note
+    /// where the reader left it (`startAtTop: false`, a pane taking focus); it
+    /// then reports its own caret and top line.
+    private func hydrate(from tab: OpenTab, startAtTop: Bool = true) {
         selectedFile = tab.file
         activeText = tab.text
         savedText = tab.savedText
         externalConflict = tab.externalConflict
         missingOnDisk = tab.missingOnDisk
         conflictPaused = (tab.externalConflict != nil) || tab.missingOnDisk
+        guard startAtTop else { return }
         pendingCursorOffset = 0
         liveCaret = 0
         viewportTop = 0
@@ -656,12 +660,14 @@ public final class AppState: ObservableObject {
     }
 
     /// Focus another pane: persist the live working state into the current pane's
-    /// active tab, then hydrate from the target pane's active tab.
+    /// active tab, then hydrate from the target pane's active tab. Its editor
+    /// keeps showing that note where it was — scrolled, with the caret a click
+    /// just put there — so there's no jump to its top.
     public func focusPane(_ id: UUID) {
         guard id != activePaneID, let target = panes.first(where: { $0.id == id }) else { return }
         flushPendingSave()
         activePaneID = id
-        if let tab = target.tabs.first(where: { $0.id == target.activeTabID }) { hydrate(from: tab) }
+        if let tab = target.tabs.first(where: { $0.id == target.activeTabID }) { hydrate(from: tab, startAtTop: false) }
         else { clearActive() }
     }
 

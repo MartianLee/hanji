@@ -66,6 +66,7 @@ runChecks([
     ("OutlineFocus", outlineFocusChecks),
     ("EditorOutlineJump", editorOutlineJumpChecks),
     ("EditorInactivePaneJump", editorInactivePaneIgnoresJumpChecks),
+    ("PaneFocus", paneFocusChecks),
     ("Styler", stylerChecks),
     ("LinkTokenizer", linkTokenizerChecks),
     ("LinkStyler", linkStylerChecks),

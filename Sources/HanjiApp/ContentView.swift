@@ -503,7 +503,8 @@ struct ContentView: View {
                                 font: EditorFonts.boldText(appState.textFont, size: 28),
                                 isReadOnly: tab.isReading, rename: { url, newName in
                     _ = try? appState.rename(url, to: newName)
-                }, enterBody: { appState.pendingCursorOffset = 0 })
+                }, enterBody: { appState.pendingCursorOffset = 0 },
+                   onFocus: { appState.focusPane(pane.id) })
                 if isActivePane, appState.externalConflict != nil {
                     HStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
@@ -676,17 +677,22 @@ private struct InlineTitleView: View {
     /// Rename a note — the one the title was typed for, which may no longer be the one shown.
     let rename: (URL, String) -> Void
     let enterBody: () -> Void
+    /// The title was clicked into: its pane becomes the active one, as with a
+    /// click in the body (and Return then drops into this pane's body).
+    let onFocus: () -> Void
     @State private var draft: TitleDraft
     @FocusState private var focused: Bool
 
     init(fileURL: URL, maxLineWidth: CGFloat?, font: NSFont, isReadOnly: Bool,
-         rename: @escaping (URL, String) -> Void, enterBody: @escaping () -> Void) {
+         rename: @escaping (URL, String) -> Void, enterBody: @escaping () -> Void,
+         onFocus: @escaping () -> Void) {
         self.fileURL = fileURL
         self.maxLineWidth = maxLineWidth
         self.font = font
         self.isReadOnly = isReadOnly
         self.rename = rename
         self.enterBody = enterBody
+        self.onFocus = onFocus
         _draft = State(initialValue: TitleDraft(url: fileURL))
     }
 
@@ -701,7 +707,7 @@ private struct InlineTitleView: View {
                     .textFieldStyle(.plain)
                     .lineLimit(1)
                     .focused($focused)
-                    .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
+                    .onChange(of: focused) { _, isFocused in if isFocused { onFocus() } else { commit() } }
                     // Enter drops into the editor body. Space must NOT: titles have spaces
                     // in them, and stealing the first one made multi-word titles unwritable.
                     .onKeyPress(.return) { commit(); enterBody(); return .handled }
