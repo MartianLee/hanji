@@ -78,15 +78,18 @@ public struct OpenTab: Identifiable, Equatable {
     }
 }
 
-/// Where a note was left in a tab: the caret, and the start of the line at the
-/// top of the view — nil until the view has said, and then showing the note
-/// just brings the caret into view.
+/// Where a note was left in a tab: the caret, and the view's top as the editor
+/// reports it — where the wrapped line at the top starts, and how many points
+/// into that line the view is scrolled. `top` is nil until the view has said,
+/// and then showing the note just brings the caret into view.
 public struct NotePosition: Equatable, Codable {
     public var caret: Int
     public var top: Int?
-    public init(caret: Int = 0, top: Int? = nil) {
+    public var topDelta: Double?
+    public init(caret: Int = 0, top: Int? = nil, topDelta: Double? = nil) {
         self.caret = caret
         self.top = top
+        self.topDelta = topDelta
     }
 }
 

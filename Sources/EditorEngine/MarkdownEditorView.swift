@@ -404,17 +404,23 @@ public struct MarkdownEditorView: NSViewRepresentable {
     /// The `cursorOffset` jump puts its line at the top of the view (an outline
     /// click) instead of just bringing the caret into view.
     public var jumpsToTop: Bool
-    /// The `cursorOffset` jump puts this offset's line at the top of the view
-    /// (a tab shown again where it was left), whatever the caret's line.
+    /// The `cursorOffset` jump puts the wrapped line starting at this offset at
+    /// the top of the view, scrolled `jumpTopDelta` points into it (a tab shown
+    /// again where it was left), whatever the caret's line.
     public var jumpTopLine: Int?
-    /// Called with the start offset of the top visible line as the view scrolls
-    /// (an inactive pane's editor too), at most once per runloop turn.
-    public var onViewportTopChange: ((Int) -> Void)?
+    public var jumpTopDelta: CGFloat
+    /// Called as the view scrolls (an inactive pane's editor too), at most once
+    /// per runloop turn, with where it is: the offset where the wrapped line at
+    /// the top starts — inside a paragraph, for a long one — and how many points
+    /// past that line's top the view is. Handed back as `jumpTopLine` /
+    /// `startTopLine` with its delta, it gives the very same view.
+    public var onViewportTopChange: ((Int, CGFloat) -> Void)?
     /// Where the editor starts when it's made with no jump pending for it: the
-    /// caret, and the line at the top. How an inactive pane — which jumps
+    /// caret, and the top as reported. How an inactive pane — which jumps
     /// don't reach — comes back where its note was left. Applied once.
     public var startCaret: Int?
     public var startTopLine: Int?
+    public var startTopDelta: CGFloat
     /// The note a link target names (title and text), for embeds and link
     /// previews; nil when there's no such note.
     public var notePreview: ((String) -> NotePreview?)?
@@ -429,15 +435,17 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 onOpenTag: ((String) -> Void)? = nil,
                 onCaretMove: ((Int) -> Void)? = nil,
                 isReading: Bool = false,
-                jumpsToTop: Bool = false, jumpTopLine: Int? = nil,
-                onViewportTopChange: ((Int) -> Void)? = nil,
+                jumpsToTop: Bool = false, jumpTopLine: Int? = nil, jumpTopDelta: CGFloat = 0,
+                onViewportTopChange: ((Int, CGFloat) -> Void)? = nil,
                 notePreview: ((String) -> NotePreview?)? = nil,
-                startCaret: Int? = nil, startTopLine: Int? = nil) {
+                startCaret: Int? = nil, startTopLine: Int? = nil, startTopDelta: CGFloat = 0) {
         self.notePreview = notePreview
         self.jumpsToTop = jumpsToTop
         self.jumpTopLine = jumpTopLine
+        self.jumpTopDelta = jumpTopDelta
         self.startCaret = startCaret
         self.startTopLine = startTopLine
+        self.startTopDelta = startTopDelta
         self.onViewportTopChange = onViewportTopChange
         self.onOpenTag = onOpenTag
         self.onCaretMove = onCaretMove
@@ -576,7 +584,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
             let clamped = max(0, min(offset, length))
             tv.setSelectedRange(NSRange(location: clamped, length: 0))
             if let top = jumpTopLine {
-                context.coordinator.scrollLineToTop(at: max(0, min(top, length)))
+                context.coordinator.scrollToTop(max(0, min(top, length)), delta: jumpTopDelta)
             } else if jumpsToTop {
                 context.coordinator.scrollLineToTop(at: clamped)
             } else {
@@ -588,7 +596,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
         } else if !context.coordinator.appliedStart, startCaret != nil || startTopLine != nil {
             // Not focused, not a jump: just this editor's view of its own note.
             if let caret = startCaret { textView.setSelectedRange(NSRange(location: max(0, min(caret, length)), length: 0)) }
-            if let top = startTopLine { context.coordinator.scrollLineToTop(at: max(0, min(top, length))) }
+            if let top = startTopLine { context.coordinator.scrollToTop(max(0, min(top, length)), delta: startTopDelta) }
             else { textView.scrollRangeToVisible(textView.selectedRange()) }
         }
         context.coordinator.appliedStart = true
@@ -813,23 +821,41 @@ public struct MarkdownEditorView: NSViewRepresentable {
         func scrollLineToTop(at offset: Int) {
             guard let textView else { return }
             let line = (textView.string as NSString).lineRange(for: NSRange(location: offset, length: 0)).location
-            pendingScrollAnchor = (offset: line, delta: 0)
+            scrollToTop(line, delta: 0)
+        }
+
+        /// Put the wrapped line holding `offset` at the top, scrolled `delta`
+        /// points into it — a top as `scrollAnchor` reports it — once the widget
+        /// pass has laid the note out for real.
+        func scrollToTop(_ offset: Int, delta: CGFloat) {
+            pendingScrollAnchor = (offset: offset, delta: delta)
             scheduleWidgetUpdate()
         }
 
+        /// Where the view is: the offset where the wrapped line at its top edge
+        /// starts, and how far past that line's top it's scrolled. The line, not
+        /// its paragraph (a layout fragment is a whole paragraph): coming back to
+        /// a long paragraph's start moved the view up by up to its height.
         private func scrollAnchor() -> (offset: Int, delta: CGFloat)? {
             guard let tv = textView, let tlm = tv.textLayoutManager, let tcs = tlm.textContentManager else { return nil }
             let y = tv.visibleRect.minY - tv.textContainerOrigin.y
             guard let frag = tlm.textLayoutFragment(for: CGPoint(x: 0, y: max(0, y) + 1)) else { return nil }
-            return (tcs.offset(from: tcs.documentRange.location, to: frag.rangeInElement.location),
-                    y - frag.layoutFragmentFrame.minY)
+            let start = tcs.offset(from: tcs.documentRange.location, to: frag.rangeInElement.location)
+            let intoFragment = y - frag.layoutFragmentFrame.minY
+            guard let line = frag.textLineFragments.last(where: { $0.typographicBounds.minY <= intoFragment })
+            else { return (start, intoFragment) }
+            return (start + line.characterRange.location, intoFragment - line.typographicBounds.minY)
         }
 
         private func restore(_ anchor: (offset: Int, delta: CGFloat), _ tlm: NSTextLayoutManager, _ tcs: NSTextContentStorage) {
             guard let tv = textView, let loc = tcs.location(tcs.documentRange.location, offsetBy: anchor.offset),
                   let frag = tlm.textLayoutFragment(for: loc) else { return }
-            let delta = min(anchor.delta, frag.layoutFragmentFrame.height)
-            tv.scroll(NSPoint(x: 0, y: frag.layoutFragmentFrame.minY + delta + tv.textContainerOrigin.y))
+            let intoParagraph = anchor.offset - tcs.offset(from: tcs.documentRange.location, to: frag.rangeInElement.location)
+            let lineTop = frag.textLineFragments.last(where: { $0.characterRange.location <= intoParagraph })?
+                .typographicBounds.minY ?? 0
+            // Within the fragment: past its last line is the room a widget reserves.
+            let delta = min(anchor.delta, frag.layoutFragmentFrame.height - lineTop)
+            tv.scroll(NSPoint(x: 0, y: frag.layoutFragmentFrame.minY + lineTop + delta + tv.textContainerOrigin.y))
         }
 
         /// Reading mode on or off: every line rendered, and the text view read-only.
@@ -1627,7 +1653,7 @@ public struct MarkdownEditorView: NSViewRepresentable {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.viewportReportScheduled = false
-                if let top = self.scrollAnchor()?.offset { self.parent.onViewportTopChange?(top) }
+                if let top = self.scrollAnchor() { self.parent.onViewportTopChange?(top.offset, top.delta) }
             }
         }
 

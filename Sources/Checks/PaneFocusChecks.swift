@@ -23,8 +23,10 @@ private struct SplitEditors: View {
                         onCaretMove: { appState.caretMoved(to: $0) },
                         jumpsToTop: isActive && appState.pendingJumpToTop,
                         jumpTopLine: isActive ? appState.pendingJumpTopLine : nil,
-                        onViewportTopChange: { appState.viewportMoved(top: $0, inTab: tab.id) },
-                        startCaret: tab.position.caret, startTopLine: tab.position.top)
+                        jumpTopDelta: isActive ? appState.pendingJumpTopDelta : 0,
+                        onViewportTopChange: { appState.viewportMoved(top: $0, delta: $1, inTab: tab.id) },
+                        startCaret: tab.position.caret, startTopLine: tab.position.top,
+                        startTopDelta: tab.position.topDelta ?? 0)
                 }
             }
         }
@@ -265,4 +267,26 @@ func tabSwitchKeepsPlaceChecks() {
     s.switchTab(b)
     h.pump(0.5)
     expectEqual(h.topLine(editor), bTop, "and so does B")
+
+    // Long paragraphs: the view comes back to the very point it was scrolled
+    // to, not to the start of the paragraph at the top.
+    try? proseNote("왼쪽").write(to: vault.appendingPathComponent("C.md"), atomically: true, encoding: .utf8)
+    try? proseNote("오른쪽").write(to: vault.appendingPathComponent("D.md"), atomically: true, encoding: .utf8)
+    s.openNote(relativePath: "C.md", newTab: true)
+    let c = s.activeTabID!
+    s.openNote(relativePath: "D.md", newTab: true)
+    let d = s.activeTabID!
+    for y in [2060.0, 2090.0, 2300.0] {
+        s.switchTab(c)
+        h.pump(0.5)
+        _ = h.frame(of: 0, in: editor)
+        editor.scroll(NSPoint(x: 0, y: y))
+        h.pump(0.3)
+        let y0 = editor.visibleRect.minY
+        s.switchTab(d)
+        h.pump(0.5)
+        s.switchTab(c)
+        h.pump(0.5)
+        expectEqual(editor.visibleRect.minY, y0, "a tab scrolled into a long paragraph comes back to the same point (\(y))")
+    }
 }

@@ -40,14 +40,16 @@ public final class AppState: ObservableObject {
     /// a search hit set right after opening a note mustn't be scrolled to the
     /// line the note had at the top.
     @Published public var pendingCursorOffset: Int? {
-        didSet { pendingJumpToTop = false; pendingJumpTopLine = nil }
+        didSet { pendingJumpToTop = false; pendingJumpTopLine = nil; pendingJumpTopDelta = 0 }
     }
     /// The pending jump puts its line at the top of the editor (an outline
     /// click), not merely in view. Cleared with the jump.
     @Published public var pendingJumpToTop = false
-    /// The pending jump puts this offset's line at the top (a tab shown again,
-    /// where it was left), with the caret wherever the jump puts it.
+    /// The pending jump puts the wrapped line starting at this offset at the
+    /// top, `pendingJumpTopDelta` points into it (a tab shown again, where it
+    /// was left), with the caret wherever the jump puts it.
     @Published public var pendingJumpTopLine: Int?
+    @Published public var pendingJumpTopDelta: Double = 0
     @Published public var tree: [FileNode] = []
     /// Sidebar sort order; persisted, applies on the next (immediate) reload.
     @Published public var treeSort: TreeSort = .nameAsc {
@@ -397,6 +399,7 @@ public final class AppState: ObservableObject {
         let caret = min(max(tab.position.caret, 0), length)
         pendingCursorOffset = caret
         pendingJumpTopLine = tab.position.top.map { min(max($0, 0), length) }
+        pendingJumpTopDelta = tab.position.topDelta ?? 0
         liveCaret = caret
         viewportTop = pendingJumpTopLine ?? 0
         sendFocus()
@@ -495,10 +498,11 @@ public final class AppState: ObservableObject {
         sendFocus()
     }
 
-    /// The start of the editor's top visible line, as it scrolls.
-    public func viewportMoved(top offset: Int) {
+    /// The start of the editor's top visible line, as it scrolls, and how far
+    /// into that line it's scrolled.
+    public func viewportMoved(top offset: Int, delta: Double = 0) {
         viewportTop = offset
-        updateLiveTab { $0.position.top = offset }
+        updateLiveTab { $0.position.top = offset; $0.position.topDelta = delta }
         sendFocus()
     }
     private var viewportTop = 0
@@ -506,10 +510,13 @@ public final class AppState: ObservableObject {
     /// The top visible line of the editor showing `tabID` — also an inactive
     /// pane's, which can be scrolled without taking focus. Only the live tab's
     /// moves the reader's focus.
-    public func viewportMoved(top offset: Int, inTab tabID: UUID) {
-        if let pane = activePane, pane.activeTabID == tabID { return viewportMoved(top: offset) }
+    public func viewportMoved(top offset: Int, delta: Double = 0, inTab tabID: UUID) {
+        if let pane = activePane, pane.activeTabID == tabID { return viewportMoved(top: offset, delta: delta) }
         for pane in panes {
-            if let idx = pane.tabs.firstIndex(where: { $0.id == tabID }) { pane.tabs[idx].position.top = offset }
+            for idx in pane.tabs.indices where pane.tabs[idx].id == tabID {
+                pane.tabs[idx].position.top = offset
+                pane.tabs[idx].position.topDelta = delta
+            }
         }
     }
 

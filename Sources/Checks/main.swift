@@ -74,6 +74,7 @@ runChecks([
     ("TabPosition", tabPositionChecks),
     ("EditorJumpTopLine", editorJumpTopLineChecks),
     ("EditorStartPosition", editorStartPositionChecks),
+    ("EditorTopRoundTrip", editorTopRoundTripChecks),
     ("Styler", stylerChecks),
     ("LinkTokenizer", linkTokenizerChecks),
     ("LinkStyler", linkStylerChecks),

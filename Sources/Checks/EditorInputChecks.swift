@@ -19,23 +19,29 @@ final class EditorHarness {
     /// False for a split pane that isn't the active one.
     var isLive = true
     var jumpsToTop = false
-    /// The line the jump puts at the top, when not the caret's.
+    /// The line the jump puts at the top, when not the caret's, and how far
+    /// into that line the view is scrolled.
     var jumpTopLine: Int?
+    var jumpTopDelta: CGFloat = 0
     /// Where the editor starts when made with no jump pending.
     var startCaret: Int?
     var startTopLine: Int?
-    /// Top-line offsets the editor reported as it scrolled.
+    var startTopDelta: CGFloat = 0
+    /// Top-line offsets the editor reported as it scrolled, and with each how
+    /// far into that line the view was.
     var viewportTops: [Int] = []
+    var viewportDeltas: [CGFloat] = []
     var notePreview: ((String) -> NotePreview?)?
 
     init?(_ initial: String, cursorOffset initialOffset: Int? = nil, lineHeight: CGFloat = 1.3,
           maxLineWidth: CGFloat? = nil, width: CGFloat = 800, linkTargets: [String] = [],
           isReading: Bool = false, notePreview: ((String) -> NotePreview?)? = nil,
-          isLive: Bool = true, startCaret: Int? = nil, startTopLine: Int? = nil) {
+          isLive: Bool = true, startCaret: Int? = nil, startTopLine: Int? = nil, startTopDelta: CGFloat = 0) {
         text = initial
         self.isLive = isLive
         self.startCaret = startCaret
         self.startTopLine = startTopLine
+        self.startTopDelta = startTopDelta
         self.notePreview = notePreview
         self.linkTargets = linkTargets
         self.isReading = isReading
@@ -50,9 +56,11 @@ final class EditorHarness {
         let host = NSHostingView(rootView: MarkdownEditorView(text: binding, cursorOffset: offset,
                                                               lineHeight: lineHeight, maxLineWidth: maxLineWidth,
                                                               linkTargets: { linkTargets }, isLive: isLive, isReading: isReading,
-                                                              jumpsToTop: false, onViewportTopChange: { box?.viewportTops.append($0) },
+                                                              jumpsToTop: false,
+                                                              onViewportTopChange: { box?.viewportTops.append($0); box?.viewportDeltas.append($1) },
                                                               notePreview: notePreview,
-                                                              startCaret: startCaret, startTopLine: startTopLine))
+                                                              startCaret: startCaret, startTopLine: startTopLine,
+                                                              startTopDelta: startTopDelta))
         hosting = host
         window.contentView = host
         window.makeKeyAndOrderFront(nil)
@@ -96,10 +104,13 @@ final class EditorHarness {
                                                lineHeight: lineHeight, maxLineWidth: maxLineWidth,
                                                textFont: textFont, codeFont: codeFont,
                                                linkTargets: { self.linkTargets }, isLive: isLive, isReading: isReading,
-                                               jumpsToTop: jumpsToTop, jumpTopLine: jumpTopLine,
-                                               onViewportTopChange: { [weak self] in self?.viewportTops.append($0) },
+                                               jumpsToTop: jumpsToTop, jumpTopLine: jumpTopLine, jumpTopDelta: jumpTopDelta,
+                                               onViewportTopChange: { [weak self] in
+                                                   self?.viewportTops.append($0); self?.viewportDeltas.append($1)
+                                               },
                                                notePreview: notePreview,
-                                               startCaret: startCaret, startTopLine: startTopLine)
+                                               startCaret: startCaret, startTopLine: startTopLine,
+                                               startTopDelta: startTopDelta)
         pump(0.4)
     }
 

@@ -65,7 +65,7 @@ func workspaceRestoreChecks() {
         expectEqual(r.activeText, (0..<40).map { "B line \($0)\n" }.joined(), "with its text")
         expectEqual(r.pendingCursorOffset, 120, "the caret goes back where it was")
         expectEqual(r.pendingJumpTopLine, 100, "and the line that was at the top goes back there")
-        expectEqual(tab(r, "D.md", pane: 1)?.position, NotePosition(caret: 30, top: 20),
+        expectEqual(tab(r, "D.md", pane: 1)?.position, NotePosition(caret: 30, top: 20, topDelta: 0),
                     "the other pane's note remembers its place for its editor")
         r.switchTab(tab(r, "C.md")!.id)
         expectEqual(r.pendingJumpTopLine, 50, "a background tab comes back at its top line too")

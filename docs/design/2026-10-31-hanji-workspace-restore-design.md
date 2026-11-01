@@ -11,7 +11,11 @@ first one is shown, and everything starts at the top.
 ## Decisions
 
 **Each tab remembers where its note was left.** `OpenTab.position` holds the
-caret and the offset of the line at the top of the view. The live editor
+caret and the view's top: the offset where the wrapped line at the top edge
+starts — inside a paragraph, for a long one — and how many points into that
+line the view is scrolled. (Recording only the paragraph at the top, as first
+built, brought a tab back with that paragraph's start at the top: up to a
+paragraph higher than it was left.) The live editor
 already reports both (`caretMoved`, `viewportMoved`); they now also land in
 the live tab. An inactive pane's editor reports its top line too — it can be
 scrolled without being focused — into its own tab only.
@@ -38,7 +42,7 @@ split from throwing the other pane's editor back to the top when the panes
 are rebuilt.
 
 **The workspace is stored per vault, in UserDefaults** (`io.hanji.workspace.<vault path>`),
-as JSON: panes → tabs (vault-relative path, pinned, reading, caret, top),
+as JSON: panes → tabs (vault-relative path, pinned, reading, caret, top, top delta),
 each pane's active tab, the active pane. Written when the vault closes or the
 app quits (`saveAllForClose`), and a second after any change to the app state
 settles, so a crash loses little. No note text: every note is saved on quit.
