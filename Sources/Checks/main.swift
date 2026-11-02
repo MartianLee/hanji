@@ -168,6 +168,8 @@ runChecks([
     ("AppStateTree", appStateTreeChecks),
     ("HRParser", hrParserChecks),
     ("TableParser", tableParserChecks),
+    ("TablePaste", tablePasteChecks),
+    ("EditorTablePaste", editorTablePasteChecks),
     ("Frontmatter", frontmatterChecks),
     ("CodeHighlighter", codeHighlighterChecks),
     ("FontSetting", fontSettingChecks),

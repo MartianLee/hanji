@@ -24,6 +24,9 @@ based on [Keep a Changelog](https://keepachangelog.com/); this project will use
   shows the note in a popover.
 - Numbered lists keep counting: Tab nests an item as 1., Shift-Tab gives it back its
   place, and Return after an item copied in from elsewhere follows the list.
+- A markdown table pasted as text is drawn as a table at once: it gets lines of
+  its own and the caret lands below it. It used to stay as source, since the
+  caret sat on its last row.
 
 ### Workspace
 - ⌘T (File ▸ New Tab) opens a new note in a new tab, like ⌘N.

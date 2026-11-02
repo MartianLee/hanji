@@ -98,6 +98,23 @@ final class ClickableTextView: NSTextView {
         return ok
     }
 
+    /// A markdown table pasted as text gets lines of its own (`TablePaste`), so
+    /// it's drawn as a grid at once with the caret below it.
+    override func readSelection(from pboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+        // Plain text arrives under its legacy name (NSStringPboardType) as often as the modern one.
+        guard type == .string || type.rawValue == "NSStringPboardType",
+              let text = pboard.string(forType: .string), text.contains("|") else {
+            return super.readSelection(from: pboard, type: type)
+        }
+        let sel = selectedRange()
+        let ns = string as NSString
+        let atLineStart = sel.location == 0 || ns.character(at: sel.location - 1) == 0x0A
+        let adjusted = TablePaste.adjusted(text, atLineStart: atLineStart)
+        guard adjusted != text else { return super.readSelection(from: pboard, type: type) }
+        insertText(adjusted, replacementRange: sel)
+        return true
+    }
+
     /// Return inside a list continues it: the next line opens with the same marker,
     /// numbers incremented. Return on an *empty* item drops the marker instead of
     /// adding another one, which is how you leave a list. Everything goes through
