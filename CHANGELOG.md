@@ -29,6 +29,8 @@ based on [Keep a Changelog](https://keepachangelog.com/); this project will use
   caret sat on its last row.
 - ⌘← on a list item stops where its text starts, past the bullet or number;
   pressed again it goes to the start of the line, as in Obsidian (⇧⌘← selects the same way).
+- Numbered items' text lines up whatever the number — 1., 4. and 10. alike — and
+  with the item's wrapped lines.
 
 ### Workspace
 - ⌘T (File ▸ New Tab) opens a new note in a new tab, like ⌘N.

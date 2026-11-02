@@ -80,6 +80,7 @@ runChecks([
     ("LinkStyler", linkStylerChecks),
     ("BlockTokenizer", blockTokenizerChecks),
     ("BlockStyler", blockStylerChecks),
+    ("OrderedAlign", orderedAlignChecks),
     ("ListTaskTokenizer", listTaskTokenizerChecks),
     ("ListContinuation", listContinuationChecks),
     ("ListContentStart", listContentStartChecks),
@@ -147,6 +148,7 @@ runChecks([
     ("EditorCodeIndent", editorCodeIndentChecks),   // slow
     ("EditorListRenumber", editorListRenumberChecks),
     ("EditorItemLineStart", editorItemLineStartChecks),
+    ("EditorOrderedAlign", editorOrderedAlignChecks),
     ("EditorPerf", editorPerfProbe),
     ("EditorTable", editorTableChecks),
     ("PastePerf", pastePerfChecks),   // slow

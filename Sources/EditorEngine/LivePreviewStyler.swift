@@ -75,8 +75,11 @@ public enum LivePreviewStyler {
         // Phase 1: absolute styles (fonts/colors/paragraphs). Trait styles wait
         // so they can compose with whatever font phase 1 set (bold inside a
         // heading keeps the heading size).
+        let orderedText = orderedIndent
         for run in deco.styles where !isTraitStyle(run.style) {
             let r = clamp(run.range, length: storage.length)
+            // Before the empty-run check: an item with nothing typed yet puts the caret there too.
+            if case .orderedItem = run.style { alignOrderedText(at: r.location, to: orderedText, in: storage) }
             guard r.length > 0 else { continue }
             var attrs = attributes(for: run.style)
             // Paragraph styles must cover whole paragraphs to survive attribute
@@ -104,6 +107,26 @@ public enum LivePreviewStyler {
             }
         }
         storage.endEditing()
+    }
+
+    /// An ordered item's text starts at the same place whatever its number —
+    /// `1.`, `4.` and `10.` alike, and where its wrapped lines start
+    /// (`orderedIndent`): the number's `.` / `)` is spaced out by the width a
+    /// narrower number leaves. (On the delimiter, not the space after it: kern
+    /// on the space would leave the caret at the start of the text floating in
+    /// the gap.) A number wider than that (`100.`) just pushes on.
+    static func alignOrderedText(at textStart: Int, to target: CGFloat, in storage: NSTextStorage) {
+        let ns = storage.string as NSString
+        guard textStart >= 3, textStart <= ns.length, ns.character(at: textStart - 1) == 0x20,
+              ns.character(at: textStart - 2) == 0x2E || ns.character(at: textStart - 2) == 0x29 else { return }
+        var markerStart = ns.lineRange(for: NSRange(location: textStart - 1, length: 0)).location
+        while markerStart < textStart, ns.character(at: markerStart) == 0x20 || ns.character(at: markerStart) == 0x09 {
+            markerStart += 1
+        }
+        let marker = ns.substring(with: NSRange(location: markerStart, length: textStart - markerStart))
+        let room = target - (marker as NSString).size(withAttributes: [.font: baseFont]).width
+        guard room > 0.25 else { return }
+        storage.addAttribute(.kern, value: room, range: NSRange(location: textStart - 2, length: 1))
     }
 
     static func isTraitStyle(_ style: SpanStyle) -> Bool {
