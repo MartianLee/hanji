@@ -34,6 +34,22 @@ public enum ListContinuation {
         return orderedAction(ns, from: i, indent: indent)
     }
 
+    /// Where a list item's own text starts — past its indent and its marker
+    /// (`- `, `* `, `1. `, `2) `, `- [ ] `) — in UTF-16 units; nil when `line`
+    /// isn't a list item.
+    public static func contentStart(of line: String) -> Int? {
+        let ns = line as NSString
+        var i = 0
+        while i < ns.length, ns.character(at: i) == space || ns.character(at: i) == tab { i += 1 }
+        guard i < ns.length else { return nil }
+        if taskAction(ns, from: i, indent: "") != nil { return i + 6 }
+        if bulletAction(ns, from: i, indent: "") != nil { return i + 2 }
+        guard orderedAction(ns, from: i, indent: "") != .none else { return nil }
+        var j = i
+        while ns.character(at: j) >= zero, ns.character(at: j) <= nine { j += 1 }
+        return j + 2                                   // past the digits, the `.`/`)` and its space
+    }
+
     /// `- [ ] ` / `- [x] ` — a continued task always starts unchecked.
     private static func taskAction(_ ns: NSString, from i: Int, indent: String) -> Action? {
         guard ns.length >= i + 6, isBullet(ns.character(at: i)), ns.character(at: i + 1) == space,

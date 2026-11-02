@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import MarkdownCore
 
@@ -105,4 +106,58 @@ func listRenumberChecks() {
                 "1. a\n\t```\n\t5. code\n\t```\n2. b", "numbers inside code are code")
     expectEqual(renumber("8. a\n9. b\n13. c", at: "a"), "8. a\n9. b\n10. c", "renumbering reaches below the line too")
     expectEqual(renumber("    1. a\n    5. b", at: "b"), "    1. a\n    2. b", "spaces nest like tabs")
+}
+
+/// Where a list item's own text starts, past its indent and marker — where ⌘←
+/// stops first.
+func listContentStartChecks() {
+    func start(_ line: String) -> Int? { ListContinuation.contentStart(of: line) }
+    expectEqual(start("- item"), 2, "past a bullet")
+    expectEqual(start("* item"), 2, "any bullet character")
+    expectEqual(start("\t\t- item"), 4, "and its indent")
+    expectEqual(start("    + item"), 6, "spaces too")
+    expectEqual(start("- [ ] task"), 6, "past a task's box")
+    expectEqual(start("- [x] done"), 6, "a checked one too")
+    expectEqual(start("1. one"), 3, "past a number")
+    expectEqual(start("12) twelve"), 4, "of any length, either delimiter")
+    expectEqual(start("- "), 2, "an empty item: its end")
+    expectEqual(start("plain"), nil, "not an item")
+    expectEqual(start("-item"), nil, "a dash with no space isn't a bullet")
+    expectEqual(start("2026. year"), 6, "a number is a number")
+    expectEqual(start(""), nil, "an empty line")
+}
+
+/// ⌘← on a list item stops at its text, then goes on to the line's start;
+/// ⇧⌘← selects the same way. Elsewhere it's the usual move.
+func editorItemLineStartChecks() {
+    let note = "- first item\n\t1. nested\nplain line"
+    guard let h = EditorHarness(note, cursorOffset: 8) else { expect(false, "editor found"); return }
+    defer { h.close() }
+    let tv = h.textView
+    func cmdLeft(_ extend: Bool = false) {
+        tv.doCommand(by: extend ? #selector(NSResponder.moveToLeftEndOfLineAndModifySelection(_:))
+                                : #selector(NSResponder.moveToLeftEndOfLine(_:)))
+        h.pump(0.1)
+    }
+    cmdLeft()
+    expectEqual(tv.selectedRange(), NSRange(location: 2, length: 0), "first press: past the bullet")
+    cmdLeft()
+    expectEqual(tv.selectedRange(), NSRange(location: 0, length: 0), "second: the start of the line")
+    cmdLeft()
+    expectEqual(tv.selectedRange(), NSRange(location: 0, length: 0), "and it stays there")
+
+    let nested = (note as NSString).range(of: "nested").location
+    h.caret(at: nested + 3)
+    cmdLeft()
+    expectEqual(tv.selectedRange().location, nested, "a nested numbered item: past its indent and number")
+    h.caret(at: nested + 3)
+    cmdLeft(true)
+    expectEqual(tv.selectedRange(), NSRange(location: nested, length: 3), "⇧⌘← selects back to the item's text")
+    cmdLeft(true)
+    expectEqual(tv.selectedRange(), NSRange(location: nested - 4, length: 7), "and then to the line's start")
+
+    let plain = (note as NSString).range(of: "plain").location
+    h.caret(at: plain + 4)
+    cmdLeft()
+    expectEqual(tv.selectedRange().location, plain, "a plain line: straight to its start")
 }

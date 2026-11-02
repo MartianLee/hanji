@@ -27,6 +27,8 @@ based on [Keep a Changelog](https://keepachangelog.com/); this project will use
 - A markdown table pasted as text is drawn as a table at once: it gets lines of
   its own and the caret lands below it. It used to stay as source, since the
   caret sat on its last row.
+- ⌘← on a list item stops where its text starts, past the bullet or number;
+  pressed again it goes to the start of the line, as in Obsidian (⇧⌘← selects the same way).
 
 ### Workspace
 - ⌘T (File ▸ New Tab) opens a new note in a new tab, like ⌘N.

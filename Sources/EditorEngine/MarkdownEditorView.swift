@@ -115,6 +115,42 @@ final class ClickableTextView: NSTextView {
         return true
     }
 
+    /// ⌘← on a list item stops where its text starts, past the bullet; pressed
+    /// again it goes on to the start of the line — as in Obsidian. Only from the
+    /// item's first line: on a wrapped item's later lines it's the usual move.
+    override func moveToLeftEndOfLine(_ sender: Any?) {
+        moveToItemText(extending: false) { super.moveToLeftEndOfLine(sender) }
+    }
+    override func moveToBeginningOfLine(_ sender: Any?) {
+        moveToItemText(extending: false) { super.moveToBeginningOfLine(sender) }
+    }
+    override func moveToLeftEndOfLineAndModifySelection(_ sender: Any?) {
+        moveToItemText(extending: true) { super.moveToLeftEndOfLineAndModifySelection(sender) }
+    }
+    override func moveToBeginningOfLineAndModifySelection(_ sender: Any?) {
+        moveToItemText(extending: true) { super.moveToBeginningOfLineAndModifySelection(sender) }
+    }
+
+    /// Make the usual move, then — when it reached the start of a list item's
+    /// line from somewhere past its bullet — stop at the item's text instead.
+    private func moveToItemText(extending: Bool, _ move: () -> Void) {
+        let before = selectedRange()
+        move()
+        let after = selectedRange()
+        let ns = string as NSString
+        let line = ns.lineRange(for: NSRange(location: after.location, length: 0))
+        guard after.location == line.location, isInsideCodeBlock?(line.location) != true else { return }
+        var end = NSMaxRange(line)
+        while end > line.location, ns.character(at: end - 1) == 0x0A || ns.character(at: end - 1) == 0x0D { end -= 1 }
+        guard let start = ListContinuation.contentStart(of: ns.substring(with: NSRange(location: line.location, length: end - line.location)))
+        else { return }
+        let text = line.location + start
+        // Where the moving end was: past the bullet, on this line.
+        guard before.location > text, before.location <= end else { return }
+        setSelectedRange(extending ? NSRange(location: text, length: NSMaxRange(after) - text)
+                                   : NSRange(location: text, length: 0))
+    }
+
     /// Return inside a list continues it: the next line opens with the same marker,
     /// numbers incremented. Return on an *empty* item drops the marker instead of
     /// adding another one, which is how you leave a list. Everything goes through
