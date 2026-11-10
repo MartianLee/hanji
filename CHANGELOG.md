@@ -34,6 +34,8 @@ based on [Keep a Changelog](https://keepachangelog.com/); this project will use
 
 ### Workspace
 - ⌘T (File ▸ New Tab) opens a new note in a new tab, like ⌘N.
+- Closing the window and clicking Hanji in the Dock brings the window back (a
+  minimized one is restored). Hanji used to stay running with no window until quit.
 - The toolbar no longer repeats the window title, and Back/Forward are smaller.
 - Move Tab Left/Right is now ⌥⇧⌘← / ⌥⇧⌘→, so it no longer switches Spaces (#8).
 - Renaming or moving a note or folder rewrites the links to it across the

@@ -15,6 +15,29 @@ import CalendarPlugin
 /// autosave still in flight, and can't stop the quit when a save fails.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var appState: AppState?
+    /// Opens a main window — SwiftUI's `openWindow`, handed over by the window's
+    /// content (`MainWindowOpener`), since the delegate has no environment.
+    var openMainWindow: (() -> Void)?
+    static let mainWindowID = "main"
+
+    /// The Dock icon clicked with the window closed brings a window back. SwiftUI
+    /// does that on its own only for an app it takes to be built with a current
+    /// SDK: SwiftPM stamps this binary with its deployment target (macOS 14) as
+    /// the SDK too, and in that compatibility mode the reopen did nothing — the
+    /// app kept running, windowless, until quit. A minimized window comes back
+    /// instead of a second one. (Once the stamp is right, SwiftUI's own window
+    /// is open by the time this runs, and this does nothing.)
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        DispatchQueue.main.async { [weak self] in self?.showMainWindow() }
+        return true
+    }
+
+    private func showMainWindow() {
+        let main = NSApp.windows.filter { $0.identifier?.rawValue.hasPrefix(Self.mainWindowID) == true }
+        if main.contains(where: \.isVisible) { return }
+        if let minimized = main.first(where: \.isMiniaturized) { minimized.deminiaturize(nil); return }
+        openMainWindow?()
+    }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let appState else { return .terminateNow }
@@ -30,6 +53,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let quit = alert.addButton(withTitle: "Quit Anyway")
         quit.hasDestructiveAction = true
         return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
+    }
+}
+
+/// Hands SwiftUI's `openWindow` to the app delegate, for the Dock's reopen.
+private struct MainWindowOpener: View {
+    let delegate: AppDelegate
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Color.clear.onAppear { delegate.openMainWindow = { openWindow(id: AppDelegate.mainWindowID) } }
     }
 }
 
@@ -52,8 +84,9 @@ struct HanjiApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: AppDelegate.mainWindowID) {
             ContentView()
+                .background(MainWindowOpener(delegate: appDelegate))
                 .environmentObject(appState)
                 .environmentObject(pluginManager)
                 .environmentObject(uiState)
