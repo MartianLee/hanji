@@ -15,6 +15,9 @@ final class UIState: ObservableObject {
     @Published var sidebarMode: SidebarMode = .files
     /// Incremented to ask the search panel to grab keyboard focus (⇧⌘F).
     @Published var searchFocusToken = 0
+    /// Incremented to ask the active pane's title to take the keyboard (↑ from
+    /// the first line of the note's body).
+    @Published var titleFocusToken = 0
     /// A query for the search panel to run (clicking a `#tag` sets "#tag"); the
     /// panel takes it and clears it.
     @Published var searchRequest: String?

@@ -161,3 +161,56 @@ func editorItemLineStartChecks() {
     cmdLeft()
     expectEqual(tv.selectedRange().location, plain, "a plain line: straight to its start")
 }
+
+/// ↑ on the note's first line leaves the body (for the title) instead of
+/// going to the line's start; anywhere below it's the usual move.
+func editorLeaveTopChecks() {
+    let long = String(repeating: "word ", count: 60)          // wraps at 400pt
+    let note = long + "\nsecond line\nthird"
+    guard let h = EditorHarness(note, cursorOffset: 0, width: 400) else { expect(false, "editor found"); return }
+    defer { h.close() }
+    let tv = h.textView
+    func up() { tv.doCommand(by: #selector(NSResponder.moveUp(_:))); h.pump(0.1) }
+
+    h.caret(at: 3)
+    up()
+    expectEqual(h.leftTop, 1, "↑ on the first line leaves the body")
+    expectEqual(tv.selectedRange().location, 3, "and the caret stays where it was")
+
+    let second = (note as NSString).range(of: "second").location
+    h.caret(at: second + 2)
+    up()
+    expectEqual(h.leftTop, 1, "↑ on a later line is the usual move")
+    expect(tv.selectedRange().location < second, "up into the paragraph above")
+    expect(tv.selectedRange().location > 20, "onto its last wrapped line, not the first")
+    var presses = 0, onLaterLine = 0
+    while h.leftTop == 1, presses < 30 {
+        let before = tv.selectedRange().location
+        up()
+        presses += 1
+        if tv.selectedRange().location < before { onLaterLine += 1 }
+    }
+    expectEqual(h.leftTop, 2, "↑ through the wrapped lines leaves at the first")
+    expect(onLaterLine >= 2, "having moved up the wrapped lines one by one (\(onLaterLine))")
+    expect(tv.selectedRange().location > 0, "the caret kept its place on the first line, not sent to its start")
+
+    tv.setSelectedRange(NSRange(location: 0, length: 4))
+    up()
+    expectEqual(h.leftTop, 2, "a selection collapses first, as usual")
+
+    h.isReading = true
+    h.rebuild()
+    h.caret(at: 0)
+    up()
+    expectEqual(h.leftTop, 2, "reading mode: the title isn't a field, ↑ stays in the body")
+
+    guard let one = EditorHarness("only line", cursorOffset: 9) else { expect(false, "editor found"); return }
+    defer { one.close() }
+    one.textView.doCommand(by: #selector(NSResponder.moveUp(_:)))
+    expectEqual(one.leftTop, 1, "the end of a one-line note is on its first line")
+
+    guard let two = EditorHarness("line\n", cursorOffset: 5) else { expect(false, "editor found"); return }
+    defer { two.close() }
+    two.textView.doCommand(by: #selector(NSResponder.moveUp(_:)))
+    expectEqual(two.leftTop, 0, "the empty last line after a newline is not")
+}

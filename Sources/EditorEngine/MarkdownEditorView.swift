@@ -115,6 +115,30 @@ final class ClickableTextView: NSTextView {
         return true
     }
 
+    /// ↑ with the caret already on the note's first line: offered here before the
+    /// usual move (to the line's start); true means it was taken — the caret
+    /// leaves the body for the note's title.
+    var onMoveUpAtTop: (() -> Bool)?
+
+    override func moveUp(_ sender: Any?) {
+        if selectedRange().length == 0, !hasMarkedText(), caretIsOnFirstLine, onMoveUpAtTop?() == true { return }
+        super.moveUp(sender)
+    }
+
+    /// The caret is on the first line as drawn: a wrapped first paragraph's
+    /// later lines don't count.
+    private var caretIsOnFirstLine: Bool {
+        let caret = selectedRange().location
+        guard let tlm = textLayoutManager,
+              let line = tlm.textLayoutFragment(for: tlm.documentRange.location)?.textLineFragments.first
+        else { return caret == 0 }
+        let end = NSMaxRange(line.characterRange)
+        if caret < end { return true }
+        // The end of a note that is one line, with no newline after it.
+        let ns = string as NSString
+        return caret == end && end == ns.length && (end == 0 || ns.character(at: end - 1) != 0x0A)
+    }
+
     /// ⌘← on a list item stops where its text starts, past the bullet; pressed
     /// again it goes on to the start of the line — as in Obsidian. Only from the
     /// item's first line: on a wrapped item's later lines it's the usual move.
@@ -448,6 +472,10 @@ public struct MarkdownEditorView: NSViewRepresentable {
     /// Called with the caret's offset whenever it moves (live editor only), so
     /// navigation history can come back to it.
     public var onCaretMove: ((Int) -> Void)?
+    /// Called for ↑ pressed with the caret on the note's first line (not in
+    /// reading mode): the caret is leaving the body, upwards — for the title.
+    /// Nil leaves ↑ as the usual move.
+    public var onLeaveTop: (() -> Void)?
     /// False when `text` is a snapshot rather than the live buffer (an inactive
     /// split pane). Such an editor can't save an edit, so a click only focuses it.
     public var isLive: Bool
@@ -491,7 +519,9 @@ public struct MarkdownEditorView: NSViewRepresentable {
                 jumpsToTop: Bool = false, jumpTopLine: Int? = nil, jumpTopDelta: CGFloat = 0,
                 onViewportTopChange: ((Int, CGFloat) -> Void)? = nil,
                 notePreview: ((String) -> NotePreview?)? = nil,
-                startCaret: Int? = nil, startTopLine: Int? = nil, startTopDelta: CGFloat = 0) {
+                startCaret: Int? = nil, startTopLine: Int? = nil, startTopDelta: CGFloat = 0,
+                onLeaveTop: (() -> Void)? = nil) {
+        self.onLeaveTop = onLeaveTop
         self.notePreview = notePreview
         self.jumpsToTop = jumpsToTop
         self.jumpTopLine = jumpTopLine
@@ -582,6 +612,11 @@ public struct MarkdownEditorView: NSViewRepresentable {
         }
         textView.onCommand = { [weak coordinator = context.coordinator] selector in
             coordinator?.handleLinkCompletionCommand(selector) ?? false
+        }
+        textView.onMoveUpAtTop = { [weak coordinator = context.coordinator] in
+            guard let parent = coordinator?.parent, !parent.isReading, let leave = parent.onLeaveTop else { return false }
+            leave()
+            return true
         }
         // The suggestion list follows its link when the note scrolls.
         scroll.contentView.postsBoundsChangedNotifications = true

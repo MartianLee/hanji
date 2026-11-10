@@ -32,6 +32,8 @@ final class EditorHarness {
     var viewportTops: [Int] = []
     var viewportDeltas: [CGFloat] = []
     var notePreview: ((String) -> NotePreview?)?
+    /// Times ↑ on the first line asked to leave the body (for the title).
+    var leftTop = 0
 
     init?(_ initial: String, cursorOffset initialOffset: Int? = nil, lineHeight: CGFloat = 1.3,
           maxLineWidth: CGFloat? = nil, width: CGFloat = 800, linkTargets: [String] = [],
@@ -60,7 +62,8 @@ final class EditorHarness {
                                                               onViewportTopChange: { box?.viewportTops.append($0); box?.viewportDeltas.append($1) },
                                                               notePreview: notePreview,
                                                               startCaret: startCaret, startTopLine: startTopLine,
-                                                              startTopDelta: startTopDelta))
+                                                              startTopDelta: startTopDelta,
+                                                              onLeaveTop: { box?.leftTop += 1 }))
         hosting = host
         window.contentView = host
         window.makeKeyAndOrderFront(nil)
@@ -110,7 +113,8 @@ final class EditorHarness {
                                                },
                                                notePreview: notePreview,
                                                startCaret: startCaret, startTopLine: startTopLine,
-                                               startTopDelta: startTopDelta)
+                                               startTopDelta: startTopDelta,
+                                               onLeaveTop: { [weak self] in self?.leftTop += 1 })
         pump(0.4)
     }
 

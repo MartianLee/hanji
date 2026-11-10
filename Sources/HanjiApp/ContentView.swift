@@ -504,7 +504,8 @@ struct ContentView: View {
                                 isReadOnly: tab.isReading, rename: { url, newName in
                     _ = try? appState.rename(url, to: newName)
                 }, enterBody: { appState.pendingCursorOffset = 0 },
-                   onFocus: { appState.focusPane(pane.id) })
+                   onFocus: { appState.focusPane(pane.id) },
+                   focusRequest: uiState.titleFocusToken, takesFocusRequests: isActivePane)
                 if isActivePane, appState.externalConflict != nil {
                     HStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
@@ -546,7 +547,9 @@ struct ContentView: View {
                     notePreview: { appState.notePreview(for: $0) },
                     // A rebuilt editor (a relaunch, the panes changing) starts where its note was left.
                     startCaret: tab.position.caret, startTopLine: tab.position.top,
-                    startTopDelta: tab.position.topDelta ?? 0)
+                    startTopDelta: tab.position.topDelta ?? 0,
+                    // ↑ on the first line goes up into the title, as in Obsidian.
+                    onLeaveTop: { appState.focusPane(pane.id); uiState.titleFocusToken += 1 })
                 .opacity(isActivePane ? 1 : 0.92)
             } else {
                 Text("Open a vault, then select a note")
@@ -685,12 +688,21 @@ private struct InlineTitleView: View {
     /// The title was clicked into: its pane becomes the active one, as with a
     /// click in the body (and Return then drops into this pane's body).
     let onFocus: () -> Void
+    /// Incremented to put the caret in the title (↑ from the body's first line);
+    /// only the active pane's title answers.
+    let focusRequest: Int
+    let takesFocusRequests: Bool
     @State private var draft: TitleDraft
     @FocusState private var focused: Bool
+    /// Focus asked for from the keyboard: the caret goes to the title's end,
+    /// where a focused field would otherwise select the whole name.
+    @State private var caretToEnd = false
 
     init(fileURL: URL, maxLineWidth: CGFloat?, font: NSFont, isReadOnly: Bool,
          rename: @escaping (URL, String) -> Void, enterBody: @escaping () -> Void,
-         onFocus: @escaping () -> Void) {
+         onFocus: @escaping () -> Void, focusRequest: Int, takesFocusRequests: Bool) {
+        self.focusRequest = focusRequest
+        self.takesFocusRequests = takesFocusRequests
         self.fileURL = fileURL
         self.maxLineWidth = maxLineWidth
         self.font = font
@@ -712,10 +724,23 @@ private struct InlineTitleView: View {
                     .textFieldStyle(.plain)
                     .lineLimit(1)
                     .focused($focused)
-                    .onChange(of: focused) { _, isFocused in if isFocused { onFocus() } else { commit() } }
-                    // Enter drops into the editor body. Space must NOT: titles have spaces
+                    .onChange(of: focused) { _, isFocused in
+                        if isFocused { onFocus(); if caretToEnd { moveCaretToEnd() } } else { commit() }
+                        caretToEnd = false
+                    }
+                    .onChange(of: focusRequest) { _, _ in
+                        guard takesFocusRequests, !focused else { return }
+                        caretToEnd = true
+                        focused = true
+                    }
+                    // Enter and ↓ drop into the editor body. Space must NOT: titles have spaces
                     // in them, and stealing the first one made multi-word titles unwritable.
                     .onKeyPress(.return) { commit(); enterBody(); return .handled }
+                    .onKeyPress(.downArrow) {
+                        // An input method's candidate list keeps its arrows.
+                        guard !isComposing else { return .ignored }
+                        commit(); enterBody(); return .handled
+                    }
             }
         }
         // Switched notes, or into reading mode, with an edit not yet committed: it
@@ -729,6 +754,21 @@ private struct InlineTitleView: View {
         .padding(.top, 18)
         .padding(.bottom, 6)
         .background(Color(nsColor: .textBackgroundColor))   // match the editor body
+    }
+
+    /// The field editor the focused title types into.
+    private var fieldEditor: NSTextView? {
+        guard let editor = NSApp.keyWindow?.firstResponder as? NSTextView, editor.isFieldEditor else { return nil }
+        return editor
+    }
+    private var isComposing: Bool { fieldEditor?.hasMarkedText() ?? false }
+
+    /// After the field has taken focus (and selected its text, as fields do).
+    private func moveCaretToEnd() {
+        DispatchQueue.main.async {
+            guard let editor = fieldEditor else { return }
+            editor.setSelectedRange(NSRange(location: (editor.string as NSString).length, length: 0))
+        }
     }
 
     /// Rename for the edit, if it asks for one. The draft goes back to the note's

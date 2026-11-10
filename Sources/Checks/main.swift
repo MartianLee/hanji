@@ -148,6 +148,7 @@ runChecks([
     ("EditorCodeIndent", editorCodeIndentChecks),   // slow
     ("EditorListRenumber", editorListRenumberChecks),
     ("EditorItemLineStart", editorItemLineStartChecks),
+    ("EditorLeaveTop", editorLeaveTopChecks),
     ("EditorOrderedAlign", editorOrderedAlignChecks),
     ("EditorPerf", editorPerfProbe),
     ("EditorTable", editorTableChecks),
