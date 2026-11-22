@@ -3,6 +3,8 @@ import AppCore
 
 /// Horizontal strip of one pane's open-note tabs. Tabs can be dragged to
 /// reorder within the pane (insert-style); a trailing zone drops to the end.
+/// When they don't all fit, the strip scrolls sideways, by a sideways swipe or
+/// by an ordinary up-and-down wheel turn.
 struct TabBarView: View {
     @EnvironmentObject var appState: AppState
     let pane: Pane
@@ -11,7 +13,7 @@ struct TabBarView: View {
 
     var body: some View {
         if !pane.tabs.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) {
+            SidewaysScroll {
                 HStack(spacing: 0) {
                     ForEach(pane.tabs) { tab in
                         tabItem(tab)
